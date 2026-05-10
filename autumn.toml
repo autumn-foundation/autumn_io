@@ -1,0 +1,40 @@
+# Autumn configuration
+# All values shown are defaults — uncomment and change as needed.
+
+[server]
+host = "127.0.0.1"
+port = 3000
+# shutdown_timeout_secs = 30
+
+[log]
+level = "info"
+# format = "Auto"  # Auto | Pretty | Json
+
+[health]
+path = "/health"
+# live_path = "/live"
+# ready_path = "/ready"
+# startup_path = "/startup"
+
+# Uncomment for OpenTelemetry / OTLP tracing:
+# [telemetry]
+# enabled = true
+# service_name = "autumn_io"
+# service_namespace = "apps"
+# environment = "production"
+# otlp_endpoint = "http://otel-collector:4317"
+# protocol = "Grpc"  # Grpc | HttpProtobuf
+
+# Uncomment to configure database:
+# [database]
+# url = "postgres://user:pass@localhost:5432/autumn_io"
+# pool_size = 10
+# connect_timeout_secs = 5  # pool wait/create timeout in seconds
+
+# Uncomment to externalize sessions in production:
+# [session]
+# backend = "redis"
+#
+# [session.redis]
+# url = "redis://redis:6379"
+# key_prefix = "autumn_io:sessions"
