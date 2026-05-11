@@ -14,6 +14,7 @@ RUN apt-get update \
     && chmod +x target/autumn/tailwindcss
 
 COPY Cargo.toml autumn.toml build.rs tailwind.config.js ./
+COPY content ./content
 COPY src ./src
 COPY static ./static
 COPY migrations ./migrations
@@ -31,6 +32,7 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/autumn_io /usr/local/bin/autumn_io
 COPY --from=builder /app/autumn.toml /app/autumn.toml
+COPY --from=builder /app/content /app/content
 COPY --from=builder /app/static /app/static
 COPY --from=builder /app/migrations /app/migrations
 

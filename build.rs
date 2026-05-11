@@ -1,6 +1,8 @@
 fn main() {
     println!("cargo:rerun-if-changed=src/");
+    println!("cargo:rerun-if-changed=content/");
     println!("cargo:rerun-if-changed=static/css/input.css");
+    println!("cargo:rerun-if-changed=static/css/site.css");
     println!("cargo:rerun-if-changed=tailwind.config.js");
     println!("cargo:rerun-if-changed=target/autumn/tailwindcss");
     println!("cargo:rerun-if-env-changed=PATH");
