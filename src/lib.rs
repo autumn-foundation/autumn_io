@@ -13,23 +13,50 @@ pub mod site;
 
 use docs::{DocRegistry, DocSource, DocsError};
 
+pub const DOCS_START_SLUG: &str = "getting-started";
+pub const DOCS_START_PATH: &str = "/docs/getting-started";
+
+macro_rules! guide_doc {
+    ($slug:literal) => {
+        DocSource::new(
+            $slug,
+            include_str!(concat!("../content/guide/", $slug, ".md")),
+        )
+    };
+}
+
 static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
     DocRegistry::from_sources([
-        DocSource::new("quickstart", include_str!("../content/docs/quickstart.md")),
-        DocSource::new("routing", include_str!("../content/docs/routing.md")),
-        DocSource::new(
-            "configuration",
-            include_str!("../content/docs/configuration.md"),
-        ),
-        DocSource::new(
-            "templates-static-assets",
-            include_str!("../content/docs/templates-static-assets.md"),
-        ),
-        DocSource::new("deployment", include_str!("../content/docs/deployment.md")),
-        DocSource::new(
-            "upgrade-0-4",
-            include_str!("../content/docs/upgrade-0-4.md"),
-        ),
+        guide_doc!("getting-started"),
+        guide_doc!("what-happens-when"),
+        guide_doc!("coming-from-other-frameworks"),
+        guide_doc!("accessibility"),
+        guide_doc!("middleware"),
+        guide_doc!("path-helpers"),
+        guide_doc!("routes-cli"),
+        guide_doc!("macro-transparency"),
+        guide_doc!("testing"),
+        guide_doc!("transactions"),
+        guide_doc!("seeding"),
+        guide_doc!("storage"),
+        guide_doc!("mail"),
+        guide_doc!("authorization"),
+        guide_doc!("signed-webhooks"),
+        guide_doc!("signing-secrets"),
+        guide_doc!("realtime"),
+        guide_doc!("websockets"),
+        guide_doc!("jobs"),
+        guide_doc!("tasks"),
+        guide_doc!("operating-background-jobs"),
+        guide_doc!("scheduled-multi-replica"),
+        guide_doc!("admin"),
+        guide_doc!("generators"),
+        guide_doc!("custom-subsystems"),
+        guide_doc!("extensibility"),
+        guide_doc!("cloud-native"),
+        guide_doc!("deployment"),
+        guide_doc!("docs-smoke"),
+        guide_doc!("i18n"),
     ])
 });
 
@@ -77,7 +104,7 @@ pub async fn index() -> Response {
 
 #[get("/docs")]
 pub async fn docs_index() -> Redirect {
-    Redirect::temporary("/docs/quickstart")
+    Redirect::temporary(DOCS_START_PATH)
 }
 
 #[get("/docs/{slug}")]

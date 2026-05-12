@@ -4,6 +4,7 @@ use autumn_io::docs::{DocRegistry, DocSource, slugify_heading};
 use autumn_io::export::{ExportConfig, export_site};
 use autumn_io::site::{render_docs_page, render_home_page};
 
+const GUIDE_START_SLUG: &str = "getting-started";
 const SITE_CSS: &str = include_str!("../static/css/site.css");
 const COPY_CODE_JS: &str = include_str!("../static/js/copy-code.js");
 
@@ -213,6 +214,59 @@ fn rendered_home_page_links_into_core_docs_path() {
 }
 
 #[test]
+fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let page = registry
+        .page(GUIDE_START_SLUG)
+        .expect("getting-started guide should be bundled");
+
+    assert!(registry.pages().len() >= 20);
+    assert_eq!(registry.pages()[0].slug, GUIDE_START_SLUG);
+    assert_eq!(page.title, "Getting Started with Autumn");
+    assert!(page.html.contains("autumn doctor"));
+    assert!(page.html.contains("autumn_web::prelude"));
+    assert!(
+        registry.page("quickstart").is_none(),
+        "old hand-written quickstart should not shadow the upstream guide snapshot"
+    );
+}
+
+#[test]
+fn vendored_guide_snapshot_and_sync_tool_do_not_commit_local_source_paths() {
+    let guide_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("content/guide");
+    let sync_tool =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/sync_guide_docs.rs");
+    let mut scanned = 0;
+
+    for entry in std::fs::read_dir(&guide_dir).expect("vendored guide directory should exist") {
+        let entry = entry.expect("guide entry should be readable");
+        if entry.path().extension().and_then(|ext| ext.to_str()) != Some("md") {
+            continue;
+        }
+
+        let content =
+            std::fs::read_to_string(entry.path()).expect("vendored guide file should be readable");
+        assert!(
+            !content.contains(r"C:\Users\markm"),
+            "vendored guide content must not leak the local Autumn checkout path"
+        );
+        scanned += 1;
+    }
+
+    assert!(
+        scanned >= 20,
+        "expected the Autumn guide snapshot, not a token placeholder"
+    );
+
+    let sync_tool = std::fs::read_to_string(sync_tool).expect("sync tool should be committed");
+    assert!(sync_tool.contains("AUTUMN_REPO_DIR"));
+    assert!(
+        !sync_tool.contains(r"C:\Users\markm"),
+        "sync tooling should use env/CLI paths, not a machine-specific source path"
+    );
+}
+
+#[test]
 fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     let registry = DocRegistry::from_sources([
         DocSource::new("quickstart", QUICKSTART_SOURCE),
@@ -280,13 +334,13 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .send()
         .await
         .assert_status(307)
-        .assert_header("location", "/docs/quickstart");
+        .assert_header("location", "/docs/getting-started");
 
-    app.get("/docs/quickstart")
+    app.get("/docs/getting-started")
         .send()
         .await
         .assert_status(200)
-        .assert_body_contains("Quickstart")
+        .assert_body_contains("Getting Started with Autumn")
         .assert_body_contains("docs-sidebar")
         .assert_body_contains("data-copy-code");
 
@@ -357,8 +411,8 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_status(200)
         .assert_header_contains("content-type", "application/xml")
         .assert_body_contains("<loc>https://autumn.io/</loc>")
-        .assert_body_contains("<loc>https://autumn.io/docs/quickstart</loc>")
-        .assert_body_contains("<loc>https://autumn.io/docs/routing</loc>")
+        .assert_body_contains("<loc>https://autumn.io/docs/getting-started</loc>")
+        .assert_body_contains("<loc>https://autumn.io/docs/deployment</loc>")
         .text();
 
     assert!(
@@ -383,19 +437,20 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert!(home.contains("Rust web framework for server-rendered apps"));
     assert!(home.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
 
-    let quickstart =
-        std::fs::read_to_string(dist.join("docs/quickstart/index.html")).expect("docs html");
-    assert!(quickstart.contains(r#"<h1 id="page-title">Quickstart</h1>"#));
-    assert!(quickstart.contains(r#"aria-current="page" href="/docs/quickstart""#));
+    let getting_started =
+        std::fs::read_to_string(dist.join("docs/getting-started/index.html")).expect("docs html");
+    assert!(getting_started.contains(r#"<h1 id="page-title">Getting Started with Autumn</h1>"#));
+    assert!(getting_started.contains(r#"aria-current="page" href="/docs/getting-started""#));
     assert!(
-        quickstart.contains(r#"<link rel="canonical" href="https://autumn.io/docs/quickstart">"#)
+        getting_started
+            .contains(r#"<link rel="canonical" href="https://autumn.io/docs/getting-started">"#)
     );
 
     let robots = std::fs::read_to_string(dist.join("robots.txt")).expect("robots file");
     assert!(robots.contains("Sitemap: https://autumn.io/sitemap.xml"));
 
     let sitemap = std::fs::read_to_string(dist.join("sitemap.xml")).expect("sitemap file");
-    assert!(sitemap.contains("<loc>https://autumn.io/docs/quickstart</loc>"));
+    assert!(sitemap.contains("<loc>https://autumn.io/docs/getting-started</loc>"));
 
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
@@ -404,8 +459,8 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert!(dist.join("static/img/autumn-mark-136.png").exists());
 
     let manifest = std::fs::read_to_string(dist.join("manifest.json")).expect("manifest");
-    assert!(manifest.contains(r#""/docs/quickstart""#));
-    assert!(manifest.contains(r#""docs/quickstart/index.html""#));
+    assert!(manifest.contains(r#""/docs/getting-started""#));
+    assert!(manifest.contains(r#""docs/getting-started/index.html""#));
 
     std::fs::remove_dir_all(workspace).expect("cleanup export test");
 }

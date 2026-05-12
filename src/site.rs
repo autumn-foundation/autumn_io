@@ -1,7 +1,7 @@
 use autumn_web::{Markup, PreEscaped, html};
 
 use crate::docs::{DocPage, DocRegistry, render_highlighted_code_block};
-use crate::seo;
+use crate::{DOCS_START_PATH, seo};
 
 const VERSION_LABEL: &str = "Autumn 0.4.0";
 
@@ -37,8 +37,8 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                                 "Autumn gives Rust developers a direct path from route handler to production-ready web app: typed routing, Maud templates, static assets, health checks, and deployment defaults."
                             }
                             div class="hero-actions" {
-                                a class="button button-primary" href="/docs/quickstart" { "Get started" }
-                                a class="button button-secondary" href="/docs/routing" { "Read the docs" }
+                                a class="button button-primary" href=(DOCS_START_PATH) { "Get started" }
+                                a class="button button-secondary" href="/docs/what-happens-when" { "Read the docs" }
                             }
                         }
                         (PreEscaped(render_highlighted_code_block(Some("rust"), HOME_ROUTE_EXAMPLE)))
@@ -171,7 +171,7 @@ pub fn render_missing_docs_page(registry: &DocRegistry, slug: &str) -> Markup {
                                 code { (slug) }
                                 ". The route is valid; the page is not."
                             }
-                            a class="button button-primary" href="/docs/quickstart" { "Back to Quickstart" }
+                            a class="button button-primary" href=(DOCS_START_PATH) { "Back to Getting Started" }
                         }
                     }
                 }
@@ -311,11 +311,11 @@ fn site_header(active: &str) -> Markup {
             }
             nav class="site-nav" aria-label="Primary navigation" {
                 @if active == "docs" {
-                    a class="active" aria-current="location" href="/docs/quickstart" { "Docs" }
+                    a class="active" aria-current="location" href=(DOCS_START_PATH) { "Docs" }
                 } @else {
-                    a href="/docs/quickstart" { "Docs" }
+                    a href=(DOCS_START_PATH) { "Docs" }
                 }
-                a href="/docs/upgrade-0-4" { "0.4.0" }
+                a href=(DOCS_START_PATH) { "0.4.0" }
                 a href="/docs/deployment" { "Deploy" }
             }
         }
@@ -326,7 +326,7 @@ fn site_footer() -> Markup {
     html! {
         footer class="site-footer" {
             span { "Built with Autumn." }
-            a href="/docs/quickstart" { "Quickstart" }
+            a href=(DOCS_START_PATH) { "Getting Started" }
             a href="/docs/deployment" { "Deployment" }
         }
     }
