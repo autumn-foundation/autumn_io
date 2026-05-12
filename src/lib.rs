@@ -30,6 +30,7 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("getting-started"),
         guide_doc!("what-happens-when"),
         guide_doc!("coming-from-other-frameworks"),
+        guide_doc!("generators"),
         guide_doc!("accessibility"),
         guide_doc!("middleware"),
         guide_doc!("path-helpers"),
@@ -50,13 +51,11 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("operating-background-jobs"),
         guide_doc!("scheduled-multi-replica"),
         guide_doc!("admin"),
-        guide_doc!("generators"),
         guide_doc!("custom-subsystems"),
         guide_doc!("extensibility"),
         guide_doc!("cloud-native"),
-        guide_doc!("deployment"),
-        guide_doc!("docs-smoke"),
         guide_doc!("i18n"),
+        guide_doc!("deployment"),
     ])
 });
 

@@ -4,6 +4,77 @@ use crate::docs::{DocPage, DocRegistry, render_highlighted_code_block};
 use crate::{DOCS_START_PATH, seo};
 
 const VERSION_LABEL: &str = "Autumn 0.4.0";
+const HOME_FEATURED_DOC_SLUGS: &[&str] = &["getting-started", "coming-from-other-frameworks"];
+const HOME_SECONDARY_DOC_SLUGS: &[&str] = &[
+    "what-happens-when",
+    "testing",
+    "authorization",
+    "jobs",
+    "cloud-native",
+    "deployment",
+];
+
+struct DocsNavGroup {
+    label: &'static str,
+    slugs: &'static [&'static str],
+}
+
+const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
+    DocsNavGroup {
+        label: "Start here",
+        slugs: &[
+            "getting-started",
+            "what-happens-when",
+            "coming-from-other-frameworks",
+            "generators",
+        ],
+    },
+    DocsNavGroup {
+        label: "Request surface",
+        slugs: &[
+            "accessibility",
+            "middleware",
+            "path-helpers",
+            "routes-cli",
+            "macro-transparency",
+        ],
+    },
+    DocsNavGroup {
+        label: "Data and auth",
+        slugs: &[
+            "testing",
+            "transactions",
+            "seeding",
+            "storage",
+            "mail",
+            "authorization",
+            "signed-webhooks",
+            "signing-secrets",
+        ],
+    },
+    DocsNavGroup {
+        label: "Realtime and jobs",
+        slugs: &[
+            "realtime",
+            "websockets",
+            "jobs",
+            "tasks",
+            "operating-background-jobs",
+            "scheduled-multi-replica",
+            "admin",
+        ],
+    },
+    DocsNavGroup {
+        label: "Extending and shipping",
+        slugs: &[
+            "custom-subsystems",
+            "extensibility",
+            "cloud-native",
+            "i18n",
+            "deployment",
+        ],
+    },
+];
 
 const HOME_ROUTE_EXAMPLE: &str = r#"use autumn_web::prelude::*;
 
@@ -32,9 +103,9 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                     section class="home-hero" {
                         div class="hero-copy" {
                             p class="eyebrow" { (VERSION_LABEL) }
-                            h1 id="page-title" { "Rust web framework for server-rendered apps" }
+                            h1 id="page-title" { "Ship the app, not the plumbing." }
                             p class="hero-lede" {
-                                "Autumn gives Rust developers a direct path from route handler to production-ready web app: typed routing, Maud templates, static assets, health checks, and deployment defaults."
+                                "Autumn gives Rust teams the batteries they expect from mature app frameworks: typed routes, Maud views, Postgres persistence, background work, health checks, and production defaults in one server-rendered path."
                             }
                             div class="hero-actions" {
                                 a class="button button-primary" href=(DOCS_START_PATH) { "Get started" }
@@ -43,11 +114,30 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                         }
                         (PreEscaped(render_highlighted_code_block(Some("rust"), HOME_ROUTE_EXAMPLE)))
                     }
-                    section class="home-grid" aria-label="Core docs" {
-                        @for page in registry.pages() {
-                            a class="feature-link" href=(format!("/docs/{}", page.slug)) {
-                                span class="feature-title" { (&page.title) }
-                                span class="feature-description" { (&page.description) }
+                    section class="home-featured" aria-labelledby="featured-guides-title" {
+                        div class="home-section-header" {
+                            p class="eyebrow" { "Start with intent" }
+                            h2 id="featured-guides-title" { "Pick your entry point" }
+                        }
+                        div class="home-featured-grid" {
+                            @for slug in HOME_FEATURED_DOC_SLUGS {
+                                @if let Some(page) = registry.page(slug) {
+                                    (home_feature_card(page))
+                                }
+                            }
+                        }
+                    }
+                    section class="home-secondary" aria-labelledby="common-paths-title" {
+                        div class="home-section-header" {
+                            p class="eyebrow" { "Core workflows" }
+                            h2 id="common-paths-title" { "Build, test, secure, and deploy" }
+                        }
+                        div class="home-secondary-grid" {
+                            @for page in home_secondary_pages(registry) {
+                                a class="home-secondary-link" href=(seo::docs_path(&page.slug)) {
+                                    span class="feature-title" { (&page.title) }
+                                    span class="feature-description" { (&page.description) }
+                                }
                             }
                         }
                     }
@@ -58,8 +148,43 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
     }
 }
 
+fn home_feature_card(page: &DocPage) -> Markup {
+    let kicker = match page.slug.as_str() {
+        "getting-started" => "Build first",
+        "coming-from-other-frameworks" => "Map what you know",
+        _ => "Guide",
+    };
+
+    html! {
+        a class="home-feature-card" href=(seo::docs_path(&page.slug)) {
+            span class="home-card-kicker" { (kicker) }
+            h2 class="home-card-title" { (&page.title) }
+            p { (&page.description) }
+            span class="home-card-action" { "Read guide" }
+        }
+    }
+}
+
+fn home_secondary_pages(registry: &DocRegistry) -> Vec<&DocPage> {
+    let pages = HOME_SECONDARY_DOC_SLUGS
+        .iter()
+        .filter_map(|slug| registry.page(slug))
+        .collect::<Vec<_>>();
+
+    if pages.is_empty() {
+        registry
+            .pages()
+            .iter()
+            .filter(|page| !HOME_FEATURED_DOC_SLUGS.contains(&page.slug.as_str()))
+            .take(6)
+            .collect()
+    } else {
+        pages
+    }
+}
+
 pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
-    let neighbors = registry.neighbors(&page.slug);
+    let (previous_page, next_page) = docs_navigation_neighbors(registry, &page.slug);
 
     html! {
         (doctype())
@@ -69,29 +194,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                 (skip_link())
                 (site_header("docs"))
                 div class="docs-layout" {
-                    aside class="docs-sidebar" aria-label="Docs navigation" {
-                        nav {
-                            p class="sidebar-label" { "Start here" }
-                            @for item in registry.pages() {
-                                @if item.slug == page.slug {
-                                    a
-                                        class="docs-nav-link active"
-                                        aria-current="page"
-                                        href=(format!("/docs/{}", item.slug))
-                                    {
-                                        span { (&item.title) }
-                                    }
-                                } @else {
-                                    a
-                                        class="docs-nav-link"
-                                        href=(format!("/docs/{}", item.slug))
-                                    {
-                                        span { (&item.title) }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    (docs_sidebar(registry, Some(&page.slug)))
                     main id="main-content" class="docs-main" tabindex="-1" aria-labelledby="page-title" {
                         article class="docs-article" aria-labelledby="page-title" {
                             header class="article-header" {
@@ -104,7 +207,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                             }
                         }
                         nav class="docs-pagination" aria-label="Docs pagination" {
-                            @if let Some(previous) = neighbors.previous {
+                            @if let Some(previous) = previous_page {
                                 a class="pagination-link previous" href=(format!("/docs/{}", previous.slug)) {
                                     span { "Previous" }
                                     strong { (&previous.title) }
@@ -112,7 +215,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                             } @else {
                                 span class="pagination-placeholder" {}
                             }
-                            @if let Some(next) = neighbors.next {
+                            @if let Some(next) = next_page {
                                 a class="pagination-link next" href=(format!("/docs/{}", next.slug)) {
                                     span { "Next" }
                                     strong { (&next.title) }
@@ -139,6 +242,115 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
     }
 }
 
+fn docs_navigation_neighbors<'a>(
+    registry: &'a DocRegistry,
+    slug: &str,
+) -> (Option<&'a DocPage>, Option<&'a DocPage>) {
+    let pages = docs_navigation_pages(registry);
+    let Some(index) = pages.iter().position(|page| page.slug == slug) else {
+        return (None, None);
+    };
+
+    let previous = index
+        .checked_sub(1)
+        .and_then(|previous| pages.get(previous).copied());
+    let next = pages.get(index + 1).copied();
+
+    (previous, next)
+}
+
+fn docs_navigation_pages(registry: &DocRegistry) -> Vec<&DocPage> {
+    let mut pages = Vec::new();
+    let mut seen_slugs = Vec::new();
+
+    for group in DOCS_NAV_GROUPS {
+        for slug in group.slugs {
+            if seen_slugs.contains(slug) {
+                continue;
+            }
+
+            if let Some(page) = registry.page(slug) {
+                seen_slugs.push(page.slug.as_str());
+                pages.push(page);
+            }
+        }
+    }
+
+    for page in registry.pages() {
+        if !seen_slugs.contains(&page.slug.as_str()) {
+            seen_slugs.push(page.slug.as_str());
+            pages.push(page);
+        }
+    }
+
+    pages
+}
+
+fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
+    html! {
+        aside class="docs-sidebar" aria-label="Docs navigation" {
+            nav {
+                p class="sidebar-label" { "Docs" }
+                @for group in DOCS_NAV_GROUPS {
+                    @if docs_nav_group_has_pages(registry, group) {
+                        section class="docs-nav-section" {
+                            p class="docs-nav-section-title" { (group.label) }
+                            @for slug in group.slugs {
+                                @if let Some(page) = registry.page(slug) {
+                                    (docs_nav_link(page, active_slug))
+                                }
+                            }
+                        }
+                    }
+                }
+                @if registry.pages().iter().any(|page| !is_grouped_doc_slug(&page.slug)) {
+                    section class="docs-nav-section" {
+                        p class="docs-nav-section-title" { "Reference" }
+                        @for page in registry.pages() {
+                            @if !is_grouped_doc_slug(&page.slug) {
+                                (docs_nav_link(page, active_slug))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn docs_nav_link(page: &DocPage, active_slug: Option<&str>) -> Markup {
+    if active_slug == Some(page.slug.as_str()) {
+        html! {
+            a
+                class="docs-nav-link active"
+                aria-current="page"
+                href=(seo::docs_path(&page.slug))
+            {
+                span { (&page.title) }
+            }
+        }
+    } else {
+        html! {
+            a
+                class="docs-nav-link"
+                href=(seo::docs_path(&page.slug))
+            {
+                span { (&page.title) }
+            }
+        }
+    }
+}
+
+fn docs_nav_group_has_pages(registry: &DocRegistry, group: &DocsNavGroup) -> bool {
+    group.slugs.iter().any(|slug| registry.page(slug).is_some())
+}
+
+fn is_grouped_doc_slug(slug: &str) -> bool {
+    DOCS_NAV_GROUPS
+        .iter()
+        .any(|group| group.slugs.contains(&slug))
+}
+
 pub fn render_missing_docs_page(registry: &DocRegistry, slug: &str) -> Markup {
     html! {
         (doctype())
@@ -152,16 +364,7 @@ pub fn render_missing_docs_page(registry: &DocRegistry, slug: &str) -> Markup {
                 (skip_link())
                 (site_header("docs"))
                 div class="docs-layout missing-layout" {
-                    aside class="docs-sidebar" aria-label="Docs navigation" {
-                        nav {
-                            p class="sidebar-label" { "Start here" }
-                            @for page in registry.pages() {
-                                a class="docs-nav-link" href=(format!("/docs/{}", page.slug)) {
-                                    span { (&page.title) }
-                                }
-                            }
-                        }
-                    }
+                    (docs_sidebar(registry, None))
                     main id="main-content" class="docs-main" tabindex="-1" aria-labelledby="page-title" {
                         article class="docs-article missing-page" aria-labelledby="page-title" {
                             p class="eyebrow" { "404" }

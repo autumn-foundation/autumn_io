@@ -139,9 +139,7 @@ fn rendered_home_page_has_keyboard_bypass_and_named_main_region() {
     assert!(html.contains(r#"<main id="main-content""#));
     assert!(html.contains(r#"tabindex="-1""#));
     assert!(html.contains(r#"aria-labelledby="page-title""#));
-    assert!(
-        html.contains(r#"<h1 id="page-title">Rust web framework for server-rendered apps</h1>"#)
-    );
+    assert!(html.contains(r#"<h1 id="page-title">Ship the app, not the plumbing.</h1>"#));
 }
 
 #[test]
@@ -205,12 +203,119 @@ fn rendered_home_page_links_into_core_docs_path() {
     .expect("valid docs source should parse");
     let html = render_home_page(&registry).into_string();
 
-    assert!(html.contains("Rust web framework for server-rendered apps"));
+    assert!(html.contains("Ship the app, not the plumbing."));
     assert!(html.contains("href=\"/docs/quickstart\""));
     assert!(html.contains("href=\"/docs/routing\""));
     assert!(html.contains("use"));
     assert!(html.contains("autumn_web"));
     assert!(html.contains("prelude"));
+}
+
+#[test]
+fn bundled_home_page_prioritizes_two_entry_paths_without_rendering_every_doc_card() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let html = render_home_page(registry).into_string();
+
+    assert!(html.contains(r#"<h1 id="page-title">Ship the app, not the plumbing.</h1>"#));
+    assert!(
+        html.contains(
+            "Autumn gives Rust teams the batteries they expect from mature app frameworks"
+        )
+    );
+    assert!(html.contains("Core workflows"));
+    assert!(html.contains("Build, test, secure, and deploy"));
+    assert!(!html.contains("The docs people actually reach for"));
+    assert_eq!(html.matches("home-feature-card").count(), 2);
+    assert!(html.contains(r#"href="/docs/getting-started""#));
+    assert!(html.contains("Getting Started with Autumn"));
+    assert!(html.contains(r#"href="/docs/coming-from-other-frameworks""#));
+    assert!(html.contains("Coming From Other Frameworks"));
+    assert_eq!(html.matches("home-secondary-link").count(), 6);
+    assert!(
+        !html.contains(r#"href="/docs/docs-smoke""#),
+        "front page should not render every vendored guide as a card"
+    );
+}
+
+#[test]
+fn bundled_docs_sidebar_groups_guides_by_workflow() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let page = registry
+        .page("transactions")
+        .expect("transactions guide should be bundled");
+    let html = render_docs_page(registry, page).into_string();
+
+    for label in [
+        "Start here",
+        "Request surface",
+        "Data and auth",
+        "Realtime and jobs",
+        "Extending and shipping",
+    ] {
+        assert!(html.contains(&format!(r#"<p class="docs-nav-section-title">{label}</p>"#)));
+    }
+
+    assert!(html.contains(r#"aria-current="page" href="/docs/transactions""#));
+
+    let sidebar = html
+        .split_once(r#"<aside class="docs-sidebar""#)
+        .and_then(|(_, rest)| rest.split_once("</aside>"))
+        .map(|(sidebar, _)| sidebar)
+        .expect("docs sidebar should render");
+    let start_position = sidebar.find("Start here").expect("start group label");
+    let generators_position = sidebar
+        .find(r#"href="/docs/generators""#)
+        .expect("generators link");
+    let request_surface_position = sidebar
+        .find("Request surface")
+        .expect("request surface group label");
+    assert!(
+        start_position < generators_position && generators_position < request_surface_position,
+        "generators should be in the first docs navigation group"
+    );
+
+    let deployment_position = sidebar
+        .find(r#"href="/docs/deployment""#)
+        .expect("deployment link");
+    assert!(
+        !sidebar[deployment_position + r#"href="/docs/deployment""#.len()..]
+            .contains(r#"href="/docs/"#),
+        "deployment should be the final docs navigation link"
+    );
+    assert!(!sidebar.contains(r#"href="/docs/docs-smoke""#));
+}
+
+#[test]
+fn bundled_docs_pagination_follows_grouped_sidebar_order() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    let framework_page = registry
+        .page("coming-from-other-frameworks")
+        .expect("framework migration guide should be bundled");
+    let framework_html = render_docs_page(registry, framework_page).into_string();
+    assert!(framework_html.contains(
+        r#"<a class="pagination-link next" href="/docs/generators"><span>Next</span><strong>Code Generators</strong></a>"#
+    ));
+
+    let generators_page = registry
+        .page("generators")
+        .expect("generators guide should be bundled");
+    let generators_html = render_docs_page(registry, generators_page).into_string();
+    assert!(generators_html.contains(
+        r#"<a class="pagination-link previous" href="/docs/coming-from-other-frameworks"><span>Previous</span><strong>Coming From Other Frameworks</strong></a>"#
+    ));
+
+    let deployment_page = registry
+        .page("deployment")
+        .expect("deployment guide should be bundled");
+    let deployment_html = render_docs_page(registry, deployment_page).into_string();
+    assert!(deployment_html.contains(
+        r#"<a class="pagination-link previous" href="/docs/i18n"><span>Previous</span><strong>Internationalization (i18n)</strong></a>"#
+    ));
+    assert!(
+        !deployment_html.contains(r#"<a class="pagination-link next""#),
+        "deployment should be the terminal docs page"
+    );
 }
 
 #[test]
@@ -225,6 +330,10 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
     assert_eq!(page.title, "Getting Started with Autumn");
     assert!(page.html.contains("autumn doctor"));
     assert!(page.html.contains("autumn_web::prelude"));
+    assert!(
+        registry.page("docs-smoke").is_none(),
+        "internal release smoke procedure should not ship as public docs"
+    );
     assert!(
         registry.page("quickstart").is_none(),
         "old hand-written quickstart should not shadow the upstream guide snapshot"
@@ -413,6 +522,14 @@ fn css_makes_code_samples_visually_distinct() {
 }
 
 #[test]
+fn css_supports_featured_home_cards_and_grouped_docs_nav() {
+    assert!(SITE_CSS.contains(".home-featured-grid"));
+    assert!(SITE_CSS.contains(".home-feature-card"));
+    assert!(SITE_CSS.contains(".home-secondary-grid"));
+    assert!(SITE_CSS.contains(".docs-nav-section-title"));
+}
+
+#[test]
 fn copy_code_script_updates_accessible_status_text() {
     assert!(COPY_CODE_JS.contains("aria-label"));
     assert!(COPY_CODE_JS.contains("Copied code to clipboard"));
@@ -427,7 +544,7 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .send()
         .await
         .assert_status(200)
-        .assert_body_contains("Rust web framework for server-rendered apps")
+        .assert_body_contains("Ship the app, not the plumbing.")
         .assert_body_contains("/static/css/site.css");
 
     app.get("/docs")
@@ -534,7 +651,7 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert_eq!(summary.routes, registry.pages().len() + 3);
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
-    assert!(home.contains("Rust web framework for server-rendered apps"));
+    assert!(home.contains("Ship the app, not the plumbing."));
     assert!(home.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
 
     let getting_started =
