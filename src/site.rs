@@ -1,6 +1,6 @@
 use autumn_web::{Markup, PreEscaped, html};
 
-use crate::docs::{DocPage, DocRegistry};
+use crate::docs::{DocPage, DocRegistry, render_highlighted_code_block};
 use crate::seo;
 
 const VERSION_LABEL: &str = "Autumn 0.4.0";
@@ -41,18 +41,7 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                                 a class="button button-secondary" href="/docs/routing" { "Read the docs" }
                             }
                         }
-                        div class="hero-code code-block" data-copy-code {
-                            button
-                                class="copy-code-button"
-                                type="button"
-                                data-copy-button
-                                aria-label="Copy code to clipboard"
-                                aria-live="polite"
-                            {
-                                "Copy"
-                            }
-                            pre { code class="language-rust" { (HOME_ROUTE_EXAMPLE) } }
-                        }
+                        (PreEscaped(render_highlighted_code_block(Some("rust"), HOME_ROUTE_EXAMPLE)))
                     }
                     section class="home-grid" aria-label="Core docs" {
                         @for page in registry.pages() {

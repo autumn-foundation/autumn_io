@@ -1,9 +1,19 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::sync::LazyLock;
 
-use pulldown_cmark::{Options, Parser, html};
+use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd, html};
 use serde::Deserialize;
+use syntect::easy::HighlightLines;
+use syntect::highlighting::{Theme, ThemeSet};
+use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
+use syntect::parsing::{SyntaxReference, SyntaxSet};
+use syntect::util::LinesWithEndings;
+
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
+const CODE_THEME: &str = "base16-ocean.dark";
 
 /// A Markdown document bundled into the Autumn website.
 #[derive(Clone, Copy, Debug)]
@@ -198,10 +208,13 @@ fn render_markdown(markdown: &str) -> RenderedMarkdown {
     let headings = add_heading_ids(markdown);
     let parser = Parser::new_ext(&headings.markdown, options);
     let mut rendered = String::new();
-    html::push_html(&mut rendered, parser);
+    html::push_html(
+        &mut rendered,
+        highlight_code_block_events(parser).into_iter(),
+    );
 
     RenderedMarkdown {
-        html: add_code_copy_controls(rendered),
+        html: rendered,
         toc: headings.toc,
     }
 }
@@ -336,12 +349,182 @@ pub fn slugify_heading(heading: &str) -> String {
     }
 }
 
-fn add_code_copy_controls(html: String) -> String {
-    html.replace(
-        "<pre><code",
-        r#"<div class="code-block" data-copy-code><button class="copy-code-button" type="button" data-copy-button aria-label="Copy code to clipboard" aria-live="polite">Copy</button><pre><code"#,
-    )
-    .replace("</code></pre>", "</code></pre></div>")
+fn highlight_code_block_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Vec<Event<'a>> {
+    let mut highlighted = Vec::new();
+    let mut events = events.into_iter();
+
+    while let Some(event) = events.next() {
+        match event {
+            Event::Start(Tag::CodeBlock(kind)) => {
+                let code = collect_code_block_text(&mut events);
+                highlighted.push(Event::Html(render_code_block(&kind, &code).into()));
+            }
+            event => highlighted.push(event),
+        }
+    }
+
+    highlighted
+}
+
+fn collect_code_block_text<'a>(events: &mut impl Iterator<Item = Event<'a>>) -> String {
+    let mut code = String::new();
+
+    for event in events.by_ref() {
+        match event {
+            Event::End(TagEnd::CodeBlock) => break,
+            Event::Text(text) | Event::Code(text) | Event::Html(text) | Event::InlineHtml(text) => {
+                code.push_str(&text);
+            }
+            Event::SoftBreak | Event::HardBreak => code.push('\n'),
+            _ => {}
+        }
+    }
+
+    code
+}
+
+fn render_code_block(kind: &CodeBlockKind<'_>, code: &str) -> String {
+    render_highlighted_code_block(code_block_language(kind), code)
+}
+
+pub(crate) fn render_highlighted_code_block(language: Option<&str>, code: &str) -> String {
+    let language_label = language.map_or_else(|| "Code".to_owned(), code_language_label);
+    let mut output = String::with_capacity(code.len() + 256);
+
+    push_code_block_header(&mut output, &language_label);
+    output.push_str("<pre><code");
+    if let Some(language) = language {
+        output.push_str(r#" class="language-"#);
+        push_html_attr_escaped(&mut output, language);
+        output.push('"');
+    }
+    output.push('>');
+    output.push_str(&highlight_code(language, code));
+    output.push_str("</code></pre></div>");
+    output
+}
+
+fn code_block_language<'a>(kind: &'a CodeBlockKind<'a>) -> Option<&'a str> {
+    match kind {
+        CodeBlockKind::Indented => None,
+        CodeBlockKind::Fenced(info) => info
+            .split_whitespace()
+            .next()
+            .filter(|lang| !lang.is_empty()),
+    }
+}
+
+fn highlight_code(language: Option<&str>, code: &str) -> String {
+    let syntax = language
+        .and_then(syntax_for_language)
+        .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
+    let mut highlighter = HighlightLines::new(syntax, code_theme());
+    let mut output = String::with_capacity(code.len() * 2);
+
+    for line in LinesWithEndings::from(code) {
+        let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) else {
+            push_html_escaped(&mut output, line);
+            continue;
+        };
+        match styled_line_to_highlighted_html(&ranges, IncludeBackground::No) {
+            Ok(line_html) => output.push_str(&line_html),
+            Err(_) => push_html_escaped(&mut output, line),
+        }
+    }
+
+    output
+}
+
+fn syntax_for_language(language: &str) -> Option<&'static SyntaxReference> {
+    let lowercase = language.to_ascii_lowercase();
+    let token = match lowercase.as_str() {
+        "bash" | "shell" => "sh",
+        "dockerfile" => "Dockerfile",
+        "powershell" => "ps1",
+        "rust" => "rs",
+        "text" | "txt" => "txt",
+        other => other,
+    };
+
+    SYNTAX_SET
+        .find_syntax_by_token(token)
+        .or_else(|| SYNTAX_SET.find_syntax_by_extension(token))
+}
+
+fn code_theme() -> &'static Theme {
+    THEME_SET
+        .themes
+        .get(CODE_THEME)
+        .or_else(|| THEME_SET.themes.values().next())
+        .expect("syntect ships at least one default theme")
+}
+
+fn push_code_block_header(output: &mut String, language: &str) {
+    output.push_str(r#"<div class="code-block" data-copy-code>"#);
+    output.push_str(r#"<div class="code-block-header">"#);
+    output.push_str(r#"<span class="code-window-dots" aria-hidden="true">"#);
+    output.push_str(r#"<span class="code-window-dot"></span>"#);
+    output.push_str(r#"<span class="code-window-dot"></span>"#);
+    output.push_str(r#"<span class="code-window-dot"></span>"#);
+    output.push_str(r#"</span><span class="code-language">"#);
+    output.push_str(language);
+    output.push_str(r#"</span>"#);
+    output.push_str(r#"<button class="copy-code-button" type="button" data-copy-button "#);
+    output.push_str(r#"aria-label="Copy code to clipboard" aria-live="polite">Copy</button>"#);
+    output.push_str("</div>");
+}
+
+fn code_language_label(language: &str) -> String {
+    match language.to_ascii_lowercase().as_str() {
+        "bash" | "sh" | "shell" => "Shell".to_owned(),
+        "css" => "CSS".to_owned(),
+        "dockerfile" => "Dockerfile".to_owned(),
+        "powershell" | "ps1" => "PowerShell".to_owned(),
+        "rust" | "rs" => "Rust".to_owned(),
+        "text" | "txt" => "Text".to_owned(),
+        "toml" => "TOML".to_owned(),
+        other => title_case_language(other),
+    }
+}
+
+fn title_case_language(language: &str) -> String {
+    let mut label = String::with_capacity(language.len());
+    let mut uppercase_next = true;
+
+    for char in language.chars() {
+        if char == '-' || char == '_' {
+            label.push(' ');
+            uppercase_next = true;
+        } else if uppercase_next {
+            label.extend(char.to_uppercase());
+            uppercase_next = false;
+        } else {
+            label.push(char);
+        }
+    }
+
+    if label.is_empty() {
+        "Code".to_owned()
+    } else {
+        label
+    }
+}
+
+fn push_html_attr_escaped(output: &mut String, value: &str) {
+    push_html_escaped(output, value);
+}
+
+fn push_html_escaped(output: &mut String, value: &str) {
+    for char in value.chars() {
+        match char {
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&#39;"),
+            _ => output.push(char),
+        }
+    }
 }
 
 #[cfg(test)]

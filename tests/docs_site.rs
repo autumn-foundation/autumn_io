@@ -20,6 +20,10 @@ order: 10
 ```rust
 use autumn_web::prelude::*;
 ```
+
+```toml
+autumn-web = "0.4"
+```
 "#;
 
 const ROUTING_SOURCE: &str = r#"---
@@ -52,6 +56,16 @@ fn parses_frontmatter_and_generates_article_metadata() {
     assert!(
         page.html.contains("<pre><code class=\"language-rust\">"),
         "Rust code blocks should keep language metadata for copy controls"
+    );
+    assert!(
+        page.html.contains("<span style=\"color:"),
+        "code blocks should include server-rendered syntax highlight spans"
+    );
+    assert!(
+        page.html.contains("autumn_web::prelude")
+            && page.html.contains("autumn-web")
+            && page.html.contains("language-toml"),
+        "highlighting should preserve Rust and TOML code text and language classes"
     );
     assert!(
         !page.html.contains("<h1 id=\"quickstart\">"),
@@ -103,6 +117,9 @@ fn rendered_docs_page_contains_nav_toc_and_copyable_code_block() {
     assert!(html.contains("docs-toc"));
     assert!(html.contains("href=\"#create-an-app\""));
     assert!(html.contains("data-copy-code"));
+    assert!(html.contains(r#"<div class="code-block-header">"#));
+    assert!(html.contains(r#"<span class="code-language">Rust</span>"#));
+    assert!(html.contains(r#"<span class="code-window-dots" aria-hidden="true">"#));
     assert!(html.contains("Next"));
 }
 
@@ -190,7 +207,9 @@ fn rendered_home_page_links_into_core_docs_path() {
     assert!(html.contains("Rust web framework for server-rendered apps"));
     assert!(html.contains("href=\"/docs/quickstart\""));
     assert!(html.contains("href=\"/docs/routing\""));
-    assert!(html.contains("use autumn_web::prelude::*;"));
+    assert!(html.contains("use"));
+    assert!(html.contains("autumn_web"));
+    assert!(html.contains("prelude"));
 }
 
 #[test]
@@ -206,6 +225,8 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     assert!(html.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
     assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png""#));
     assert!(html.contains(r#"src="/static/img/autumn-mark-68.png""#));
+    assert!(html.contains("<span style=\"color:"));
+    assert!(html.contains(r#"<span class="code-language">Rust</span>"#));
     assert!(html.contains(
         r#"srcset="/static/img/autumn-mark-68.png 1x, /static/img/autumn-mark-136.png 2x""#
     ));
@@ -225,6 +246,16 @@ fn css_exposes_visible_focus_skip_link_and_reduced_motion_rules() {
     assert!(SITE_CSS.contains("outline: 3px solid"));
     assert!(SITE_CSS.contains("@media (prefers-reduced-motion: reduce)"));
     assert!(SITE_CSS.contains("scroll-behavior: auto"));
+}
+
+#[test]
+fn css_makes_code_samples_visually_distinct() {
+    assert!(SITE_CSS.contains(".code-block::before"));
+    assert!(SITE_CSS.contains(".code-block-header"));
+    assert!(SITE_CSS.contains(".code-window-dot"));
+    assert!(SITE_CSS.contains(".code-language"));
+    assert!(SITE_CSS.contains("box-shadow: 0 18px 42px"));
+    assert!(SITE_CSS.contains("background: linear-gradient"));
 }
 
 #[test]
