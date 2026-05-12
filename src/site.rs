@@ -277,7 +277,7 @@ fn document_head(meta: &PageMeta) -> Markup {
             meta name="application-name" content=(seo::SITE_NAME);
             title { (&meta.title) }
             link rel="canonical" href=(&canonical_url);
-            link rel="icon" href="/static/img/autumn.png" type="image/png";
+            link rel="icon" href="/static/img/autumn-mark-68.png" type="image/png";
             link rel="sitemap" type="application/xml" href="/sitemap.xml";
             link rel="stylesheet" href="/static/css/site.css";
             meta property="og:site_name" content=(seo::SITE_NAME);
@@ -312,7 +312,12 @@ fn site_header(active: &str) -> Markup {
     html! {
         header class="site-header" {
             a class="brand" href="/" aria-label="Autumn home" {
-                img src="/static/img/autumn.png" alt="" width="34" height="34";
+                img
+                    src="/static/img/autumn-mark-68.png"
+                    srcset="/static/img/autumn-mark-68.png 1x, /static/img/autumn-mark-136.png 2x"
+                    alt=""
+                    width="34"
+                    height="34";
                 span { "Autumn" }
             }
             nav class="site-nav" aria-label="Primary navigation" {

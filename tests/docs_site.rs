@@ -204,6 +204,11 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
 
     assert!(html.contains("Autumn: Rust Web Framework for Server-Rendered Apps"));
     assert!(html.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
+    assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png""#));
+    assert!(html.contains(r#"src="/static/img/autumn-mark-68.png""#));
+    assert!(html.contains(
+        r#"srcset="/static/img/autumn-mark-68.png 1x, /static/img/autumn-mark-136.png 2x""#
+    ));
     assert!(html.contains(r#"<meta property="og:site_name" content="Autumn">"#));
     assert!(html.contains(
         r#"<meta property="og:image" content="https://autumn.io/static/img/autumn.png">"#
@@ -378,6 +383,8 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
     assert!(dist.join("static/img/autumn.png").exists());
+    assert!(dist.join("static/img/autumn-mark-68.png").exists());
+    assert!(dist.join("static/img/autumn-mark-136.png").exists());
 
     let manifest = std::fs::read_to_string(dist.join("manifest.json")).expect("manifest");
     assert!(manifest.contains(r#""/docs/quickstart""#));
