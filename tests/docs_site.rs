@@ -100,6 +100,26 @@ fn rendered_docs_page_contains_nav_toc_and_copyable_code_block() {
 }
 
 #[test]
+fn rendered_docs_page_contains_search_specific_metadata() {
+    let registry = DocRegistry::from_sources([
+        DocSource::new("quickstart", QUICKSTART_SOURCE),
+        DocSource::new("routing", ROUTING_SOURCE),
+    ])
+    .expect("valid docs source should parse");
+    let page = registry.page("quickstart").expect("quickstart exists");
+    let html = render_docs_page(&registry, page).into_string();
+
+    assert!(html.contains("Quickstart | Autumn Rust Web Framework Docs"));
+    assert!(html.contains(r#"<link rel="canonical" href="https://autumn.io/docs/quickstart">"#));
+    assert!(html.contains(r#"<meta property="og:type" content="article">"#));
+    assert!(
+        html.contains(r#"<meta property="og:url" content="https://autumn.io/docs/quickstart">"#)
+    );
+    assert!(html.contains(r#""@type":"TechArticle""#));
+    assert!(html.contains(r#""headline":"Quickstart""#));
+}
+
+#[test]
 fn rendered_home_page_links_into_core_docs_path() {
     let registry = DocRegistry::from_sources([
         DocSource::new("quickstart", QUICKSTART_SOURCE),
@@ -108,10 +128,30 @@ fn rendered_home_page_links_into_core_docs_path() {
     .expect("valid docs source should parse");
     let html = render_home_page(&registry).into_string();
 
-    assert!(html.contains("Fast, simple Rust web apps"));
+    assert!(html.contains("Rust web framework for server-rendered apps"));
     assert!(html.contains("href=\"/docs/quickstart\""));
     assert!(html.contains("href=\"/docs/routing\""));
     assert!(html.contains("use autumn_web::prelude::*;"));
+}
+
+#[test]
+fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
+    let registry = DocRegistry::from_sources([
+        DocSource::new("quickstart", QUICKSTART_SOURCE),
+        DocSource::new("routing", ROUTING_SOURCE),
+    ])
+    .expect("valid docs source should parse");
+    let html = render_home_page(&registry).into_string();
+
+    assert!(html.contains("Autumn: Rust Web Framework for Server-Rendered Apps"));
+    assert!(html.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
+    assert!(html.contains(r#"<meta property="og:site_name" content="Autumn">"#));
+    assert!(html.contains(
+        r#"<meta property="og:image" content="https://autumn.io/static/img/autumn.png">"#
+    ));
+    assert!(html.contains(r#"<meta name="twitter:card" content="summary">"#));
+    assert!(html.contains(r#""@type":"WebSite""#));
+    assert!(html.contains(r#""@type":"SoftwareSourceCode""#));
 }
 
 #[tokio::test]
@@ -122,7 +162,7 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .send()
         .await
         .assert_status(200)
-        .assert_body_contains("Fast, simple Rust web apps")
+        .assert_body_contains("Rust web framework for server-rendered apps")
         .assert_body_contains("/static/css/site.css");
 
     app.get("/docs")
@@ -144,4 +184,34 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .await
         .assert_status(404)
         .assert_body_contains("That docs page is not in the stack");
+}
+
+#[tokio::test]
+async fn autumn_routes_expose_crawl_discovery_files() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    app.get("/robots.txt")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_header_contains("content-type", "text/plain")
+        .assert_body_contains("User-agent: *")
+        .assert_body_contains("Allow: /")
+        .assert_body_contains("Sitemap: https://autumn.io/sitemap.xml");
+
+    let sitemap = app
+        .get("/sitemap.xml")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_header_contains("content-type", "application/xml")
+        .assert_body_contains("<loc>https://autumn.io/</loc>")
+        .assert_body_contains("<loc>https://autumn.io/docs/quickstart</loc>")
+        .assert_body_contains("<loc>https://autumn.io/docs/routing</loc>")
+        .text();
+
+    assert!(
+        !sitemap.contains("<loc>https://autumn.io/docs</loc>"),
+        "sitemap should not advertise the redirect-only docs index"
+    );
 }

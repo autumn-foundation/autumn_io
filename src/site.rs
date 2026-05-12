@@ -1,6 +1,7 @@
 use autumn_web::{Markup, PreEscaped, html};
 
 use crate::docs::{DocPage, DocRegistry};
+use crate::seo;
 
 const VERSION_LABEL: &str = "Autumn 0.4.0";
 
@@ -23,16 +24,16 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
     html! {
         (doctype())
         html lang="en" {
-            (document_head("Autumn - Rust web apps without the ritual", "Docs-first home for the Autumn Rust web framework."))
+            (document_head(&PageMeta::home()))
             body class="site-shell home-shell" {
                 (site_header("home"))
                 main class="home-main" {
                     section class="home-hero" {
                         div class="hero-copy" {
                             p class="eyebrow" { (VERSION_LABEL) }
-                            h1 { "Fast, simple Rust web apps" }
+                            h1 { "Rust web framework for server-rendered apps" }
                             p class="hero-lede" {
-                                "Autumn gives Rust developers a direct path from route handler to production-ready web app: typed routing, clear configuration, static assets, health checks, and deployment defaults."
+                                "Autumn gives Rust developers a direct path from route handler to production-ready web app: typed routing, Maud templates, static assets, health checks, and deployment defaults."
                             }
                             div class="hero-actions" {
                                 a class="button button-primary" href="/docs/quickstart" { "Get started" }
@@ -65,7 +66,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
     html! {
         (doctype())
         html lang="en" {
-            (document_head(&format!("{} - Autumn Docs", page.title), &page.description))
+            (document_head(&PageMeta::docs(page)))
             body class="site-shell docs-shell" {
                 (site_header("docs"))
                 div class="docs-layout" {
@@ -133,7 +134,11 @@ pub fn render_missing_docs_page(registry: &DocRegistry, slug: &str) -> Markup {
     html! {
         (doctype())
         html lang="en" {
-            (document_head("Docs page not found - Autumn", "The requested Autumn documentation page was not found."))
+            (document_head(&PageMeta::noindex(
+                "Docs page not found | Autumn",
+                "The requested Autumn documentation page was not found.",
+                &seo::docs_path(slug),
+            )))
             body class="site-shell docs-shell" {
                 (site_header("docs"))
                 div class="docs-layout missing-layout" {
@@ -170,7 +175,11 @@ pub fn render_docs_load_error(error: &dyn std::error::Error) -> Markup {
     html! {
         (doctype())
         html lang="en" {
-            (document_head("Docs failed to load - Autumn", "The Autumn documentation content failed to load."))
+            (document_head(&PageMeta::noindex(
+                "Docs failed to load | Autumn",
+                "The Autumn documentation content failed to load.",
+                "/",
+            )))
             body class="site-shell docs-shell" {
                 (site_header("docs"))
                 main class="centered-error" {
@@ -184,15 +193,84 @@ pub fn render_docs_load_error(error: &dyn std::error::Error) -> Markup {
     }
 }
 
-fn document_head(title: &str, description: &str) -> Markup {
+struct PageMeta {
+    title: String,
+    description: String,
+    canonical_path: String,
+    robots: &'static str,
+    og_type: &'static str,
+    structured_data: Option<String>,
+}
+
+impl PageMeta {
+    fn home() -> Self {
+        Self {
+            title: "Autumn: Rust Web Framework for Server-Rendered Apps".to_owned(),
+            description: seo::SITE_DESCRIPTION.to_owned(),
+            canonical_path: "/".to_owned(),
+            robots: "index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1",
+            og_type: "website",
+            structured_data: Some(seo::home_structured_data()),
+        }
+    }
+
+    fn docs(page: &DocPage) -> Self {
+        Self {
+            title: format!("{} | Autumn Rust Web Framework Docs", page.title),
+            description: page.description.clone(),
+            canonical_path: seo::docs_path(&page.slug),
+            robots: "index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1",
+            og_type: "article",
+            structured_data: Some(seo::docs_structured_data(page)),
+        }
+    }
+
+    fn noindex(title: &str, description: &str, canonical_path: &str) -> Self {
+        Self {
+            title: title.to_owned(),
+            description: description.to_owned(),
+            canonical_path: canonical_path.to_owned(),
+            robots: "noindex,follow",
+            og_type: "website",
+            structured_data: None,
+        }
+    }
+
+    fn canonical_url(&self) -> String {
+        seo::absolute_url(&self.canonical_path)
+    }
+}
+
+fn document_head(meta: &PageMeta) -> Markup {
+    let canonical_url = meta.canonical_url();
+    let image_url = seo::site_image_url();
+
     html! {
         head {
             meta charset="utf-8";
             meta name="viewport" content="width=device-width, initial-scale=1";
-            meta name="description" content=(description);
-            title { (title) }
-            link rel="icon" href="/static/img/autumn-leaf.svg" type="image/svg+xml";
+            meta name="description" content=(&meta.description);
+            meta name="robots" content=(meta.robots);
+            meta name="theme-color" content="#b94722";
+            meta name="application-name" content=(seo::SITE_NAME);
+            title { (&meta.title) }
+            link rel="canonical" href=(&canonical_url);
+            link rel="icon" href="/static/img/autumn.png" type="image/png";
+            link rel="sitemap" type="application/xml" href="/sitemap.xml";
             link rel="stylesheet" href="/static/css/site.css";
+            meta property="og:site_name" content=(seo::SITE_NAME);
+            meta property="og:type" content=(meta.og_type);
+            meta property="og:title" content=(&meta.title);
+            meta property="og:description" content=(&meta.description);
+            meta property="og:url" content=(&canonical_url);
+            meta property="og:image" content=(&image_url);
+            meta name="twitter:card" content="summary";
+            meta name="twitter:title" content=(&meta.title);
+            meta name="twitter:description" content=(&meta.description);
+            meta name="twitter:image" content=(&image_url);
+            @if let Some(structured_data) = &meta.structured_data {
+                script type="application/ld+json" { (PreEscaped(structured_data.clone())) }
+            }
             script src="/static/js/copy-code.js" defer {}
         }
     }
@@ -206,7 +284,7 @@ fn site_header(active: &str) -> Markup {
     html! {
         header class="site-header" {
             a class="brand" href="/" aria-label="Autumn home" {
-                img src="/static/img/autumn-leaf.svg" alt="" width="34" height="34";
+                img src="/static/img/autumn.png" alt="" width="34" height="34";
                 span { "Autumn" }
             }
             nav class="site-nav" aria-label="Primary navigation" {

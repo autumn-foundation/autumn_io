@@ -2,9 +2,10 @@ use std::sync::LazyLock;
 
 use autumn_web::prelude::*;
 use autumn_web::reexports::axum::response::{IntoResponse, Redirect, Response};
-use autumn_web::reexports::http::StatusCode;
+use autumn_web::reexports::http::{StatusCode, header};
 
 pub mod docs;
+pub mod seo;
 pub mod site;
 
 use docs::{DocRegistry, DocSource, DocsError};
@@ -66,9 +67,39 @@ pub async fn docs_page(Path(slug): Path<String>) -> Response {
     }
 }
 
+#[get("/robots.txt")]
+pub async fn robots_txt() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        seo::robots_txt(),
+    )
+        .into_response()
+}
+
+#[get("/sitemap.xml")]
+pub async fn sitemap_xml() -> Response {
+    let registry = match site_docs() {
+        Ok(registry) => registry,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+                error.to_string(),
+            )
+                .into_response();
+        }
+    };
+
+    (
+        [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
+        seo::sitemap_xml(registry),
+    )
+        .into_response()
+}
+
 #[must_use]
 pub fn app_routes() -> Vec<autumn_web::Route> {
-    routes![index, docs_index, docs_page]
+    routes![index, docs_index, docs_page, robots_txt, sitemap_xml]
 }
 
 fn docs_load_error_response(error: &DocsError) -> Response {
