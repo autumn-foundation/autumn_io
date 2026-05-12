@@ -19,7 +19,7 @@ COPY src ./src
 COPY static ./static
 COPY migrations ./migrations
 
-RUN cargo build --release
+RUN cargo build --release --bin autumn_io
 
 FROM debian:bookworm-slim AS runtime
 
