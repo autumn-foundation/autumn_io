@@ -3,6 +3,9 @@ use autumn_web::test::TestApp;
 use autumn_io::docs::{DocRegistry, DocSource, slugify_heading};
 use autumn_io::site::{render_docs_page, render_home_page};
 
+const SITE_CSS: &str = include_str!("../static/css/site.css");
+const COPY_CODE_JS: &str = include_str!("../static/js/copy-code.js");
+
 const QUICKSTART_SOURCE: &str = r#"---
 title: Quickstart
 description: Build and run your first Autumn app.
@@ -49,8 +52,11 @@ fn parses_frontmatter_and_generates_article_metadata() {
         page.html.contains("<pre><code class=\"language-rust\">"),
         "Rust code blocks should keep language metadata for copy controls"
     );
-    assert_eq!(page.toc[0].id, "quickstart");
-    assert_eq!(page.toc[1].id, "create-an-app");
+    assert!(
+        !page.html.contains("<h1 id=\"quickstart\">"),
+        "page title should be owned by the document template, not duplicated from Markdown"
+    );
+    assert_eq!(page.toc[0].id, "create-an-app");
 }
 
 #[test]
@@ -97,6 +103,58 @@ fn rendered_docs_page_contains_nav_toc_and_copyable_code_block() {
     assert!(html.contains("href=\"#create-an-app\""));
     assert!(html.contains("data-copy-code"));
     assert!(html.contains("Next"));
+}
+
+#[test]
+fn rendered_home_page_has_keyboard_bypass_and_named_main_region() {
+    let registry = DocRegistry::from_sources([
+        DocSource::new("quickstart", QUICKSTART_SOURCE),
+        DocSource::new("routing", ROUTING_SOURCE),
+    ])
+    .expect("valid docs source should parse");
+    let html = render_home_page(&registry).into_string();
+
+    assert!(
+        html.contains(r##"<a class="skip-link" href="#main-content">Skip to main content</a>"##)
+    );
+    assert!(html.contains(r#"<main id="main-content""#));
+    assert!(html.contains(r#"tabindex="-1""#));
+    assert!(html.contains(r#"aria-labelledby="page-title""#));
+    assert!(
+        html.contains(r#"<h1 id="page-title">Rust web framework for server-rendered apps</h1>"#)
+    );
+}
+
+#[test]
+fn rendered_docs_page_marks_current_location_and_labels_article() {
+    let registry = DocRegistry::from_sources([
+        DocSource::new("quickstart", QUICKSTART_SOURCE),
+        DocSource::new("routing", ROUTING_SOURCE),
+    ])
+    .expect("valid docs source should parse");
+    let page = registry.page("quickstart").expect("quickstart exists");
+    let html = render_docs_page(&registry, page).into_string();
+
+    assert!(
+        html.contains(r##"<a class="skip-link" href="#main-content">Skip to main content</a>"##)
+    );
+    assert!(html.contains(r#"<main id="main-content""#));
+    assert!(html.contains(r#"<article class="docs-article" aria-labelledby="page-title">"#));
+    assert!(html.contains(r#"<h1 id="page-title">Quickstart</h1>"#));
+    assert!(html.contains(r#"aria-current="page" href="/docs/quickstart""#));
+    assert!(html.contains(r#"aria-label="Copy code to clipboard""#));
+    assert!(html.contains(r#"aria-live="polite""#));
+}
+
+#[test]
+fn rendered_docs_page_has_one_page_level_heading() {
+    let registry = DocRegistry::from_sources([DocSource::new("quickstart", QUICKSTART_SOURCE)])
+        .expect("valid docs source should parse");
+    let page = registry.page("quickstart").expect("quickstart exists");
+    let html = render_docs_page(&registry, page).into_string();
+
+    assert_eq!(html.matches("<h1").count(), 1);
+    assert!(html.contains(r#"<h1 id="page-title">Quickstart</h1>"#));
 }
 
 #[test]
@@ -152,6 +210,22 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     assert!(html.contains(r#"<meta name="twitter:card" content="summary">"#));
     assert!(html.contains(r#""@type":"WebSite""#));
     assert!(html.contains(r#""@type":"SoftwareSourceCode""#));
+}
+
+#[test]
+fn css_exposes_visible_focus_skip_link_and_reduced_motion_rules() {
+    assert!(SITE_CSS.contains(".skip-link"));
+    assert!(SITE_CSS.contains(":focus-visible"));
+    assert!(SITE_CSS.contains("outline: 3px solid"));
+    assert!(SITE_CSS.contains("@media (prefers-reduced-motion: reduce)"));
+    assert!(SITE_CSS.contains("scroll-behavior: auto"));
+}
+
+#[test]
+fn copy_code_script_updates_accessible_status_text() {
+    assert!(COPY_CODE_JS.contains("aria-label"));
+    assert!(COPY_CODE_JS.contains("Copied code to clipboard"));
+    assert!(COPY_CODE_JS.contains("Select code manually"));
 }
 
 #[tokio::test]

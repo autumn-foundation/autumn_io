@@ -176,7 +176,8 @@ fn parse_doc(source: DocSource<'_>) -> Result<DocPage, DocsError> {
             source: source_error,
         }
     })?;
-    let rendered = render_markdown(markdown);
+    let markdown = strip_redundant_title_heading(markdown, &frontmatter.title);
+    let rendered = render_markdown(&markdown);
 
     Ok(DocPage {
         slug: source.slug.to_owned(),
@@ -203,6 +204,33 @@ fn render_markdown(markdown: &str) -> RenderedMarkdown {
         html: add_code_copy_controls(rendered),
         toc: headings.toc,
     }
+}
+
+fn strip_redundant_title_heading(markdown: &str, title: &str) -> String {
+    let mut output = String::with_capacity(markdown.len());
+    let mut checked_first_content_line = false;
+
+    for line in markdown.lines() {
+        if !checked_first_content_line {
+            if line.trim().is_empty() {
+                output.push_str(line);
+                output.push('\n');
+                continue;
+            }
+
+            checked_first_content_line = true;
+            if let Some((1, heading_title)) = parse_heading_line(line)
+                && heading_title == title
+            {
+                continue;
+            }
+        }
+
+        output.push_str(line);
+        output.push('\n');
+    }
+
+    output
 }
 
 struct MarkdownWithHeadings {
@@ -311,7 +339,7 @@ pub fn slugify_heading(heading: &str) -> String {
 fn add_code_copy_controls(html: String) -> String {
     html.replace(
         "<pre><code",
-        r#"<div class="code-block" data-copy-code><button class="copy-code-button" type="button" data-copy-button>Copy</button><pre><code"#,
+        r#"<div class="code-block" data-copy-code><button class="copy-code-button" type="button" data-copy-button aria-label="Copy code to clipboard" aria-live="polite">Copy</button><pre><code"#,
     )
     .replace("</code></pre>", "</code></pre></div>")
 }

@@ -14,6 +14,7 @@
   --moss-dark: #31452a;
   --code-bg: #1f1815;
   --code-ink: #f8ead8;
+  --focus: #214f9a;
   --shadow: 0 18px 45px rgba(53, 35, 22, 0.12);
   --radius: 8px;
   --measure: 74ch;
@@ -46,10 +47,35 @@ a {
   color: inherit;
 }
 
+a:focus-visible,
+button:focus-visible,
+#main-content:focus {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 code,
 pre {
   font-family:
     "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.skip-link {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  transform: translateY(-150%);
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: #fffaf4;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
 }
 
 .site-header {
@@ -97,7 +123,7 @@ pre {
 }
 
 .site-nav a {
-  min-height: 2.25rem;
+  min-height: 2.5rem;
   padding: 0.35rem 0.75rem;
   border-radius: var(--radius);
   color: var(--muted);
@@ -218,8 +244,8 @@ pre {
   top: 0.65rem;
   right: 0.65rem;
   z-index: 2;
-  min-height: 2rem;
-  padding: 0.25rem 0.65rem;
+  min-height: 2.5rem;
+  padding: 0.3rem 0.75rem;
   border: 1px solid rgba(248, 234, 216, 0.22);
   border-radius: 6px;
   background: rgba(31, 24, 21, 0.9);
@@ -387,6 +413,7 @@ pre {
 }
 
 .toc-link {
+  min-height: 1.75rem;
   padding: 0.25rem 0;
 }
 
@@ -534,5 +561,13 @@ pre {
 
   .next {
     text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
   }
 }

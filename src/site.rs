@@ -26,12 +26,13 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
         html lang="en" {
             (document_head(&PageMeta::home()))
             body class="site-shell home-shell" {
+                (skip_link())
                 (site_header("home"))
-                main class="home-main" {
+                main id="main-content" class="home-main" tabindex="-1" aria-labelledby="page-title" {
                     section class="home-hero" {
                         div class="hero-copy" {
                             p class="eyebrow" { (VERSION_LABEL) }
-                            h1 { "Rust web framework for server-rendered apps" }
+                            h1 id="page-title" { "Rust web framework for server-rendered apps" }
                             p class="hero-lede" {
                                 "Autumn gives Rust developers a direct path from route handler to production-ready web app: typed routing, Maud templates, static assets, health checks, and deployment defaults."
                             }
@@ -41,7 +42,15 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                             }
                         }
                         div class="hero-code code-block" data-copy-code {
-                            button class="copy-code-button" type="button" data-copy-button { "Copy" }
+                            button
+                                class="copy-code-button"
+                                type="button"
+                                data-copy-button
+                                aria-label="Copy code to clipboard"
+                                aria-live="polite"
+                            {
+                                "Copy"
+                            }
                             pre { code class="language-rust" { (HOME_ROUTE_EXAMPLE) } }
                         }
                     }
@@ -68,26 +77,37 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
         html lang="en" {
             (document_head(&PageMeta::docs(page)))
             body class="site-shell docs-shell" {
+                (skip_link())
                 (site_header("docs"))
                 div class="docs-layout" {
                     aside class="docs-sidebar" aria-label="Docs navigation" {
                         nav {
                             p class="sidebar-label" { "Start here" }
                             @for item in registry.pages() {
-                                a
-                                    class=(if item.slug == page.slug { "docs-nav-link active" } else { "docs-nav-link" })
-                                    href=(format!("/docs/{}", item.slug))
-                                {
-                                    span { (&item.title) }
+                                @if item.slug == page.slug {
+                                    a
+                                        class="docs-nav-link active"
+                                        aria-current="page"
+                                        href=(format!("/docs/{}", item.slug))
+                                    {
+                                        span { (&item.title) }
+                                    }
+                                } @else {
+                                    a
+                                        class="docs-nav-link"
+                                        href=(format!("/docs/{}", item.slug))
+                                    {
+                                        span { (&item.title) }
+                                    }
                                 }
                             }
                         }
                     }
-                    main class="docs-main" {
-                        article class="docs-article" {
+                    main id="main-content" class="docs-main" tabindex="-1" aria-labelledby="page-title" {
+                        article class="docs-article" aria-labelledby="page-title" {
                             header class="article-header" {
                                 p class="eyebrow" { (VERSION_LABEL) }
-                                h1 { (&page.title) }
+                                h1 id="page-title" { (&page.title) }
                                 p { (&page.description) }
                             }
                             div class="article-body" {
@@ -140,6 +160,7 @@ pub fn render_missing_docs_page(registry: &DocRegistry, slug: &str) -> Markup {
                 &seo::docs_path(slug),
             )))
             body class="site-shell docs-shell" {
+                (skip_link())
                 (site_header("docs"))
                 div class="docs-layout missing-layout" {
                     aside class="docs-sidebar" aria-label="Docs navigation" {
@@ -152,10 +173,10 @@ pub fn render_missing_docs_page(registry: &DocRegistry, slug: &str) -> Markup {
                             }
                         }
                     }
-                    main class="docs-main" {
-                        article class="docs-article missing-page" {
+                    main id="main-content" class="docs-main" tabindex="-1" aria-labelledby="page-title" {
+                        article class="docs-article missing-page" aria-labelledby="page-title" {
                             p class="eyebrow" { "404" }
-                            h1 { "That docs page is not in the stack" }
+                            h1 id="page-title" { "That docs page is not in the stack" }
                             p {
                                 "No Autumn docs page exists for "
                                 code { (slug) }
@@ -181,10 +202,11 @@ pub fn render_docs_load_error(error: &dyn std::error::Error) -> Markup {
                 "/",
             )))
             body class="site-shell docs-shell" {
+                (skip_link())
                 (site_header("docs"))
-                main class="centered-error" {
+                main id="main-content" class="centered-error" tabindex="-1" aria-labelledby="page-title" {
                     p class="eyebrow" { "500" }
-                    h1 { "Docs failed to load" }
+                    h1 id="page-title" { "Docs failed to load" }
                     p { "The bundled Markdown content could not be parsed." }
                     pre class="error-detail" { code { (error.to_string()) } }
                 }
@@ -280,6 +302,12 @@ fn doctype() -> Markup {
     PreEscaped("<!doctype html>".to_owned())
 }
 
+fn skip_link() -> Markup {
+    html! {
+        a class="skip-link" href="#main-content" { "Skip to main content" }
+    }
+}
+
 fn site_header(active: &str) -> Markup {
     html! {
         header class="site-header" {
@@ -288,7 +316,11 @@ fn site_header(active: &str) -> Markup {
                 span { "Autumn" }
             }
             nav class="site-nav" aria-label="Primary navigation" {
-                a class=(if active == "docs" { "active" } else { "" }) href="/docs/quickstart" { "Docs" }
+                @if active == "docs" {
+                    a class="active" aria-current="location" href="/docs/quickstart" { "Docs" }
+                } @else {
+                    a href="/docs/quickstart" { "Docs" }
+                }
                 a href="/docs/upgrade-0-4" { "0.4.0" }
                 a href="/docs/deployment" { "Deploy" }
             }
