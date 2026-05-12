@@ -37,6 +37,8 @@ COPY --from=builder /app/static /app/static
 COPY --from=builder /app/migrations /app/migrations
 
 ENV AUTUMN_PROFILE=prod
+ENV CARGO_PKG_NAME=autumn_io
+ENV CARGO_PKG_VERSION=0.1.0
 EXPOSE 3000
 
 USER autumn
