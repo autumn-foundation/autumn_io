@@ -232,6 +232,24 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
 }
 
 #[test]
+fn bundled_guide_rustdoc_fence_modifiers_render_as_rust() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let all_docs_html = registry
+        .pages()
+        .iter()
+        .map(|page| page.html.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(all_docs_html.contains(r#"class="language-rust""#));
+    assert!(all_docs_html.contains(r#"<span class="code-language">Rust</span>"#));
+    assert!(!all_docs_html.contains("language-rust,ignore"));
+    assert!(!all_docs_html.contains("language-rust,no_run"));
+    assert!(!all_docs_html.contains("Rust,ignore"));
+    assert!(!all_docs_html.contains("Rust,no Run"));
+}
+
+#[test]
 fn vendored_guide_snapshot_and_sync_tool_do_not_commit_local_source_paths() {
     let guide_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("content/guide");
     let sync_tool =

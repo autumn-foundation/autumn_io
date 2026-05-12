@@ -388,6 +388,7 @@ fn render_code_block(kind: &CodeBlockKind<'_>, code: &str) -> String {
 }
 
 pub(crate) fn render_highlighted_code_block(language: Option<&str>, code: &str) -> String {
+    let language = language.and_then(normalize_code_language);
     let language_label = language.map_or_else(|| "Code".to_owned(), code_language_label);
     let mut output = String::with_capacity(code.len() + 256);
 
@@ -407,10 +408,23 @@ pub(crate) fn render_highlighted_code_block(language: Option<&str>, code: &str) 
 fn code_block_language<'a>(kind: &'a CodeBlockKind<'a>) -> Option<&'a str> {
     match kind {
         CodeBlockKind::Indented => None,
-        CodeBlockKind::Fenced(info) => info
-            .split_whitespace()
-            .next()
-            .filter(|lang| !lang.is_empty()),
+        CodeBlockKind::Fenced(info) => normalize_code_language(info),
+    }
+}
+
+fn normalize_code_language(info: &str) -> Option<&str> {
+    let token = info.split_whitespace().next()?;
+    let language = token
+        .trim_start_matches('{')
+        .trim_start_matches('.')
+        .split([',', '}'])
+        .next()?
+        .trim_start_matches('.');
+
+    if language.is_empty() {
+        None
+    } else {
+        Some(language)
     }
 }
 
@@ -537,5 +551,26 @@ mod tests {
 
         assert_eq!(rendered.toc[0].id, "install");
         assert_eq!(rendered.toc[1].id, "install-2");
+    }
+
+    #[test]
+    fn rustdoc_fence_modifiers_render_as_rust_code_blocks() {
+        let rendered = render_markdown(
+            "```rust,ignore\nuse autumn_web::prelude::*;\n```\n\n```rust,no_run\nfn main() {}\n```\n",
+        );
+
+        assert_eq!(rendered.html.matches(r#"class="language-rust""#).count(), 2);
+        assert_eq!(
+            rendered
+                .html
+                .matches(r#"<span class="code-language">Rust</span>"#)
+                .count(),
+            2
+        );
+        assert!(rendered.html.contains("<span style=\"color:"));
+        assert!(!rendered.html.contains("language-rust,ignore"));
+        assert!(!rendered.html.contains("language-rust,no_run"));
+        assert!(!rendered.html.contains("Rust,ignore"));
+        assert!(!rendered.html.contains("Rust,no Run"));
     }
 }
