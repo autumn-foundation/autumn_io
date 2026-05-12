@@ -1,4 +1,4 @@
-FROM rust:1.86-bookworm AS builder
+FROM rust:1.88-bookworm AS builder
 
 WORKDIR /app
 
@@ -9,8 +9,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p target/autumn \
     && curl -fsSL \
-        -o target/autumn/tailwindcss \
-        "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64" \
+    -o target/autumn/tailwindcss \
+    "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64" \
     && chmod +x target/autumn/tailwindcss
 
 COPY Cargo.toml autumn.toml build.rs tailwind.config.js ./
