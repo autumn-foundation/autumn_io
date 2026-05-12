@@ -1,6 +1,7 @@
 use autumn_web::test::TestApp;
 
 use autumn_io::docs::{DocRegistry, DocSource, slugify_heading};
+use autumn_io::export::{ExportConfig, export_site};
 use autumn_io::site::{render_docs_page, render_home_page};
 
 const SITE_CSS: &str = include_str!("../static/css/site.css");
@@ -288,4 +289,97 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         !sitemap.contains("<loc>https://autumn.io/docs</loc>"),
         "sitemap should not advertise the redirect-only docs index"
     );
+}
+
+#[tokio::test]
+async fn static_site_routes_enumerate_docs_pages_for_framework_ssg() {
+    let metas = autumn_io::static_site_routes();
+    let paths = metas.iter().map(|meta| meta.path).collect::<Vec<_>>();
+
+    assert!(paths.contains(&"/"));
+    assert!(paths.contains(&"/docs/{slug}"));
+
+    let docs_meta = metas
+        .iter()
+        .find(|meta| meta.path == "/docs/{slug}")
+        .expect("docs static route should be registered");
+    let params_fn = docs_meta
+        .params_fn
+        .expect("docs static route should enumerate slugs");
+    let params = params_fn(autumn_web::reexports::axum::Router::new()).await;
+    let slugs = params
+        .iter()
+        .map(|params| {
+            params
+                .get("slug")
+                .expect("slug param should exist")
+                .as_str()
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        slugs,
+        vec![
+            "quickstart",
+            "routing",
+            "configuration",
+            "templates-static-assets",
+            "deployment",
+            "upgrade-0-4",
+        ]
+    );
+}
+
+#[test]
+fn export_site_writes_static_dist_tree_from_shared_renderers() {
+    let workspace = unique_temp_dir("autumn-io-export");
+    let dist = workspace.join("dist");
+    let registry = autumn_io::site_docs().expect("bundled docs should load");
+
+    let summary = export_site(registry, &ExportConfig::new(&dist)).expect("site should export");
+
+    assert_eq!(summary.html_pages, registry.pages().len() + 1);
+    assert!(summary.static_assets >= 4);
+    assert_eq!(summary.routes, registry.pages().len() + 3);
+
+    let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
+    assert!(home.contains("Rust web framework for server-rendered apps"));
+    assert!(home.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
+
+    let quickstart =
+        std::fs::read_to_string(dist.join("docs/quickstart/index.html")).expect("docs html");
+    assert!(quickstart.contains(r#"<h1 id="page-title">Quickstart</h1>"#));
+    assert!(quickstart.contains(r#"aria-current="page" href="/docs/quickstart""#));
+    assert!(
+        quickstart.contains(r#"<link rel="canonical" href="https://autumn.io/docs/quickstart">"#)
+    );
+
+    let robots = std::fs::read_to_string(dist.join("robots.txt")).expect("robots file");
+    assert!(robots.contains("Sitemap: https://autumn.io/sitemap.xml"));
+
+    let sitemap = std::fs::read_to_string(dist.join("sitemap.xml")).expect("sitemap file");
+    assert!(sitemap.contains("<loc>https://autumn.io/docs/quickstart</loc>"));
+
+    assert!(dist.join("static/css/site.css").exists());
+    assert!(dist.join("static/js/copy-code.js").exists());
+    assert!(dist.join("static/img/autumn.png").exists());
+
+    let manifest = std::fs::read_to_string(dist.join("manifest.json")).expect("manifest");
+    assert!(manifest.contains(r#""/docs/quickstart""#));
+    assert!(manifest.contains(r#""docs/quickstart/index.html""#));
+
+    std::fs::remove_dir_all(workspace).expect("cleanup export test");
+}
+
+fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "{prefix}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("temp dir should be created");
+    dir
 }
