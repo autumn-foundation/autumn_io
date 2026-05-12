@@ -211,7 +211,7 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     ));
     assert!(html.contains(r#"<meta property="og:site_name" content="Autumn">"#));
     assert!(html.contains(
-        r#"<meta property="og:image" content="https://autumn.io/static/img/autumn.png">"#
+        r#"<meta property="og:image" content="https://autumn.io/static/img/autumn-social.png">"#
     ));
     assert!(html.contains(r#"<meta name="twitter:card" content="summary">"#));
     assert!(html.contains(r#""@type":"WebSite""#));
@@ -282,6 +282,31 @@ async fn autumn_routes_compress_html_when_client_accepts_gzip() {
 }
 
 #[tokio::test]
+async fn autumn_routes_cache_static_assets_for_repeat_visits() {
+    let app = TestApp::new()
+        .routes(autumn_io::app_routes())
+        .layer(autumn_io::response_compression_layer())
+        .build();
+
+    let home = app.get("/").send().await;
+    home.assert_status(200);
+    assert_eq!(home.header("cache-control"), None);
+
+    for path in [
+        "/static/css/site.css",
+        "/static/js/copy-code.js",
+        "/static/img/autumn-social.png",
+        "/static/img/autumn-mark-68.png",
+    ] {
+        app.get(path)
+            .send()
+            .await
+            .assert_status(200)
+            .assert_header("cache-control", "public, max-age=31536000, immutable");
+    }
+}
+
+#[tokio::test]
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 
@@ -308,45 +333,6 @@ async fn autumn_routes_expose_crawl_discovery_files() {
     assert!(
         !sitemap.contains("<loc>https://autumn.io/docs</loc>"),
         "sitemap should not advertise the redirect-only docs index"
-    );
-}
-
-#[tokio::test]
-async fn static_site_routes_enumerate_docs_pages_for_framework_ssg() {
-    let metas = autumn_io::static_site_routes();
-    let paths = metas.iter().map(|meta| meta.path).collect::<Vec<_>>();
-
-    assert!(paths.contains(&"/"));
-    assert!(paths.contains(&"/docs/{slug}"));
-
-    let docs_meta = metas
-        .iter()
-        .find(|meta| meta.path == "/docs/{slug}")
-        .expect("docs static route should be registered");
-    let params_fn = docs_meta
-        .params_fn
-        .expect("docs static route should enumerate slugs");
-    let params = params_fn(autumn_web::reexports::axum::Router::new()).await;
-    let slugs = params
-        .iter()
-        .map(|params| {
-            params
-                .get("slug")
-                .expect("slug param should exist")
-                .as_str()
-        })
-        .collect::<Vec<_>>();
-
-    assert_eq!(
-        slugs,
-        vec![
-            "quickstart",
-            "routing",
-            "configuration",
-            "templates-static-assets",
-            "deployment",
-            "upgrade-0-4",
-        ]
     );
 }
 
@@ -382,7 +368,7 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
-    assert!(dist.join("static/img/autumn.png").exists());
+    assert!(dist.join("static/img/autumn-social.png").exists());
     assert!(dist.join("static/img/autumn-mark-68.png").exists());
     assert!(dist.join("static/img/autumn-mark-136.png").exists());
 

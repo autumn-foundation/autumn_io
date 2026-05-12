@@ -5,7 +5,7 @@ use crate::docs::{DocPage, DocRegistry};
 pub const SITE_BASE_URL: &str = "https://autumn.io";
 pub const SITE_NAME: &str = "Autumn";
 pub const SITE_DESCRIPTION: &str = "Autumn is a Rust web framework for fast server-rendered apps, typed routes, Maud templates, static assets, and production defaults.";
-pub const SITE_IMAGE_PATH: &str = "/static/img/autumn.png";
+pub const SITE_IMAGE_PATH: &str = "/static/img/autumn-social.png";
 pub const GITHUB_REPOSITORY_URL: &str = "https://github.com/madmax983/autumn";
 pub const CRATES_IO_URL: &str = "https://crates.io/crates/autumn-web";
 pub const RUSTDOC_URL: &str = "https://docs.rs/autumn-web";

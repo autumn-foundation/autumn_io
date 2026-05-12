@@ -1,9 +1,10 @@
 use std::sync::LazyLock;
 
 use autumn_web::prelude::*;
+use autumn_web::reexports::axum::extract::Request;
+use autumn_web::reexports::axum::middleware::{self, Next};
 use autumn_web::reexports::axum::response::{IntoResponse, Redirect, Response};
-use autumn_web::reexports::http::{StatusCode, header};
-use autumn_web::static_gen::{StaticParams, StaticRouteMeta};
+use autumn_web::reexports::http::{HeaderValue, StatusCode, header};
 
 pub mod docs;
 pub mod export;
@@ -39,19 +40,34 @@ pub fn site_docs() -> Result<&'static DocRegistry, &'static DocsError> {
     }
 }
 
-/// Compress dynamic handler responses when the client advertises gzip support.
+/// Optimize HTTP responses for repeat visitors.
 ///
-/// Autumn's current static-first SSG middleware runs outside user layers, so
-/// pre-rendered `dist/` hits still need framework-level compression support.
+/// Framework static HTML routing is intentionally not registered for this app
+/// until Autumn applies user layers to static-first responses.
 pub fn response_compression_layer() -> impl autumn_web::app::IntoAppLayer {
     tower::ServiceBuilder::new()
+        .layer(middleware::from_fn(cache_static_assets))
         .layer(tower_http::map_response_body::MapResponseBodyLayer::new(
             autumn_web::reexports::axum::body::Body::new,
         ))
         .layer(tower_http::compression::CompressionLayer::new())
 }
 
-#[static_get("/")]
+async fn cache_static_assets(request: Request, next: Next) -> Response {
+    let cacheable = request.uri().path().starts_with("/static/");
+    let mut response = next.run(request).await;
+
+    if cacheable && response.status().is_success() {
+        response.headers_mut().insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        );
+    }
+
+    response
+}
+
+#[get("/")]
 pub async fn index() -> Response {
     match site_docs() {
         Ok(registry) => site::render_home_page(registry).into_response(),
@@ -64,7 +80,7 @@ pub async fn docs_index() -> Redirect {
     Redirect::temporary("/docs/quickstart")
 }
 
-#[static_get("/docs/{slug}", params = docs_static_params)]
+#[get("/docs/{slug}")]
 pub async fn docs_page(Path(slug): Path<String>) -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -114,26 +130,6 @@ pub async fn sitemap_xml() -> Response {
 #[must_use]
 pub fn app_routes() -> Vec<autumn_web::Route> {
     routes![index, docs_index, docs_page, robots_txt, sitemap_xml]
-}
-
-/// Static HTML routes that Autumn can pre-render through its framework SSG path.
-#[must_use]
-pub fn static_site_routes() -> Vec<StaticRouteMeta> {
-    static_routes![index, docs_page]
-}
-
-/// Enumerate every bundled docs slug for Autumn's parameterized static routes.
-pub async fn docs_static_params(_router: autumn_web::reexports::axum::Router) -> Vec<StaticParams> {
-    site_docs().map_or_else(
-        |_| Vec::new(),
-        |registry| {
-            registry
-                .pages()
-                .iter()
-                .map(|page| autumn_web::static_params! { "slug" => page.slug.as_str() })
-                .collect()
-        },
-    )
 }
 
 fn docs_load_error_response(error: &DocsError) -> Response {
