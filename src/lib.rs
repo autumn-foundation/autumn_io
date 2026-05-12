@@ -39,6 +39,18 @@ pub fn site_docs() -> Result<&'static DocRegistry, &'static DocsError> {
     }
 }
 
+/// Compress dynamic handler responses when the client advertises gzip support.
+///
+/// Autumn's current static-first SSG middleware runs outside user layers, so
+/// pre-rendered `dist/` hits still need framework-level compression support.
+pub fn response_compression_layer() -> impl autumn_web::app::IntoAppLayer {
+    tower::ServiceBuilder::new()
+        .layer(tower_http::map_response_body::MapResponseBodyLayer::new(
+            autumn_web::reexports::axum::body::Body::new,
+        ))
+        .layer(tower_http::compression::CompressionLayer::new())
+}
+
 #[static_get("/")]
 pub async fn index() -> Response {
     match site_docs() {

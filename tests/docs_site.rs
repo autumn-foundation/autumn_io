@@ -262,6 +262,21 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
 }
 
 #[tokio::test]
+async fn autumn_routes_compress_html_when_client_accepts_gzip() {
+    let app = TestApp::new()
+        .routes(autumn_io::app_routes())
+        .layer(autumn_io::response_compression_layer())
+        .build();
+
+    app.get("/")
+        .header("accept-encoding", "gzip")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_header("content-encoding", "gzip");
+}
+
+#[tokio::test]
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 

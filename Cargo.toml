@@ -10,6 +10,8 @@ pulldown-cmark = "0.13.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 serde_yaml = "0.9.34"
+tower = "0.5"
+tower-http = { version = "0.6.10", features = ["compression-gzip", "map-response-body"] }
 
 [dev-dependencies]
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
