@@ -312,6 +312,88 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
 }
 
 #[test]
+fn rendered_site_chrome_links_to_autumn_sources_and_crate() {
+    let registry = DocRegistry::from_sources([DocSource::new("quickstart", QUICKSTART_SOURCE)])
+        .expect("valid docs source should parse");
+    let html = render_home_page(&registry).into_string();
+
+    assert!(html.contains(r#"href="https://github.com/madmax983/autumn""#));
+    assert!(html.contains(r#"href="https://crates.io/crates/autumn-web""#));
+    assert!(html.contains(r#"href="https://github.com/madmax983/autumn_io""#));
+}
+
+#[test]
+fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    let deployment = registry
+        .page("deployment")
+        .expect("deployment guide should be bundled");
+    assert!(
+        deployment
+            .html
+            .contains(r#"href="/docs/getting-started#configuration""#)
+    );
+    assert!(deployment.html.contains(r#"href="/docs/signing-secrets""#));
+    assert!(!deployment.html.contains(r#"href="getting-started.md"#));
+    assert!(!deployment.html.contains(r#"href="signing-secrets.md"#));
+
+    let getting_started = registry
+        .page("getting-started")
+        .expect("getting started guide should be bundled");
+    assert!(getting_started.html.contains(
+        r#"href="https://github.com/madmax983/autumn/tree/trunk-dev/examples/todo-app""#
+    ));
+    assert!(
+        !getting_started
+            .html
+            .contains(r#"href="../../examples/todo-app""#)
+    );
+
+    let custom_subsystems = registry
+        .page("custom-subsystems")
+        .expect("custom subsystems guide should be bundled");
+    assert!(
+        custom_subsystems
+            .html
+            .contains(r#"href="/docs/extensibility""#)
+    );
+    assert!(custom_subsystems.html.contains(
+        r#"href="https://github.com/madmax983/autumn/tree/trunk-dev/examples/custom_config_loader""#
+    ));
+    assert!(custom_subsystems.html.contains(
+        r#"href="https://github.com/madmax983/autumn/blob/trunk-dev/autumn/src/plugin.rs""#
+    ));
+    assert!(
+        !custom_subsystems
+            .html
+            .contains(r#"href="../../examples/custom_config_loader""#)
+    );
+
+    for page in registry.pages() {
+        for href in html_hrefs(&page.html) {
+            assert!(
+                !href.starts_with("../") && !href.starts_with("./"),
+                "{} should not render repo-relative href {href}",
+                page.slug
+            );
+            assert!(
+                !href.ends_with(".md")
+                    || href.starts_with("https://github.com/madmax983/autumn/blob/trunk-dev/"),
+                "{} should not render site-local Markdown href {href}",
+                page.slug
+            );
+            assert!(
+                !href.contains(".md#")
+                    || href.starts_with("https://github.com/madmax983/autumn/blob/trunk-dev/"),
+                "{} should not render site-local Markdown anchor href {href}",
+                page.slug
+            );
+        }
+    }
+}
+
+#[test]
 fn css_exposes_visible_focus_skip_link_and_reduced_motion_rules() {
     assert!(SITE_CSS.contains(".skip-link"));
     assert!(SITE_CSS.contains(":focus-visible"));
@@ -494,4 +576,10 @@ fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("temp dir should be created");
     dir
+}
+
+fn html_hrefs(html: &str) -> impl Iterator<Item = &str> {
+    html.split("href=\"")
+        .skip(1)
+        .filter_map(|segment| segment.split('"').next())
 }

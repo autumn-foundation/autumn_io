@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::LazyLock;
 
-use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd, html};
+use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use serde::Deserialize;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Theme, ThemeSet};
@@ -14,6 +14,9 @@ use syntect::util::LinesWithEndings;
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 const CODE_THEME: &str = "base16-ocean.dark";
+const AUTUMN_REPOSITORY_URL: &str = "https://github.com/madmax983/autumn";
+const AUTUMN_REPOSITORY_BRANCH: &str = "trunk-dev";
+const GUIDE_SOURCE_ROOT: [&str; 2] = ["docs", "guide"];
 
 /// A Markdown document bundled into the Autumn website.
 #[derive(Clone, Copy, Debug)]
@@ -208,10 +211,7 @@ fn render_markdown(markdown: &str) -> RenderedMarkdown {
     let headings = add_heading_ids(markdown);
     let parser = Parser::new_ext(&headings.markdown, options);
     let mut rendered = String::new();
-    html::push_html(
-        &mut rendered,
-        highlight_code_block_events(parser).into_iter(),
-    );
+    html::push_html(&mut rendered, render_markdown_events(parser).into_iter());
 
     RenderedMarkdown {
         html: rendered,
@@ -349,21 +349,131 @@ pub fn slugify_heading(heading: &str) -> String {
     }
 }
 
-fn highlight_code_block_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Vec<Event<'a>> {
-    let mut highlighted = Vec::new();
+fn render_markdown_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Vec<Event<'a>> {
+    let mut rendered = Vec::new();
     let mut events = events.into_iter();
 
     while let Some(event) = events.next() {
         match event {
             Event::Start(Tag::CodeBlock(kind)) => {
                 let code = collect_code_block_text(&mut events);
-                highlighted.push(Event::Html(render_code_block(&kind, &code).into()));
+                rendered.push(Event::Html(render_code_block(&kind, &code).into()));
             }
-            event => highlighted.push(event),
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }) => {
+                let dest_url = rewrite_link_destination(dest_url.as_ref())
+                    .map(CowStr::from)
+                    .unwrap_or(dest_url);
+                rendered.push(Event::Start(Tag::Link {
+                    link_type,
+                    dest_url,
+                    title,
+                    id,
+                }));
+            }
+            event => rendered.push(event),
         }
     }
 
-    highlighted
+    rendered
+}
+
+fn rewrite_link_destination(destination: &str) -> Option<String> {
+    if destination.is_empty() || is_external_or_special_link(destination) {
+        return None;
+    }
+
+    let (path, fragment) = split_link_fragment(destination);
+    if path.is_empty() || path.starts_with('/') {
+        return None;
+    }
+
+    let path = path.replace('\\', "/");
+    let fragment = fragment.unwrap_or_default();
+    if let Some(slug) = docs_route_slug(&path) {
+        return Some(format!("/docs/{slug}{fragment}"));
+    }
+
+    if should_link_to_upstream_source(&path) {
+        let path = normalize_upstream_path(&path);
+        let mode = upstream_link_mode(&path);
+        return Some(format!(
+            "{AUTUMN_REPOSITORY_URL}/{mode}/{AUTUMN_REPOSITORY_BRANCH}/{path}{fragment}"
+        ));
+    }
+
+    None
+}
+
+fn is_external_or_special_link(destination: &str) -> bool {
+    let lower = destination.to_ascii_lowercase();
+    destination.starts_with('#')
+        || lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("tel:")
+}
+
+fn split_link_fragment(destination: &str) -> (&str, Option<&str>) {
+    destination
+        .split_once('#')
+        .map_or((destination, None), |(path, fragment)| {
+            (
+                path,
+                Some(destination.get(path.len()..).unwrap_or(fragment)),
+            )
+        })
+}
+
+fn docs_route_slug(path: &str) -> Option<&str> {
+    let relative_path = path.strip_prefix("./").unwrap_or(path);
+    let relative_path = relative_path
+        .strip_prefix("docs/guide/")
+        .unwrap_or(relative_path);
+    let slug = relative_path.strip_suffix(".md")?;
+
+    if slug.is_empty() || slug.contains('/') {
+        None
+    } else {
+        Some(slug)
+    }
+}
+
+fn should_link_to_upstream_source(path: &str) -> bool {
+    let relative_path = path.strip_prefix("./").unwrap_or(path);
+    relative_path.starts_with("../") || relative_path.contains('/')
+}
+
+fn normalize_upstream_path(path: &str) -> String {
+    let mut segments = GUIDE_SOURCE_ROOT.to_vec();
+
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            segment => segments.push(segment),
+        }
+    }
+
+    segments.join("/")
+}
+
+fn upstream_link_mode(path: &str) -> &str {
+    let Some(last_segment) = path.rsplit('/').next() else {
+        return "tree";
+    };
+
+    if last_segment.contains('.') {
+        "blob"
+    } else {
+        "tree"
+    }
 }
 
 fn collect_code_block_text<'a>(events: &mut impl Iterator<Item = Event<'a>>) -> String {

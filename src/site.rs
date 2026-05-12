@@ -316,6 +316,8 @@ fn site_header(active: &str) -> Markup {
                     a href=(DOCS_START_PATH) { "Docs" }
                 }
                 a href=(DOCS_START_PATH) { "0.4.0" }
+                a href=(seo::GITHUB_REPOSITORY_URL) { "GitHub" }
+                a href=(seo::CRATES_IO_URL) { "crates.io" }
                 a href="/docs/deployment" { "Deploy" }
             }
         }
@@ -325,7 +327,12 @@ fn site_header(active: &str) -> Markup {
 fn site_footer() -> Markup {
     html! {
         footer class="site-footer" {
-            span { "Built with Autumn." }
+            span {
+                "Built with "
+                a href=(seo::GITHUB_REPOSITORY_URL) { "Autumn" }
+                "."
+            }
+            a href=(seo::WEBSITE_REPOSITORY_URL) { "Site source" }
             a href=(DOCS_START_PATH) { "Getting Started" }
             a href="/docs/deployment" { "Deployment" }
         }
