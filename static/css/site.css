@@ -567,6 +567,31 @@ pre {
   margin: 1rem 0;
 }
 
+.article-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.article-body th,
+.article-body td {
+  padding: 0.55rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.article-body th {
+  color: var(--ink);
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.article-body td {
+  color: #44372e;
+}
+
 .docs-toc {
   color: var(--muted);
   font-size: 0.9rem;

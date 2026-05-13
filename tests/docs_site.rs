@@ -540,6 +540,14 @@ fn css_places_docs_article_before_large_navigation_on_mobile() {
 }
 
 #[test]
+fn css_keeps_markdown_tables_inside_the_article_column() {
+    assert!(SITE_CSS.contains(".article-body table"));
+    assert!(SITE_CSS.contains("overflow-x: auto;"));
+    assert!(SITE_CSS.contains("max-width: 100%;"));
+    assert!(SITE_CSS.contains("white-space: nowrap;"));
+}
+
+#[test]
 fn copy_code_script_updates_accessible_status_text() {
     assert!(COPY_CODE_JS.contains("aria-label"));
     assert!(COPY_CODE_JS.contains("Copied code to clipboard"));
