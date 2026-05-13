@@ -114,6 +114,8 @@ fn rendered_docs_page_contains_nav_toc_and_copyable_code_block() {
     let html = render_docs_page(&registry, page).into_string();
 
     assert!(html.contains("docs-sidebar"));
+    assert!(html.contains(r#"<aside id="docs-navigation" class="docs-sidebar""#));
+    assert!(html.contains(r##"href="#docs-navigation""##));
     assert!(html.contains("href=\"/docs/routing\""));
     assert!(html.contains("docs-toc"));
     assert!(html.contains("href=\"#create-an-app\""));
@@ -258,7 +260,7 @@ fn bundled_docs_sidebar_groups_guides_by_workflow() {
     assert!(html.contains(r#"aria-current="page" href="/docs/transactions""#));
 
     let sidebar = html
-        .split_once(r#"<aside class="docs-sidebar""#)
+        .split_once(r#"<aside id="docs-navigation" class="docs-sidebar""#)
         .and_then(|(_, rest)| rest.split_once("</aside>"))
         .map(|(sidebar, _)| sidebar)
         .expect("docs sidebar should render");
@@ -527,6 +529,14 @@ fn css_supports_featured_home_cards_and_grouped_docs_nav() {
     assert!(SITE_CSS.contains(".home-feature-card"));
     assert!(SITE_CSS.contains(".home-secondary-grid"));
     assert!(SITE_CSS.contains(".docs-nav-section-title"));
+}
+
+#[test]
+fn css_places_docs_article_before_large_navigation_on_mobile() {
+    assert!(SITE_CSS.contains(".docs-mobile-nav-link"));
+    assert!(SITE_CSS.contains(".docs-main {\n    order: 1;"));
+    assert!(SITE_CSS.contains(".docs-sidebar {\n    order: 2;"));
+    assert!(SITE_CSS.contains("border-top: 1px solid var(--line);"));
 }
 
 #[test]

@@ -201,6 +201,9 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                                 p class="eyebrow" { (VERSION_LABEL) }
                                 h1 id="page-title" { (&page.title) }
                                 p { (&page.description) }
+                                a class="docs-mobile-nav-link" href="#docs-navigation" {
+                                    "Browse docs"
+                                }
                             }
                             div class="article-body" {
                                 (PreEscaped(page.html.clone()))
@@ -288,7 +291,7 @@ fn docs_navigation_pages(registry: &DocRegistry) -> Vec<&DocPage> {
 
 fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
     html! {
-        aside class="docs-sidebar" aria-label="Docs navigation" {
+        aside id="docs-navigation" class="docs-sidebar" aria-label="Docs navigation" {
             nav {
                 p class="sidebar-label" { "Docs" }
                 @for group in DOCS_NAV_GROUPS {
