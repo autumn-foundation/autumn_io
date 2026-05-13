@@ -240,6 +240,22 @@ fn bundled_home_page_prioritizes_two_entry_paths_without_rendering_every_doc_car
 }
 
 #[test]
+fn bundled_home_page_represents_harvest_release_and_docs() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let html = render_home_page(registry).into_string();
+
+    assert!(html.contains("Autumn Harvest 0.3.0"));
+    assert!(html.contains("durable workflows"));
+    assert!(html.contains(r#"href="/docs/autumn-harvest""#));
+    assert!(html.contains(r#"href="https://github.com/madmax983/autumn-harvest""#));
+    assert!(html.contains(r#"href="https://crates.io/crates/autumn-harvest""#));
+    assert!(html.contains(r#"href="https://docs.rs/autumn-harvest""#));
+    assert!(html.contains(
+        r#"href="https://github.com/madmax983/autumn-harvest/tree/trunk/docs/getting-started""#
+    ));
+}
+
+#[test]
 fn bundled_docs_sidebar_groups_guides_by_workflow() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let page = registry
@@ -265,6 +281,9 @@ fn bundled_docs_sidebar_groups_guides_by_workflow() {
         .map(|(sidebar, _)| sidebar)
         .expect("docs sidebar should render");
     let start_position = sidebar.find("Start here").expect("start group label");
+    let harvest_position = sidebar
+        .find(r#"href="/docs/autumn-harvest""#)
+        .expect("Harvest docs link");
     let generators_position = sidebar
         .find(r#"href="/docs/generators""#)
         .expect("generators link");
@@ -272,8 +291,10 @@ fn bundled_docs_sidebar_groups_guides_by_workflow() {
         .find("Request surface")
         .expect("request surface group label");
     assert!(
-        start_position < generators_position && generators_position < request_surface_position,
-        "generators should be in the first docs navigation group"
+        start_position < harvest_position
+            && harvest_position < generators_position
+            && generators_position < request_surface_position,
+        "Harvest and generators should be in the first docs navigation group"
     );
 
     let deployment_position = sidebar
@@ -332,6 +353,15 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
     assert_eq!(page.title, "Getting Started with Autumn");
     assert!(page.html.contains("autumn doctor"));
     assert!(page.html.contains("autumn_web::prelude"));
+    let harvest = registry
+        .page("autumn-harvest")
+        .expect("Harvest release page should be bundled");
+    assert_eq!(harvest.title, "Autumn Harvest");
+    assert!(harvest.html.contains("autumn_harvest::prelude"));
+    assert!(harvest.html.contains("HarvestPlugin"));
+    assert!(harvest.html.contains(
+        r#"href="https://github.com/madmax983/autumn-harvest/tree/trunk/docs/getting-started""#
+    ));
     assert!(
         registry.page("docs-smoke").is_none(),
         "internal release smoke procedure should not ship as public docs"
@@ -431,6 +461,9 @@ fn rendered_site_chrome_links_to_autumn_sources_and_crate() {
     assert!(html.contains(r#"href="https://github.com/madmax983/autumn""#));
     assert!(html.contains(r#"href="https://crates.io/crates/autumn-web""#));
     assert!(html.contains(r#"href="https://github.com/madmax983/autumn_io""#));
+    assert!(html.contains(r#"href="/docs/autumn-harvest""#));
+    assert!(html.contains(r#"href="https://github.com/madmax983/autumn-harvest""#));
+    assert!(html.contains(r#"href="https://crates.io/crates/autumn-harvest""#));
 }
 
 #[test]
@@ -525,6 +558,8 @@ fn css_makes_code_samples_visually_distinct() {
 
 #[test]
 fn css_supports_featured_home_cards_and_grouped_docs_nav() {
+    assert!(SITE_CSS.contains(".home-harvest"));
+    assert!(SITE_CSS.contains(".home-harvest-actions"));
     assert!(SITE_CSS.contains(".home-featured-grid"));
     assert!(SITE_CSS.contains(".home-feature-card"));
     assert!(SITE_CSS.contains(".home-secondary-grid"));
@@ -647,6 +682,7 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_header_contains("content-type", "application/xml")
         .assert_body_contains("<loc>https://autumn.io/</loc>")
         .assert_body_contains("<loc>https://autumn.io/docs/getting-started</loc>")
+        .assert_body_contains("<loc>https://autumn.io/docs/autumn-harvest</loc>")
         .assert_body_contains("<loc>https://autumn.io/docs/deployment</loc>")
         .text();
 

@@ -4,6 +4,7 @@ use crate::docs::{DocPage, DocRegistry, render_highlighted_code_block};
 use crate::{DOCS_START_PATH, seo};
 
 const VERSION_LABEL: &str = "Autumn 0.4.0";
+const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const HOME_FEATURED_DOC_SLUGS: &[&str] = &["getting-started", "coming-from-other-frameworks"];
 const HOME_SECONDARY_DOC_SLUGS: &[&str] = &[
     "what-happens-when",
@@ -25,6 +26,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
         slugs: &[
             "getting-started",
             "what-happens-when",
+            "autumn-harvest",
             "coming-from-other-frameworks",
             "generators",
         ],
@@ -114,6 +116,7 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                         }
                         (PreEscaped(render_highlighted_code_block(Some("rust"), HOME_ROUTE_EXAMPLE)))
                     }
+                    (home_harvest_release())
                     section class="home-featured" aria-labelledby="featured-guides-title" {
                         div class="home-section-header" {
                             p class="eyebrow" { "Start with intent" }
@@ -143,6 +146,26 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                     }
                 }
                 (site_footer())
+            }
+        }
+    }
+}
+
+fn home_harvest_release() -> Markup {
+    html! {
+        section class="home-harvest" aria-labelledby="harvest-release-title" {
+            div class="home-harvest-copy" {
+                p class="eyebrow" { "Companion release" }
+                h2 id="harvest-release-title" { "Autumn Harvest " (seo::HARVEST_VERSION) }
+                p {
+                    "Harvest adds Postgres-backed durable workflows to Autumn: activities, timers, signals, child workflows, DAG schedules, replay, dead letters, and a management API without operating a separate workflow server."
+                }
+            }
+            div class="home-harvest-actions" {
+                a class="button button-primary" href=(HARVEST_DOC_PATH) { "Read Harvest overview" }
+                a class="button button-secondary" href=(seo::HARVEST_GUIDE_URL) { "Guide" }
+                a class="button button-secondary" href=(seo::HARVEST_RUSTDOC_URL) { "API docs" }
+                a class="button button-secondary" href=(seo::HARVEST_CRATES_IO_URL) { "Crate" }
             }
         }
     }
@@ -521,6 +544,7 @@ fn site_header(active: &str) -> Markup {
                 } @else {
                     a href=(DOCS_START_PATH) { "Docs" }
                 }
+                a href=(HARVEST_DOC_PATH) { "Harvest" }
                 a href=(DOCS_START_PATH) { "0.4.0" }
                 a href=(seo::GITHUB_REPOSITORY_URL) { "GitHub" }
                 a href=(seo::CRATES_IO_URL) { "crates.io" }
@@ -540,6 +564,8 @@ fn site_footer() -> Markup {
             }
             a href=(seo::WEBSITE_REPOSITORY_URL) { "Site source" }
             a href=(DOCS_START_PATH) { "Getting Started" }
+            a href=(HARVEST_DOC_PATH) { "Harvest" }
+            a href=(seo::HARVEST_REPOSITORY_URL) { "Harvest source" }
             a href="/docs/deployment" { "Deployment" }
         }
     }

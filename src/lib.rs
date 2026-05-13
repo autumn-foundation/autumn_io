@@ -29,6 +29,7 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
     DocRegistry::from_sources([
         guide_doc!("getting-started"),
         guide_doc!("what-happens-when"),
+        guide_doc!("autumn-harvest"),
         guide_doc!("coming-from-other-frameworks"),
         guide_doc!("generators"),
         guide_doc!("accessibility"),

@@ -351,6 +351,40 @@ pre {
   margin-top: 3rem;
 }
 
+.home-harvest {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.25rem;
+  align-items: center;
+  margin-top: 3rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: rgba(255, 252, 246, 0.82);
+  box-shadow: 0 14px 32px rgba(53, 35, 22, 0.08);
+}
+
+.home-harvest-copy h2 {
+  margin: 0;
+  color: var(--rust-dark);
+  font-size: 1.7rem;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.home-harvest-copy p:not(.eyebrow) {
+  max-width: 52rem;
+  margin: 0.55rem 0 0;
+  color: var(--muted);
+}
+
+.home-harvest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
 .home-section-header {
   max-width: 48rem;
   margin-bottom: 1rem;
@@ -681,8 +715,13 @@ pre {
 
 @media (max-width: 1080px) {
   .home-hero,
+  .home-harvest,
   .docs-layout {
     grid-template-columns: 1fr;
+  }
+
+  .home-harvest-actions {
+    justify-content: flex-start;
   }
 
   .docs-sidebar,
