@@ -437,6 +437,8 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     assert!(html.contains("Autumn: Rust Web Framework for Server-Rendered Apps"));
     assert!(html.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
     assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png""#));
+    assert!(html.contains(r#"<link rel="stylesheet" href="/static/css/site.css?v="#));
+    assert!(html.contains(r#"<script src="/static/js/copy-code.js?v="#));
     assert!(html.contains(r#"src="/static/img/autumn-mark-68.png""#));
     assert!(html.contains("<span style=\"color:"));
     assert!(html.contains(r#"<span class="code-language">Rust</span>"#));
@@ -450,6 +452,24 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     assert!(html.contains(r#"<meta name="twitter:card" content="summary">"#));
     assert!(html.contains(r#""@type":"WebSite""#));
     assert!(html.contains(r#""@type":"SoftwareSourceCode""#));
+}
+
+#[test]
+fn rendered_site_chrome_cache_busts_mutable_static_assets() {
+    let registry = DocRegistry::from_sources([DocSource::new("quickstart", QUICKSTART_SOURCE)])
+        .expect("valid docs source should parse");
+    let html = render_home_page(&registry).into_string();
+
+    assert!(html.contains(r#"<link rel="stylesheet" href="/static/css/site.css?v="#));
+    assert!(html.contains(r#"<script src="/static/js/copy-code.js?v="#));
+    assert!(
+        !html.contains(r#"<link rel="stylesheet" href="/static/css/site.css">"#),
+        "CSS uses immutable cache headers, so HTML must version the asset URL"
+    );
+    assert!(
+        !html.contains(r#"<script src="/static/js/copy-code.js" defer>"#),
+        "JS uses immutable cache headers, so HTML must version the asset URL"
+    );
 }
 
 #[test]
@@ -598,7 +618,7 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .await
         .assert_status(200)
         .assert_body_contains("Ship the app, not the plumbing.")
-        .assert_body_contains("/static/css/site.css");
+        .assert_body_contains("/static/css/site.css?v=");
 
     app.get("/docs")
         .send()
@@ -648,8 +668,8 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
     assert_eq!(home.header("cache-control"), None);
 
     for path in [
-        "/static/css/site.css",
-        "/static/js/copy-code.js",
+        "/static/css/site.css?v=test",
+        "/static/js/copy-code.js?v=test",
         "/static/img/autumn-social.png",
         "/static/img/autumn-mark-68.png",
     ] {

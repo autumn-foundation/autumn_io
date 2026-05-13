@@ -3,11 +3,17 @@ fn main() {
     println!("cargo:rerun-if-changed=content/");
     println!("cargo:rerun-if-changed=static/css/input.css");
     println!("cargo:rerun-if-changed=static/css/site.css");
+    println!("cargo:rerun-if-changed=static/js/copy-code.js");
     println!("cargo:rerun-if-changed=tailwind.config.js");
     println!("cargo:rerun-if-changed=target/autumn/tailwindcss");
     println!("cargo:rerun-if-env-changed=PATH");
     #[cfg(target_os = "windows")]
     println!("cargo:rerun-if-env-changed=PATHEXT");
+
+    println!(
+        "cargo:rustc-env=AUTUMN_IO_ASSET_VERSION={:016x}",
+        static_asset_hash()
+    );
 
     if let Some(tailwind) = find_tailwind_cli() {
         let status = std::process::Command::new(&tailwind)
@@ -49,6 +55,29 @@ fn find_tailwind_cli() -> Option<std::path::PathBuf> {
 
     // 3. Return None to treat this as optional.
     None
+}
+
+fn static_asset_hash() -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325;
+
+    for path in ["static/css/site.css", "static/js/copy-code.js"] {
+        hash = fnv1a_bytes(hash, path.as_bytes());
+        match std::fs::read(path) {
+            Ok(bytes) => hash = fnv1a_bytes(hash, &bytes),
+            Err(error) => panic!("failed to read static asset {path}: {error}"),
+        }
+    }
+
+    hash
+}
+
+fn fnv1a_bytes(mut hash: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+
+    hash
 }
 
 fn which(binary: &str) -> Option<std::path::PathBuf> {

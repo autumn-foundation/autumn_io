@@ -5,6 +5,7 @@ use crate::{DOCS_START_PATH, seo};
 
 const VERSION_LABEL: &str = "Autumn 0.4.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
+const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
 const HOME_FEATURED_DOC_SLUGS: &[&str] = &["getting-started", "coming-from-other-frameworks"];
 const HOME_SECONDARY_DOC_SLUGS: &[&str] = &[
     "what-happens-when",
@@ -484,6 +485,8 @@ impl PageMeta {
 fn document_head(meta: &PageMeta) -> Markup {
     let canonical_url = meta.canonical_url();
     let image_url = seo::site_image_url();
+    let stylesheet_path = versioned_asset_path("/static/css/site.css");
+    let copy_code_script_path = versioned_asset_path("/static/js/copy-code.js");
 
     html! {
         head {
@@ -497,7 +500,7 @@ fn document_head(meta: &PageMeta) -> Markup {
             link rel="canonical" href=(&canonical_url);
             link rel="icon" href="/static/img/autumn-mark-68.png" type="image/png";
             link rel="sitemap" type="application/xml" href="/sitemap.xml";
-            link rel="stylesheet" href="/static/css/site.css";
+            link rel="stylesheet" href=(stylesheet_path);
             meta property="og:site_name" content=(seo::SITE_NAME);
             meta property="og:type" content=(meta.og_type);
             meta property="og:title" content=(&meta.title);
@@ -511,9 +514,13 @@ fn document_head(meta: &PageMeta) -> Markup {
             @if let Some(structured_data) = &meta.structured_data {
                 script type="application/ld+json" { (PreEscaped(structured_data.clone())) }
             }
-            script src="/static/js/copy-code.js" defer {}
+            script src=(copy_code_script_path) defer {}
         }
     }
+}
+
+fn versioned_asset_path(path: &str) -> String {
+    format!("{path}?v={ASSET_VERSION}")
 }
 
 fn doctype() -> Markup {
