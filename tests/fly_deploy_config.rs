@@ -26,8 +26,8 @@ fn fly_runtime_exports_cargo_metadata_for_actuator_info() {
 
 #[test]
 fn runtime_versions_reflect_current_published_autumn_dependency() {
-    assert!(CARGO_TOML.contains(r#"autumn-web = "0.3.0""#));
-    assert!(EXPORT_RS.contains(r#"const AUTUMN_WEB_VERSION: &str = "0.3.0";"#));
+    assert!(CARGO_TOML.contains(r#"autumn-web = "0.4.0""#));
+    assert!(EXPORT_RS.contains(r#"const AUTUMN_WEB_VERSION: &str = "0.4.0";"#));
 }
 
 #[test]

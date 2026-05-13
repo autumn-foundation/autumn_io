@@ -12,7 +12,7 @@ use crate::docs::DocRegistry;
 use crate::{seo, site};
 
 const STATIC_DIR: &str = "static";
-const AUTUMN_WEB_VERSION: &str = "0.3.0";
+const AUTUMN_WEB_VERSION: &str = "0.4.0";
 
 /// Filesystem settings for exporting the Autumn website as static assets.
 #[derive(Clone, Debug)]
