@@ -2,7 +2,7 @@ use serde_json::json;
 
 use crate::docs::{DocPage, DocRegistry};
 
-pub const SITE_BASE_URL: &str = "https://autumn.io";
+pub const SITE_BASE_URL: &str = "https://autumn-web.app";
 pub const SITE_NAME: &str = "Autumn";
 pub const SITE_DESCRIPTION: &str = "Autumn is a Rust web framework for fast server-rendered apps, typed routes, Maud templates, static assets, and production defaults.";
 pub const SITE_IMAGE_PATH: &str = "/static/img/autumn-social.png";

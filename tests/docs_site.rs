@@ -187,10 +187,14 @@ fn rendered_docs_page_contains_search_specific_metadata() {
     let html = render_docs_page(&registry, page).into_string();
 
     assert!(html.contains("Quickstart | Autumn Rust Web Framework Docs"));
-    assert!(html.contains(r#"<link rel="canonical" href="https://autumn.io/docs/quickstart">"#));
+    assert!(
+        html.contains(r#"<link rel="canonical" href="https://autumn-web.app/docs/quickstart">"#)
+    );
     assert!(html.contains(r#"<meta property="og:type" content="article">"#));
     assert!(
-        html.contains(r#"<meta property="og:url" content="https://autumn.io/docs/quickstart">"#)
+        html.contains(
+            r#"<meta property="og:url" content="https://autumn-web.app/docs/quickstart">"#
+        )
     );
     assert!(html.contains(r#""@type":"TechArticle""#));
     assert!(html.contains(r#""headline":"Quickstart""#));
@@ -435,7 +439,7 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     let html = render_home_page(&registry).into_string();
 
     assert!(html.contains("Autumn: Rust Web Framework for Server-Rendered Apps"));
-    assert!(html.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
+    assert!(html.contains(r#"<link rel="canonical" href="https://autumn-web.app/">"#));
     assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png""#));
     assert!(html.contains(r#"<link rel="stylesheet" href="/static/css/site.css?v="#));
     assert!(html.contains(r#"<script src="/static/js/copy-code.js?v="#));
@@ -447,7 +451,7 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     ));
     assert!(html.contains(r#"<meta property="og:site_name" content="Autumn">"#));
     assert!(html.contains(
-        r#"<meta property="og:image" content="https://autumn.io/static/img/autumn-social.png">"#
+        r#"<meta property="og:image" content="https://autumn-web.app/static/img/autumn-social.png">"#
     ));
     assert!(html.contains(r#"<meta name="twitter:card" content="summary">"#));
     assert!(html.contains(r#""@type":"WebSite""#));
@@ -692,7 +696,7 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_header_contains("content-type", "text/plain")
         .assert_body_contains("User-agent: *")
         .assert_body_contains("Allow: /")
-        .assert_body_contains("Sitemap: https://autumn.io/sitemap.xml");
+        .assert_body_contains("Sitemap: https://autumn-web.app/sitemap.xml");
 
     let sitemap = app
         .get("/sitemap.xml")
@@ -700,14 +704,14 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .await
         .assert_status(200)
         .assert_header_contains("content-type", "application/xml")
-        .assert_body_contains("<loc>https://autumn.io/</loc>")
-        .assert_body_contains("<loc>https://autumn.io/docs/getting-started</loc>")
-        .assert_body_contains("<loc>https://autumn.io/docs/autumn-harvest</loc>")
-        .assert_body_contains("<loc>https://autumn.io/docs/deployment</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/getting-started</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/autumn-harvest</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/deployment</loc>")
         .text();
 
     assert!(
-        !sitemap.contains("<loc>https://autumn.io/docs</loc>"),
+        !sitemap.contains("<loc>https://autumn-web.app/docs</loc>"),
         "sitemap should not advertise the redirect-only docs index"
     );
 }
@@ -726,22 +730,23 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
     assert!(home.contains("Ship the app, not the plumbing."));
-    assert!(home.contains(r#"<link rel="canonical" href="https://autumn.io/">"#));
+    assert!(home.contains(r#"<link rel="canonical" href="https://autumn-web.app/">"#));
 
     let getting_started =
         std::fs::read_to_string(dist.join("docs/getting-started/index.html")).expect("docs html");
     assert!(getting_started.contains(r#"<h1 id="page-title">Getting Started with Autumn</h1>"#));
     assert!(getting_started.contains(r#"aria-current="page" href="/docs/getting-started""#));
     assert!(
-        getting_started
-            .contains(r#"<link rel="canonical" href="https://autumn.io/docs/getting-started">"#)
+        getting_started.contains(
+            r#"<link rel="canonical" href="https://autumn-web.app/docs/getting-started">"#
+        )
     );
 
     let robots = std::fs::read_to_string(dist.join("robots.txt")).expect("robots file");
-    assert!(robots.contains("Sitemap: https://autumn.io/sitemap.xml"));
+    assert!(robots.contains("Sitemap: https://autumn-web.app/sitemap.xml"));
 
     let sitemap = std::fs::read_to_string(dist.join("sitemap.xml")).expect("sitemap file");
-    assert!(sitemap.contains("<loc>https://autumn.io/docs/getting-started</loc>"));
+    assert!(sitemap.contains("<loc>https://autumn-web.app/docs/getting-started</loc>"));
 
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
