@@ -4,6 +4,9 @@ fn main() {
     println!("cargo:rerun-if-changed=static/css/input.css");
     println!("cargo:rerun-if-changed=static/css/site.css");
     println!("cargo:rerun-if-changed=static/js/copy-code.js");
+    println!("cargo:rerun-if-changed=static/img/autumn-social.png");
+    println!("cargo:rerun-if-changed=static/img/autumn-mark-68.png");
+    println!("cargo:rerun-if-changed=static/img/autumn-mark-136.png");
     println!("cargo:rerun-if-changed=tailwind.config.js");
     println!("cargo:rerun-if-changed=target/autumn/tailwindcss");
     println!("cargo:rerun-if-env-changed=PATH");
@@ -60,7 +63,13 @@ fn find_tailwind_cli() -> Option<std::path::PathBuf> {
 fn static_asset_hash() -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325;
 
-    for path in ["static/css/site.css", "static/js/copy-code.js"] {
+    for path in [
+        "static/css/site.css",
+        "static/js/copy-code.js",
+        "static/img/autumn-social.png",
+        "static/img/autumn-mark-68.png",
+        "static/img/autumn-mark-136.png",
+    ] {
         hash = fnv1a_bytes(hash, path.as_bytes());
         match std::fs::read(path) {
             Ok(bytes) => hash = fnv1a_bytes(hash, &bytes),
