@@ -174,9 +174,10 @@ pub fn export_site(
 
 fn reset_output_dir(output_dir: &Path, static_dir: &Path) -> Result<PathBuf, ExportError> {
     let normalized_output = normalized_absolute_path(output_dir)?;
-    let normalized_static = normalized_absolute_path(static_dir)?;
+    let guard_output = resolve_existing_prefix(output_dir)?;
+    let guard_static = canonicalize_path(static_dir)?;
 
-    if is_unsafe_output_dir(output_dir, &normalized_output, &normalized_static) {
+    if is_unsafe_output_dir(output_dir, &guard_output, &guard_static) {
         return Err(ExportError::UnsafeOutputDir(output_dir.to_path_buf()));
     }
 
@@ -206,6 +207,7 @@ fn is_unsafe_output_dir(
             .any(|component| matches!(component, Component::ParentDir))
         || normalized_output == normalized_static
         || normalized_output.starts_with(normalized_static)
+        || normalized_static.starts_with(normalized_output)
 }
 
 fn can_replace_output_dir(path: &Path) -> Result<bool, ExportError> {
@@ -382,6 +384,34 @@ fn normalized_absolute_path(path: &Path) -> Result<PathBuf, ExportError> {
     normalize_path(&absolute).ok_or_else(|| ExportError::UnsafeOutputDir(path.to_path_buf()))
 }
 
+fn resolve_existing_prefix(path: &Path) -> Result<PathBuf, ExportError> {
+    let normalized = normalized_absolute_path(path)?;
+    if normalized.exists() {
+        return canonicalize_path(&normalized);
+    }
+
+    let mut missing_components = Vec::new();
+    let mut ancestor = normalized.as_path();
+    while !ancestor.exists() {
+        let Some(file_name) = ancestor.file_name() else {
+            return Ok(normalized);
+        };
+        missing_components.push(file_name.to_owned());
+
+        let Some(parent) = ancestor.parent() else {
+            return Ok(normalized);
+        };
+        ancestor = parent;
+    }
+
+    let mut resolved = canonicalize_path(ancestor)?;
+    for component in missing_components.iter().rev() {
+        resolved.push(component);
+    }
+
+    normalize_path(&resolved).ok_or_else(|| ExportError::UnsafeOutputDir(path.to_path_buf()))
+}
+
 fn normalize_path(path: &Path) -> Option<PathBuf> {
     let mut normalized = PathBuf::new();
 
@@ -422,4 +452,75 @@ fn timestamp_now() -> String {
         .unwrap_or_default()
         .as_secs();
     format!("{secs}")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{ExportError, reset_output_dir};
+
+    #[test]
+    fn reset_output_dir_rejects_static_symlink_to_output_dir() {
+        let workspace = unique_temp_dir("autumn-io-static-symlink-export");
+        let dist = workspace.join("dist");
+        let static_link = workspace.join("static-link");
+        std::fs::create_dir_all(&dist).expect("dist dir");
+        std::fs::write(dist.join("site.css"), "body {}").expect("static asset");
+        create_dir_symlink(&dist, &static_link).expect("static source symlink");
+
+        let result = reset_output_dir(&dist, &static_link);
+        let source_asset_preserved = dist.join("site.css").exists();
+
+        std::fs::remove_dir_all(workspace).expect("cleanup static symlink export test");
+
+        assert!(
+            matches!(result, Err(ExportError::UnsafeOutputDir(ref path)) if path == &dist),
+            "reset should reject static source symlinks that resolve to output; got {result:?}"
+        );
+        assert!(
+            source_asset_preserved,
+            "unsafe reset must not delete a symlinked static source"
+        );
+    }
+
+    #[cfg(unix)]
+    fn create_dir_symlink(target: &Path, link: &Path) -> io::Result<()> {
+        std::os::unix::fs::symlink(target, link)
+    }
+
+    #[cfg(windows)]
+    fn create_dir_symlink(target: &Path, link: &Path) -> io::Result<()> {
+        std::os::windows::fs::symlink_dir(target, link).or_else(|_| {
+            let output = std::process::Command::new("cmd")
+                .arg("/C")
+                .arg("mklink")
+                .arg("/J")
+                .arg(link)
+                .arg(target)
+                .output()?;
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(io::Error::other(
+                    String::from_utf8_lossy(&output.stderr).into_owned(),
+                ))
+            }
+        })
+    }
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "{prefix}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir should be created");
+        dir
+    }
 }

@@ -898,6 +898,34 @@ fn export_site_refuses_output_dirs_inside_the_static_source_tree() {
     );
 }
 
+#[test]
+fn export_site_refuses_output_dirs_that_contain_the_static_source_tree() {
+    let workspace = unique_temp_dir("autumn-io-static-contained-export");
+    let dist = workspace.join("dist");
+    let static_dir = dist.join("static");
+    std::fs::create_dir_all(&static_dir).expect("static dir");
+    std::fs::write(static_dir.join("site.css"), "body {}").expect("static asset");
+
+    let registry = DocRegistry::from_sources([DocSource::new("quickstart", QUICKSTART_SOURCE)])
+        .expect("valid docs source should parse");
+    let result = export_site(
+        &registry,
+        &ExportConfig::new(&dist).with_static_dir(&static_dir),
+    );
+    let source_asset_preserved = static_dir.join("site.css").exists();
+
+    std::fs::remove_dir_all(workspace).expect("cleanup contained static export test");
+
+    assert!(
+        matches!(result, Err(ExportError::UnsafeOutputDir(ref path)) if path == &dist),
+        "export should reject output dirs that contain the static source; got {result:?}"
+    );
+    assert!(
+        source_asset_preserved,
+        "unsafe export must not delete static assets contained by the output dir"
+    );
+}
+
 fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "{prefix}-{}-{}",
