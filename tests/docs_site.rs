@@ -535,7 +535,9 @@ fn rendered_site_chrome_cache_busts_mutable_static_assets() {
         "JS uses immutable cache headers, so HTML must version the asset URL"
     );
     assert!(
-        !html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png""#),
+        !html.contains(
+            r#"<link rel="icon" href="/static/img/autumn-mark-68.png" type="image/png">"#
+        ),
         "image URLs use immutable cache headers, so HTML must version them too"
     );
     assert!(
