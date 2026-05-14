@@ -1,7 +1,7 @@
 use autumn_web::test::TestApp;
 
-use autumn_io::docs::{DocRegistry, DocSource, slugify_heading};
-use autumn_io::export::{ExportConfig, export_site};
+use autumn_io::docs::{DocRegistry, DocSource, DocsError, slugify_heading};
+use autumn_io::export::{ExportConfig, ExportError, export_site};
 use autumn_io::site::{render_docs_page, render_home_page};
 
 const GUIDE_START_SLUG: &str = "getting-started";
@@ -36,6 +36,19 @@ order: 20
 # Routing
 
 ## Path parameters
+"#;
+
+const RAW_HTML_SOURCE: &str = r#"---
+title: Raw HTML
+description: Raw HTML should not pass through docs rendering.
+order: 30
+---
+
+# Raw HTML
+
+<script>alert("xss")</script>
+
+Inline <em>HTML</em> should render as text.
 "#;
 
 #[test]
@@ -96,6 +109,27 @@ fn registry_orders_pages_and_calculates_previous_next_links() {
 }
 
 #[test]
+fn registry_rejects_slugs_that_can_escape_routes_or_export_paths() {
+    for slug in [
+        "",
+        ".",
+        "..",
+        "../escape",
+        "nested/page",
+        r"nested\page",
+        "C:drive",
+    ] {
+        let error = DocRegistry::from_sources([DocSource::new(slug, QUICKSTART_SOURCE)])
+            .expect_err("unsafe docs slugs should be rejected");
+
+        assert!(
+            matches!(error, DocsError::InvalidSlug(ref invalid) if invalid == slug),
+            "expected InvalidSlug for {slug:?}, got {error:?}"
+        );
+    }
+}
+
+#[test]
 fn slugifies_headings_for_stable_search_ready_anchors() {
     assert_eq!(
         slugify_heading("Autumn 0.4.0: Templates & Static Assets!"),
@@ -124,6 +158,24 @@ fn rendered_docs_page_contains_nav_toc_and_copyable_code_block() {
     assert!(html.contains(r#"<span class="code-language">Rust</span>"#));
     assert!(html.contains(r#"<span class="code-window-dots" aria-hidden="true">"#));
     assert!(html.contains("Next"));
+}
+
+#[test]
+fn markdown_raw_html_is_escaped_before_preescaped_page_rendering() {
+    let registry = DocRegistry::from_sources([DocSource::new("raw-html", RAW_HTML_SOURCE)])
+        .expect("valid docs source should parse");
+    let page = registry.page("raw-html").expect("raw html page exists");
+
+    assert!(!page.html.contains("<script>"));
+    assert!(!page.html.contains("<em>HTML</em>"));
+    assert!(
+        page.html
+            .contains("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;")
+    );
+    assert!(
+        page.html
+            .contains("Inline &lt;em&gt;HTML&lt;/em&gt; should render as text.")
+    );
 }
 
 #[test]
@@ -440,18 +492,20 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
 
     assert!(html.contains("Autumn: Rust Web Framework for Server-Rendered Apps"));
     assert!(html.contains(r#"<link rel="canonical" href="https://autumn-web.app/">"#));
-    assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png""#));
+    assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png?v="#));
     assert!(html.contains(r#"<link rel="stylesheet" href="/static/css/site.css?v="#));
     assert!(html.contains(r#"<script src="/static/js/copy-code.js?v="#));
-    assert!(html.contains(r#"src="/static/img/autumn-mark-68.png""#));
+    assert!(html.contains(r#"src="/static/img/autumn-mark-68.png?v="#));
     assert!(html.contains("<span style=\"color:"));
     assert!(html.contains(r#"<span class="code-language">Rust</span>"#));
-    assert!(html.contains(
-        r#"srcset="/static/img/autumn-mark-68.png 1x, /static/img/autumn-mark-136.png 2x""#
-    ));
+    assert!(html.contains(r#"srcset="/static/img/autumn-mark-68.png?v="#));
+    assert!(html.contains(r#"/static/img/autumn-mark-136.png?v="#));
     assert!(html.contains(r#"<meta property="og:site_name" content="Autumn">"#));
     assert!(html.contains(
-        r#"<meta property="og:image" content="https://autumn-web.app/static/img/autumn-social.png">"#
+        r#"<meta property="og:image" content="https://autumn-web.app/static/img/autumn-social.png?v="#
+    ));
+    assert!(html.contains(
+        r#"<meta name="twitter:image" content="https://autumn-web.app/static/img/autumn-social.png?v="#
     ));
     assert!(html.contains(r#"<meta name="twitter:card" content="summary">"#));
     assert!(html.contains(r#""@type":"WebSite""#));
@@ -466,6 +520,12 @@ fn rendered_site_chrome_cache_busts_mutable_static_assets() {
 
     assert!(html.contains(r#"<link rel="stylesheet" href="/static/css/site.css?v="#));
     assert!(html.contains(r#"<script src="/static/js/copy-code.js?v="#));
+    assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png?v="#));
+    assert!(html.contains(r#"src="/static/img/autumn-mark-68.png?v="#));
+    assert!(html.contains(r#"/static/img/autumn-mark-136.png?v="#));
+    assert!(html.contains(
+        r#"<meta property="og:image" content="https://autumn-web.app/static/img/autumn-social.png?v="#
+    ));
     assert!(
         !html.contains(r#"<link rel="stylesheet" href="/static/css/site.css">"#),
         "CSS uses immutable cache headers, so HTML must version the asset URL"
@@ -473,6 +533,16 @@ fn rendered_site_chrome_cache_busts_mutable_static_assets() {
     assert!(
         !html.contains(r#"<script src="/static/js/copy-code.js" defer>"#),
         "JS uses immutable cache headers, so HTML must version the asset URL"
+    );
+    assert!(
+        !html.contains(
+            r#"<link rel="icon" href="/static/img/autumn-mark-68.png" type="image/png">"#
+        ),
+        "image URLs use immutable cache headers, so HTML must version them too"
+    );
+    assert!(
+        !html.contains(r#"<meta property="og:image" content="https://autumn-web.app/static/img/autumn-social.png">"#),
+        "social image URLs use immutable cache headers, so metadata must version them too"
     );
 }
 
@@ -613,6 +683,17 @@ fn copy_code_script_updates_accessible_status_text() {
     assert!(COPY_CODE_JS.contains("Select code manually"));
 }
 
+#[test]
+fn copy_code_script_resets_rapid_clicks_to_the_fixed_ready_label() {
+    assert!(COPY_CODE_JS.contains(r#"READY_LABEL = "Copy""#));
+    assert!(COPY_CODE_JS.contains("window.clearTimeout"));
+    assert!(COPY_CODE_JS.contains("copyResetTimer"));
+    assert!(
+        !COPY_CODE_JS.contains("const previous = button.textContent"),
+        "rapid clicks must not capture the transient Copied label as the restore target"
+    );
+}
+
 #[tokio::test]
 async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
@@ -674,8 +755,8 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
     for path in [
         "/static/css/site.css?v=test",
         "/static/js/copy-code.js?v=test",
-        "/static/img/autumn-social.png",
-        "/static/img/autumn-mark-68.png",
+        "/static/img/autumn-social.png?v=test",
+        "/static/img/autumn-mark-68.png?v=test",
     ] {
         app.get(path)
             .send()
@@ -759,6 +840,92 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert!(manifest.contains(r#""docs/getting-started/index.html""#));
 
     std::fs::remove_dir_all(workspace).expect("cleanup export test");
+}
+
+#[test]
+fn export_site_refuses_to_remove_source_like_output_dirs() {
+    let workspace = unique_temp_dir("autumn-io-unsafe-export");
+    let content_dir = workspace.join("content");
+    let static_dir = workspace.join("static");
+    std::fs::create_dir_all(&content_dir).expect("content dir");
+    std::fs::create_dir_all(&static_dir).expect("static dir");
+    std::fs::write(content_dir.join("keep.txt"), "do not delete").expect("content marker");
+    std::fs::write(static_dir.join("site.css"), "body {}").expect("static asset");
+
+    let registry = DocRegistry::from_sources([DocSource::new("quickstart", QUICKSTART_SOURCE)])
+        .expect("valid docs source should parse");
+    let result = export_site(
+        &registry,
+        &ExportConfig::new(&content_dir).with_static_dir(&static_dir),
+    );
+    let marker_preserved = content_dir.join("keep.txt").exists();
+
+    std::fs::remove_dir_all(workspace).expect("cleanup unsafe export test");
+
+    assert!(
+        matches!(result, Err(ExportError::UnsafeOutputDir(ref path)) if path == &content_dir),
+        "export should reject source-like output dirs before deleting them; got {result:?}"
+    );
+    assert!(
+        marker_preserved,
+        "unsafe export must not delete existing content"
+    );
+}
+
+#[test]
+fn export_site_refuses_output_dirs_inside_the_static_source_tree() {
+    let workspace = unique_temp_dir("autumn-io-static-trap-export");
+    let static_dir = workspace.join("static");
+    let dist = static_dir.join("dist");
+    std::fs::create_dir_all(&static_dir).expect("static dir");
+    std::fs::write(static_dir.join("site.css"), "body {}").expect("static asset");
+
+    let registry = DocRegistry::from_sources([DocSource::new("quickstart", QUICKSTART_SOURCE)])
+        .expect("valid docs source should parse");
+    let result = export_site(
+        &registry,
+        &ExportConfig::new(&dist).with_static_dir(&static_dir),
+    );
+    let source_asset_preserved = static_dir.join("site.css").exists();
+
+    std::fs::remove_dir_all(workspace).expect("cleanup static trap export test");
+
+    assert!(
+        matches!(result, Err(ExportError::UnsafeOutputDir(ref path)) if path == &dist),
+        "export should reject output dirs nested inside static source; got {result:?}"
+    );
+    assert!(
+        source_asset_preserved,
+        "unsafe export must not recurse through or delete static assets"
+    );
+}
+
+#[test]
+fn export_site_refuses_output_dirs_that_contain_the_static_source_tree() {
+    let workspace = unique_temp_dir("autumn-io-static-contained-export");
+    let dist = workspace.join("dist");
+    let static_dir = dist.join("static");
+    std::fs::create_dir_all(&static_dir).expect("static dir");
+    std::fs::write(static_dir.join("site.css"), "body {}").expect("static asset");
+
+    let registry = DocRegistry::from_sources([DocSource::new("quickstart", QUICKSTART_SOURCE)])
+        .expect("valid docs source should parse");
+    let result = export_site(
+        &registry,
+        &ExportConfig::new(&dist).with_static_dir(&static_dir),
+    );
+    let source_asset_preserved = static_dir.join("site.css").exists();
+
+    std::fs::remove_dir_all(workspace).expect("cleanup contained static export test");
+
+    assert!(
+        matches!(result, Err(ExportError::UnsafeOutputDir(ref path)) if path == &dist),
+        "export should reject output dirs that contain the static source; got {result:?}"
+    );
+    assert!(
+        source_asset_preserved,
+        "unsafe export must not delete static assets contained by the output dir"
+    );
 }
 
 fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {

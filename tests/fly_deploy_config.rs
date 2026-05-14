@@ -25,6 +25,12 @@ fn fly_runtime_exports_cargo_metadata_for_actuator_info() {
 }
 
 #[test]
+fn docker_build_uses_the_committed_dependency_lockfile() {
+    assert!(DOCKERFILE.contains("COPY Cargo.toml Cargo.lock"));
+    assert!(DOCKERFILE.contains("cargo build --locked --release --bin autumn_io"));
+}
+
+#[test]
 fn runtime_versions_reflect_current_published_autumn_dependency() {
     assert!(CARGO_TOML.contains(r#"autumn-web = "0.4.0""#));
     assert!(EXPORT_RS.contains(r#"const AUTUMN_WEB_VERSION: &str = "0.4.0";"#));

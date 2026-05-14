@@ -71,6 +71,9 @@ impl DocRegistry {
         let mut seen_slugs = HashSet::new();
 
         for source in sources {
+            if !is_valid_doc_slug(source.slug) {
+                return Err(DocsError::InvalidSlug(source.slug.to_owned()));
+            }
             if !seen_slugs.insert(source.slug.to_owned()) {
                 return Err(DocsError::DuplicateSlug(source.slug.to_owned()));
             }
@@ -132,6 +135,7 @@ pub enum DocsError {
         slug: String,
         source: serde_yaml::Error,
     },
+    InvalidSlug(String),
     DuplicateSlug(String),
 }
 
@@ -144,6 +148,7 @@ impl Display for DocsError {
             Self::InvalidFrontmatter { slug, source } => {
                 write!(f, "docs page `{slug}` has invalid frontmatter: {source}")
             }
+            Self::InvalidSlug(slug) => write!(f, "docs page slug `{slug}` is not safe"),
             Self::DuplicateSlug(slug) => write!(f, "duplicate docs slug `{slug}`"),
         }
     }
@@ -153,7 +158,7 @@ impl Error for DocsError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidFrontmatter { source, .. } => Some(source),
-            Self::MissingFrontmatter { .. } | Self::DuplicateSlug(_) => None,
+            Self::MissingFrontmatter { .. } | Self::InvalidSlug(_) | Self::DuplicateSlug(_) => None,
         }
     }
 }
@@ -200,6 +205,14 @@ fn parse_doc(source: DocSource<'_>) -> Result<DocPage, DocsError> {
         html: rendered.html,
         toc: rendered.toc,
     })
+}
+
+fn is_valid_doc_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.split('-').all(|segment| !segment.is_empty())
+        && slug
+            .chars()
+            .all(|char| char.is_ascii_lowercase() || char.is_ascii_digit() || char == '-')
 }
 
 fn render_markdown(markdown: &str) -> RenderedMarkdown {
@@ -374,6 +387,9 @@ fn render_markdown_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Ve
                     title,
                     id,
                 }));
+            }
+            Event::Html(html) | Event::InlineHtml(html) => {
+                rendered.push(Event::Html(html_escaped_text(html.as_ref()).into()));
             }
             event => rendered.push(event),
         }
@@ -591,11 +607,17 @@ fn push_code_block_header(output: &mut String, language: &str) {
     output.push_str(r#"<span class="code-window-dot"></span>"#);
     output.push_str(r#"<span class="code-window-dot"></span>"#);
     output.push_str(r#"</span><span class="code-language">"#);
-    output.push_str(language);
+    push_html_escaped(output, language);
     output.push_str(r#"</span>"#);
     output.push_str(r#"<button class="copy-code-button" type="button" data-copy-button "#);
     output.push_str(r#"aria-label="Copy code to clipboard" aria-live="polite">Copy</button>"#);
     output.push_str("</div>");
+}
+
+fn html_escaped_text(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    push_html_escaped(&mut escaped, value);
+    escaped
 }
 
 fn code_language_label(language: &str) -> String {
@@ -682,5 +704,13 @@ mod tests {
         assert!(!rendered.html.contains("language-rust,no_run"));
         assert!(!rendered.html.contains("Rust,ignore"));
         assert!(!rendered.html.contains("Rust,no Run"));
+    }
+
+    #[test]
+    fn code_block_language_labels_are_html_escaped() {
+        let rendered = render_highlighted_code_block(Some("evil<script>"), "hello");
+
+        assert!(rendered.contains(r#"<span class="code-language">Evil&lt;script&gt;</span>"#));
+        assert!(!rendered.contains(r#"<span class="code-language">Evil<script></span>"#));
     }
 }

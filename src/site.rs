@@ -6,6 +6,8 @@ use crate::{DOCS_START_PATH, seo};
 const VERSION_LABEL: &str = "Autumn 0.4.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
+const BRAND_MARK_1X_PATH: &str = "/static/img/autumn-mark-68.png";
+const BRAND_MARK_2X_PATH: &str = "/static/img/autumn-mark-136.png";
 const HOME_FEATURED_DOC_SLUGS: &[&str] = &["getting-started", "coming-from-other-frameworks"];
 const HOME_SECONDARY_DOC_SLUGS: &[&str] = &[
     "what-happens-when",
@@ -484,7 +486,8 @@ impl PageMeta {
 
 fn document_head(meta: &PageMeta) -> Markup {
     let canonical_url = meta.canonical_url();
-    let image_url = seo::site_image_url();
+    let image_url = seo::site_image_url(ASSET_VERSION);
+    let icon_path = versioned_asset_path(BRAND_MARK_1X_PATH);
     let stylesheet_path = versioned_asset_path("/static/css/site.css");
     let copy_code_script_path = versioned_asset_path("/static/js/copy-code.js");
 
@@ -498,7 +501,7 @@ fn document_head(meta: &PageMeta) -> Markup {
             meta name="application-name" content=(seo::SITE_NAME);
             title { (&meta.title) }
             link rel="canonical" href=(&canonical_url);
-            link rel="icon" href="/static/img/autumn-mark-68.png" type="image/png";
+            link rel="icon" href=(icon_path) type="image/png";
             link rel="sitemap" type="application/xml" href="/sitemap.xml";
             link rel="stylesheet" href=(stylesheet_path);
             meta property="og:site_name" content=(seo::SITE_NAME);
@@ -534,12 +537,16 @@ fn skip_link() -> Markup {
 }
 
 fn site_header(active: &str) -> Markup {
+    let brand_mark_1x = versioned_asset_path(BRAND_MARK_1X_PATH);
+    let brand_mark_2x = versioned_asset_path(BRAND_MARK_2X_PATH);
+    let brand_srcset = format!("{brand_mark_1x} 1x, {brand_mark_2x} 2x");
+
     html! {
         header class="site-header" {
             a class="brand" href="/" aria-label="Autumn home" {
                 img
-                    src="/static/img/autumn-mark-68.png"
-                    srcset="/static/img/autumn-mark-68.png 1x, /static/img/autumn-mark-136.png 2x"
+                    src=(brand_mark_1x)
+                    srcset=(brand_srcset)
                     alt=""
                     width="34"
                     height="34";

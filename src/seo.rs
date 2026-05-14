@@ -35,8 +35,8 @@ pub fn docs_path(slug: &str) -> String {
 }
 
 #[must_use]
-pub fn site_image_url() -> String {
-    absolute_url(SITE_IMAGE_PATH)
+pub fn site_image_url(asset_version: &str) -> String {
+    absolute_url(&format!("{SITE_IMAGE_PATH}?v={asset_version}"))
 }
 
 #[must_use]

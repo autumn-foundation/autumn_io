@@ -13,13 +13,13 @@ RUN apt-get update \
     "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64" \
     && chmod +x target/autumn/tailwindcss
 
-COPY Cargo.toml autumn.toml build.rs tailwind.config.js ./
+COPY Cargo.toml Cargo.lock autumn.toml build.rs tailwind.config.js ./
 COPY content ./content
 COPY src ./src
 COPY static ./static
 COPY migrations ./migrations
 
-RUN cargo build --release --bin autumn_io
+RUN cargo build --locked --release --bin autumn_io
 
 FROM debian:bookworm-slim AS runtime
 
