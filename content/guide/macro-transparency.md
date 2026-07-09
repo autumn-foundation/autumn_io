@@ -1,8 +1,8 @@
----
-title: "Macro Transparency"
-description: "Autumn relies on procedural macros to eliminate boilerplate. This guide shows you exactly what those macros generate so there are no surprises at runtime."
-order: 80
----
++++
+title = "Macro Transparency"
+description = "Autumn relies on procedural macros to eliminate boilerplate. This guide shows you exactly what those macros generate so there are no surprises at runtime."
+order = 80
++++
 
 # Macro Transparency
 

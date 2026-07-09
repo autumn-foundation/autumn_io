@@ -1,8 +1,8 @@
----
-title: "Signing Secrets"
-description: "Every production Autumn app that uses framework-owned signed state must have a stable, private signing secret provisioned before the server starts. This guide defines the contract, explains the dev/test defaults, and walks you through provisioning, multi-replica setup, and rotation."
-order: 160
----
++++
+title = "Signing Secrets"
+description = "Every production Autumn app that uses framework-owned signed state must have a stable, private signing secret provisioned before the server starts. This guide defines the contract, explains the dev/test defaults, and walks you through provisioning, multi-replica setup, and rotation."
+order = 160
++++
 
 # Signing Secrets
 

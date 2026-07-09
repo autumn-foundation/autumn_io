@@ -1,8 +1,8 @@
----
-title: "Realtime Channels, SSE, and htmx Broadcasts"
-description: "Autumn's ws feature provides a named channel registry for WebSockets, SSE, and server-rendered htmx fragments. Local development uses in-process tokio::broadcast channels. Multi-replica deployments can switch the same API to Redis pub/sub with autumn.toml."
-order: 170
----
++++
+title = "Realtime Channels, SSE, and htmx Broadcasts"
+description = "Autumn's ws feature provides a named channel registry for WebSockets, SSE, and server-rendered htmx fragments. Local development uses in-process tokio::broadcast channels. Multi-replica deployments can switch the same API to Redis pub/sub with autumn.toml."
+order = 170
++++
 
 # Realtime Channels, SSE, and htmx Broadcasts
 

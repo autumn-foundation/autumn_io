@@ -1,8 +1,8 @@
----
-title: "Background Jobs (`#[job]`)"
-description: "Autumn provides first-class ad-hoc background jobs for request-triggered async work."
-order: 190
----
++++
+title = "Background Jobs (`#[job]`)"
+description = "Autumn provides first-class ad-hoc background jobs for request-triggered async work."
+order = 190
++++
 
 # Background Jobs (`#[job]`)
 

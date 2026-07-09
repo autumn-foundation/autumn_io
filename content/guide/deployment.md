@@ -1,8 +1,8 @@
----
-title: "Deploying an Autumn App"
-description: "This guide walks you from a fresh autumn new project to a production-shaped container running against a real Postgres database. Every command is verbatim; no file editing is required to reach a running container."
-order: 280
----
++++
+title = "Deploying an Autumn App"
+description = "This guide walks you from a fresh autumn new project to a production-shaped container running against a real Postgres database. Every command is verbatim; no file editing is required to reach a running container."
+order = 280
++++
 
 # Deploying an Autumn App
 

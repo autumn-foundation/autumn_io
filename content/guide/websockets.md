@@ -1,8 +1,8 @@
----
-title: "WebSockets in Autumn"
-description: "Autumn exposes WebSocket endpoints through the #[ws] attribute macro, so real-time routes use the same ergonomic shape as #[get] or #[post]:"
-order: 180
----
++++
+title = "WebSockets in Autumn"
+description = "Autumn exposes WebSocket endpoints through the #[ws] attribute macro, so real-time routes use the same ergonomic shape as #[get] or #[post]:"
+order = 180
++++
 
 # WebSockets in Autumn
 

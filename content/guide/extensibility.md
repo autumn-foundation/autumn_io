@@ -1,8 +1,8 @@
----
-title: "Extensibility in Autumn"
-description: "Autumn ships with sensible defaults for everything — config loading, the database pool, the session store, the telemetry subscriber, error pages, the request cache, route handlers, middleware. None of those defaults are written in stone. The framework gives you three different mechanisms to swap them out, each suited to a different scope of change. Knowing which tier a piece of behaviour lives in is the fastest way to find the right hook."
-order: 260
----
++++
+title = "Extensibility in Autumn"
+description = "Autumn ships with sensible defaults for everything — config loading, the database pool, the session store, the telemetry subscriber, error pages, the request cache, route handlers, middleware. None of those defaults are written in stone. The framework gives you three different mechanisms to swap them out, each suited to a different scope of change. Knowing which tier a piece of behaviour lives in is the fastest way to find the right hook."
+order = 260
++++
 
 # Extensibility in Autumn
 

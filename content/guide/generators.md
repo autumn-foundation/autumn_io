@@ -1,8 +1,8 @@
----
-title: "Code Generators"
-description: "autumn generate collapses the five-file dance of \"add a resource\" into a single command. Four subcommands cover the cases you actually hit:"
-order: 240
----
++++
+title = "Code Generators"
+description = "autumn generate collapses the five-file dance of \"add a resource\" into a single command. Four subcommands cover the cases you actually hit:"
+order = 240
++++
 
 # Code Generators
 

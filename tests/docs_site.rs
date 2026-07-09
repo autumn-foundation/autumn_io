@@ -8,11 +8,11 @@ const GUIDE_START_SLUG: &str = "getting-started";
 const SITE_CSS: &str = include_str!("../static/css/site.css");
 const COPY_CODE_JS: &str = include_str!("../static/js/copy-code.js");
 
-const QUICKSTART_SOURCE: &str = r#"---
-title: Quickstart
-description: Build and run your first Autumn app.
-order: 10
----
+const QUICKSTART_SOURCE: &str = r#"+++
+title = "Quickstart"
+description = "Build and run your first Autumn app."
+order = 10
++++
 
 # Quickstart
 
@@ -27,22 +27,22 @@ autumn-web = "0.4"
 ```
 "#;
 
-const ROUTING_SOURCE: &str = r#"---
-title: Routing
-description: Define routes and path parameters.
-order: 20
----
+const ROUTING_SOURCE: &str = r#"+++
+title = "Routing"
+description = "Define routes and path parameters."
+order = 20
++++
 
 # Routing
 
 ## Path parameters
 "#;
 
-const RAW_HTML_SOURCE: &str = r#"---
-title: Raw HTML
-description: Raw HTML should not pass through docs rendering.
-order: 30
----
+const RAW_HTML_SOURCE: &str = r#"+++
+title = "Raw HTML"
+description = "Raw HTML should not pass through docs rendering."
+order = 30
++++
 
 # Raw HTML
 

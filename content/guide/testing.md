@@ -1,8 +1,8 @@
----
-title: "Integration Testing"
-description: "Autumn ships a first-party test surface (autumn_web::test) that brings Rails-grade ergonomics to Rust integration testing: one line to boot a fully-wired app, assertions that chain, and a shared Postgres testcontainer that keeps your test suite fast."
-order: 90
----
++++
+title = "Integration Testing"
+description = "Autumn ships a first-party test surface (autumn_web::test) that brings Rails-grade ergonomics to Rust integration testing: one line to boot a fully-wired app, assertions that chain, and a shared Postgres testcontainer that keeps your test suite fast."
+order = 90
++++
 
 # Integration Testing
 

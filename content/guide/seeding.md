@@ -1,8 +1,8 @@
----
-title: "Database Seeding"
-description: "Autumn ships a first-class seed convention so a freshly-migrated database can be populated with representative data in a single command."
-order: 110
----
++++
+title = "Database Seeding"
+description = "Autumn ships a first-class seed convention so a freshly-migrated database can be populated with representative data in a single command."
+order = 110
++++
 
 # Database Seeding
 

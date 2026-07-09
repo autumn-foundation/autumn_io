@@ -1,10 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::LazyLock;
 
+use autumn_web::markdown::{MarkdownError, MarkdownPage, MarkdownRegistry, MarkdownSource};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
-use serde::Deserialize;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Theme, ThemeSet};
 use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
@@ -64,27 +64,28 @@ pub struct DocRegistry {
 }
 
 impl DocRegistry {
-    pub fn from_sources<'a>(
-        sources: impl IntoIterator<Item = DocSource<'a>>,
+    pub fn from_sources(
+        sources: impl IntoIterator<Item = DocSource<'static>>,
     ) -> Result<Self, DocsError> {
-        let mut pages = Vec::new();
-        let mut seen_slugs = HashSet::new();
-
+        // Path-safety validation stays on this side: `MarkdownRegistry` does not
+        // guard against slugs that could escape routes or export paths.
+        let mut markdown_sources = Vec::new();
         for source in sources {
             if !is_valid_doc_slug(source.slug) {
                 return Err(DocsError::InvalidSlug(source.slug.to_owned()));
             }
-            if !seen_slugs.insert(source.slug.to_owned()) {
-                return Err(DocsError::DuplicateSlug(source.slug.to_owned()));
-            }
-            pages.push(parse_doc(source)?);
+            markdown_sources.push(MarkdownSource {
+                slug: source.slug,
+                content: source.markdown,
+            });
         }
 
-        pages.sort_by(|left, right| {
-            left.order
-                .cmp(&right.order)
-                .then_with(|| left.title.cmp(&right.title))
-        });
+        // The framework registry owns frontmatter parsing, deduplication, and
+        // ordering (by `order`, then `slug`).
+        let registry =
+            MarkdownRegistry::from_embedded(&markdown_sources).map_err(map_markdown_error)?;
+
+        let pages: Vec<DocPage> = registry.all_sorted().into_iter().map(render_doc_page).collect();
 
         let index_by_slug = pages
             .iter()
@@ -133,7 +134,7 @@ pub enum DocsError {
     },
     InvalidFrontmatter {
         slug: String,
-        source: serde_yaml::Error,
+        message: String,
     },
     InvalidSlug(String),
     DuplicateSlug(String),
@@ -145,8 +146,8 @@ impl Display for DocsError {
             Self::MissingFrontmatter { slug } => {
                 write!(f, "docs page `{slug}` is missing frontmatter")
             }
-            Self::InvalidFrontmatter { slug, source } => {
-                write!(f, "docs page `{slug}` has invalid frontmatter: {source}")
+            Self::InvalidFrontmatter { slug, message } => {
+                write!(f, "docs page `{slug}` has invalid frontmatter: {message}")
             }
             Self::InvalidSlug(slug) => write!(f, "docs page slug `{slug}` is not safe"),
             Self::DuplicateSlug(slug) => write!(f, "duplicate docs slug `{slug}`"),
@@ -154,20 +155,24 @@ impl Display for DocsError {
     }
 }
 
-impl Error for DocsError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::InvalidFrontmatter { source, .. } => Some(source),
-            Self::MissingFrontmatter { .. } | Self::InvalidSlug(_) | Self::DuplicateSlug(_) => None,
-        }
-    }
-}
+impl Error for DocsError {}
 
-#[derive(Deserialize)]
-struct Frontmatter {
-    title: String,
-    description: String,
-    order: u32,
+/// Translate a framework [`MarkdownError`] into this site's [`DocsError`].
+fn map_markdown_error(error: MarkdownError) -> DocsError {
+    match error {
+        MarkdownError::FrontmatterMissing { slug } => DocsError::MissingFrontmatter { slug },
+        MarkdownError::FrontmatterInvalid { slug, source } => DocsError::InvalidFrontmatter {
+            slug,
+            message: source.to_string(),
+        },
+        MarkdownError::DuplicateSlug { slug } => DocsError::DuplicateSlug(slug),
+        // `Io` and `InvalidFileName` only arise from `MarkdownRegistry::from_dir`,
+        // which this site never calls; map defensively so the enum stays covered.
+        other => DocsError::InvalidFrontmatter {
+            slug: String::new(),
+            message: other.to_string(),
+        },
+    }
 }
 
 struct RenderedMarkdown {
@@ -175,36 +180,22 @@ struct RenderedMarkdown {
     toc: Vec<TocItem>,
 }
 
-fn parse_doc(source: DocSource<'_>) -> Result<DocPage, DocsError> {
-    let normalized = source.markdown.replace("\r\n", "\n");
-    let Some(rest) = normalized.strip_prefix("---\n") else {
-        return Err(DocsError::MissingFrontmatter {
-            slug: source.slug.to_owned(),
-        });
-    };
-    let Some((frontmatter, markdown)) = rest.split_once("\n---\n") else {
-        return Err(DocsError::MissingFrontmatter {
-            slug: source.slug.to_owned(),
-        });
-    };
-
-    let frontmatter: Frontmatter = serde_yaml::from_str(frontmatter).map_err(|source_error| {
-        DocsError::InvalidFrontmatter {
-            slug: source.slug.to_owned(),
-            source: source_error,
-        }
-    })?;
-    let markdown = strip_redundant_title_heading(markdown, &frontmatter.title);
+/// Render a framework-parsed [`MarkdownPage`] into a site [`DocPage`], keeping
+/// the syntect highlighting, link-rewriting, and redundant-title-stripping
+/// pipeline that the framework renderer does not provide.
+fn render_doc_page(page: &MarkdownPage) -> DocPage {
+    let title = page.frontmatter.title.clone();
+    let markdown = strip_redundant_title_heading(&page.body, &title);
     let rendered = render_markdown(&markdown);
 
-    Ok(DocPage {
-        slug: source.slug.to_owned(),
-        title: frontmatter.title,
-        description: frontmatter.description,
-        order: frontmatter.order,
+    DocPage {
+        slug: page.slug.clone(),
+        title,
+        description: page.frontmatter.description.clone(),
+        order: page.frontmatter.order,
         html: rendered.html,
         toc: rendered.toc,
-    })
+    }
 }
 
 fn is_valid_doc_slug(slug: &str) -> bool {

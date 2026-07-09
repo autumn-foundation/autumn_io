@@ -1,8 +1,8 @@
----
-title: "Signed Webhook Intake"
-description: "Autumn can verify third-party callbacks before your handler runs. The SignedWebhook extractor preserves the exact request bytes, checks the provider signature, applies timestamp tolerance, rejects replayed delivery IDs, and then hands the verified bytes and metadata to your route."
-order: 150
----
++++
+title = "Signed Webhook Intake"
+description = "Autumn can verify third-party callbacks before your handler runs. The SignedWebhook extractor preserves the exact request bytes, checks the provider signature, applies timestamp tolerance, rejects replayed delivery IDs, and then hands the verified bytes and metadata to your route."
+order = 150
++++
 
 # Signed Webhook Intake
 

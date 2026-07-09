@@ -1,8 +1,8 @@
----
-title: "File Storage in Autumn"
-description: "Autumn ships a pluggable file-storage abstraction so apps that accept user-uploaded files (avatars, attachments, generated reports) don't have to pick an SDK, design a key scheme, or hand-roll URL signing every time."
-order: 120
----
++++
+title = "File Storage in Autumn"
+description = "Autumn ships a pluggable file-storage abstraction so apps that accept user-uploaded files (avatars, attachments, generated reports) don't have to pick an SDK, design a key scheme, or hand-roll URL signing every time."
+order = 120
++++
 
 # File Storage in Autumn
 

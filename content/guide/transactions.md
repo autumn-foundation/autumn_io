@@ -1,8 +1,8 @@
----
-title: "Transactions"
-description: "Use Db::tx when a handler must perform multiple writes atomically."
-order: 100
----
++++
+title = "Transactions"
+description = "Use Db::tx when a handler must perform multiple writes atomically."
+order = 100
++++
 
 # Transactions
 

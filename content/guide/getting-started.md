@@ -1,8 +1,8 @@
----
-title: "Getting Started with Autumn"
-description: "This guide takes you from zero to a running Autumn web app with routes, a database, HTML templates, interactive UI, and the published autumn-web 0.4 release line. Budget about 30 minutes."
-order: 10
----
++++
+title = "Getting Started with Autumn"
+description = "This guide takes you from zero to a running Autumn web app with routes, a database, HTML templates, interactive UI, and the published autumn-web 0.4 release line. Budget about 30 minutes."
+order = 10
++++
 
 # Getting Started with Autumn
 

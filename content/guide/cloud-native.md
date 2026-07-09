@@ -1,8 +1,8 @@
----
-title: "Cloud-Native Autumn"
-description: "This guide is the blunt version: Autumn can run as a single-process monolith with almost no config, but that does not automatically make every default safe for multi-replica production."
-order: 270
----
++++
+title = "Cloud-Native Autumn"
+description = "This guide is the blunt version: Autumn can run as a single-process monolith with almost no config, but that does not automatically make every default safe for multi-replica production."
+order = 270
++++
 
 # Cloud-Native Autumn
 

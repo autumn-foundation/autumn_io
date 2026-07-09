@@ -1,8 +1,8 @@
----
-title: "Coming From Other Frameworks"
-description: "If you think in Spring Boot, Django, or Rails, this guide maps the concepts you already know to their Autumn equivalents. Same ideas, different syntax."
-order: 30
----
++++
+title = "Coming From Other Frameworks"
+description = "If you think in Spring Boot, Django, or Rails, this guide maps the concepts you already know to their Autumn equivalents. Same ideas, different syntax."
+order = 30
++++
 
 # Coming From Other Frameworks
 

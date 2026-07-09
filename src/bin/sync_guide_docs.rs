@@ -60,9 +60,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let slug = file_name.trim_end_matches(".md");
 
         let output = format!(
-            "---\ntitle: {}\ndescription: {}\norder: {order}\n---\n\n{}",
-            yaml_string(&title),
-            yaml_string(&description),
+            "+++\ntitle = {}\ndescription = {}\norder = {order}\n+++\n\n{}",
+            toml_string(&title),
+            toml_string(&description),
             raw.trim_start()
         );
         fs::write(args.destination.join(format!("{slug}.md")), output)?;
@@ -235,7 +235,7 @@ fn strip_inline_markdown(value: &str) -> String {
     output.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn yaml_string(value: &str) -> String {
+fn toml_string(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{escaped}\"")
 }

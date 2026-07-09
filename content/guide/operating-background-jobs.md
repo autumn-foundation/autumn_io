@@ -1,8 +1,8 @@
----
-title: "Operating Background Jobs"
-description: "Autumn ships a built-in jobs dashboard in autumn-admin-plugin for operators who need to inspect and recover request-triggered #[job] work without adding a separate queue UI."
-order: 210
----
++++
+title = "Operating Background Jobs"
+description = "Autumn ships a built-in jobs dashboard in autumn-admin-plugin for operators who need to inspect and recover request-triggered #[job] work without adding a separate queue UI."
+order = 210
++++
 
 # Operating Background Jobs
 

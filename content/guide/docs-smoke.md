@@ -1,8 +1,8 @@
----
-title: "Docs Smoke Procedure"
-description: "This docs-smoke procedure certifies the public first-run path for the published Autumn 0.4.x line. It must use Rust 1.88.0+ and the published autumn-cli and autumn-web crates unless the release is explicitly in a pre-publish rehearsal."
-order: 290
----
++++
+title = "Docs Smoke Procedure"
+description = "This docs-smoke procedure certifies the public first-run path for the published Autumn 0.4.x line. It must use Rust 1.88.0+ and the published autumn-cli and autumn-web crates unless the release is explicitly in a pre-publish rehearsal."
+order = 290
++++
 
 # Docs Smoke Procedure
 

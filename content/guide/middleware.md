@@ -1,8 +1,8 @@
----
-title: "Middleware in Autumn"
-description: "Autumn ships a curated stack of built-in middleware — request IDs, security headers, CSRF, CORS, sessions, metrics, exception filters. That covers the boring-but-critical concerns most applications share. When you need something off the beaten path (a timeout, a rate limiter, a custom tracing span, a legacy header injector), reach for `AppBuilder::layer` and drop in any standard `tower::Layer`."
-order: 50
----
++++
+title = "Middleware in Autumn"
+description = "Autumn ships a curated stack of built-in middleware — request IDs, security headers, CSRF, CORS, sessions, metrics, exception filters. That covers the boring-but-critical concerns most applications share. When you need something off the beaten path (a timeout, a rate limiter, a custom tracing span, a legacy header injector), reach for `AppBuilder::layer` and drop in any standard `tower::Layer`."
+order = 50
++++
 
 # Middleware in Autumn
 

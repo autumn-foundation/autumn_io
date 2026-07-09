@@ -1,8 +1,8 @@
----
-title: "Mail"
-description: "Enable the optional mail subsystem when your app needs password resets, signup confirmations, or transactional notifications:"
-order: 130
----
++++
+title = "Mail"
+description = "Enable the optional mail subsystem when your app needs password resets, signup confirmations, or transactional notifications:"
+order = 130
++++
 
 # Mail
 

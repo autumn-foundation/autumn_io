@@ -1,8 +1,8 @@
----
-title: "Typed Path Helpers"
-description: "Every route macro (#[get], #[post], #[put], #[delete], #[patch]) automatically emits a companion path-helper function alongside the handler:"
-order: 60
----
++++
+title = "Typed Path Helpers"
+description = "Every route macro (#[get], #[post], #[put], #[delete], #[patch]) automatically emits a companion path-helper function alongside the handler:"
+order = 60
++++
 
 # Typed Path Helpers
 
