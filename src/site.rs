@@ -3,7 +3,7 @@ use autumn_web::{Markup, PreEscaped, html};
 use crate::docs::{DocPage, DocRegistry, render_highlighted_code_block};
 use crate::{DOCS_START_PATH, seo};
 
-const VERSION_LABEL: &str = "Autumn 0.4.0";
+const VERSION_LABEL: &str = "Autumn 0.5.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
 const BRAND_MARK_1X_PATH: &str = "/static/img/autumn-mark-68.png";
@@ -559,7 +559,7 @@ fn site_header(active: &str) -> Markup {
                     a href=(DOCS_START_PATH) { "Docs" }
                 }
                 a href=(HARVEST_DOC_PATH) { "Harvest" }
-                a href=(DOCS_START_PATH) { "0.4.0" }
+                a href=(DOCS_START_PATH) { "0.5.0" }
                 a href=(seo::GITHUB_REPOSITORY_URL) { "GitHub" }
                 a href=(seo::CRATES_IO_URL) { "crates.io" }
                 a href="/docs/deployment" { "Deploy" }

@@ -14,7 +14,7 @@ Run it in a clean temporary directory, not inside the Autumn checkout:
 
 ```bash
 rustc --version
-cargo install autumn-cli --version 0.4.0
+cargo install autumn-cli --version 0.5.0
 
 mkdir autumn-docs-smoke
 cd autumn-docs-smoke
@@ -39,7 +39,7 @@ Passing output:
 - `/health` returns:
 
   ```json
-  { "status": "ok", "version": "0.4.0" }
+  { "status": "ok", "version": "0.5.0" }
   ```
 
 Do not add `[patch.crates-io]`, path dependencies, or `cargo install --path`
@@ -58,5 +58,5 @@ were not yet available on crates.io.
 ```
 
 That rehearsal does not certify the release. The published docs-smoke must be
-rerun with `cargo install autumn-cli --version 0.4.0` and no workspace patches
+rerun with `cargo install autumn-cli --version 0.5.0` and no workspace patches
 before announcing the release.

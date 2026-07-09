@@ -45,7 +45,7 @@ Autumn ships a small CLI for project scaffolding and tooling setup. Install the
 published CLI from crates.io:
 
 ```bash
-cargo install autumn-cli --version 0.4.0
+cargo install autumn-cli --version 0.5.0
 ```
 
 For local development only, from an Autumn source checkout, install the CLI you
@@ -86,7 +86,7 @@ Sample output on a healthy system:
 🍂 autumn doctor
 
 ✅ rust_toolchain — rustc 1.88.0 ≥ MSRV 1.88.0
-✅ version_compat — autumn-cli 0.4.0 matches autumn-web 0.4.0
+✅ version_compat — autumn-cli 0.5.0 matches autumn-web 0.5.0
 ✅ autumn_toml — autumn.toml is valid
 ✅ db_connectivity — Postgres reachable at localhost:5432
 ✅ pending_migrations — no pending migrations
@@ -245,7 +245,7 @@ Probe endpoints are also available at `/live`, `/ready`, and `/startup`.
 The `/health` response looks like:
 
 ```json
-{ "status": "ok", "version": "0.4.0" }
+{ "status": "ok", "version": "0.5.0" }
 ```
 
 Press **Ctrl+C** to stop the server (graceful shutdown with a configurable
