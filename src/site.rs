@@ -6,6 +6,7 @@ use crate::docs::{DocPage, DocRegistry, SearchHit, render_highlighted_code_block
 use crate::{DOCS_START_PATH, seo};
 
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
+const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
 const VERSION_LABEL: &str = "Autumn 0.5.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
@@ -409,11 +410,27 @@ fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
 fn docs_search_box() -> Markup {
     let config = ActiveSearchConfig::new("/docs/search", DOCS_SEARCH_RESULTS_TARGET)
         .placeholder("Search the guides…")
-        .min_length(2);
+        .min_length(2)
+        // htmx toggles the `htmx-request` class on this element while the search
+        // request is in flight, revealing the loading spinner below.
+        .indicator(DOCS_SEARCH_INDICATOR_TARGET);
 
     html! {
         div class="docs-search" {
             (active_search("docs-search", "Search docs", &config))
+            // Loading indicator: hidden by default (opacity 0), shown by htmx
+            // while the request runs. Purely visual — the results container is
+            // the live region that announces updates — so it is aria-hidden.
+            // Without JavaScript htmx never adds `htmx-request`, so it stays
+            // hidden and never gets stuck for the `<noscript>` fallback.
+            div
+                id="docs-search-indicator"
+                class="docs-search-indicator htmx-indicator"
+                aria-hidden="true"
+            {
+                span class="docs-search-spinner" {}
+                span { "Searching…" }
+            }
         }
         // The active-search widget is driven by htmx; the framework serves this
         // script automatically at runtime.
