@@ -127,6 +127,206 @@ impl DocRegistry {
     }
 }
 
+/// A single search result over the bundled guide pages.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchHit {
+    pub slug: String,
+    pub title: String,
+    pub snippet: String,
+}
+
+/// Case-insensitive in-memory search index over the rendered guide pages.
+///
+/// Built once at startup from a [`DocRegistry`]; the bundled content only
+/// changes on deploy, so a plain tokenized substring match over the embedded
+/// docs needs no database or external index.
+#[derive(Clone, Debug)]
+pub struct SearchIndex {
+    entries: Vec<SearchEntry>,
+}
+
+/// Relative weights for where a query token matches within a page. Title
+/// matches rank above heading matches, which rank above body matches.
+const TITLE_MATCH_WEIGHT: u32 = 8;
+const HEADING_MATCH_WEIGHT: u32 = 4;
+const BODY_MATCH_WEIGHT: u32 = 1;
+
+/// Number of characters of context shown on either side of a snippet match.
+const SNIPPET_RADIUS: usize = 90;
+
+impl SearchIndex {
+    /// Build a search index over every page in `registry`.
+    #[must_use]
+    pub fn from_registry(registry: &DocRegistry) -> Self {
+        let entries = registry
+            .pages()
+            .iter()
+            .map(SearchEntry::from_page)
+            .collect();
+        Self { entries }
+    }
+
+    /// Return up to `limit` pages matching every whitespace-separated token in
+    /// `query`, ranked by weighted match score (title, then heading, then body).
+    #[must_use]
+    pub fn search(&self, query: &str, limit: usize) -> Vec<SearchHit> {
+        let tokens: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        if tokens.is_empty() {
+            return Vec::new();
+        }
+
+        let mut scored: Vec<(u32, &SearchEntry)> = self
+            .entries
+            .iter()
+            .filter_map(|entry| entry.score(&tokens).map(|score| (score, entry)))
+            .collect();
+
+        // Highest score first; ties broken by title so ordering stays stable.
+        scored.sort_by(|(left_score, left), (right_score, right)| {
+            right_score
+                .cmp(left_score)
+                .then_with(|| left.title.cmp(&right.title))
+        });
+
+        scored
+            .into_iter()
+            .take(limit)
+            .map(|(_, entry)| entry.to_hit(&tokens))
+            .collect()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SearchEntry {
+    slug: String,
+    title: String,
+    description: String,
+    title_lower: String,
+    headings_lower: String,
+    text: String,
+    text_lower: String,
+}
+
+impl SearchEntry {
+    fn from_page(page: &DocPage) -> Self {
+        let headings = page
+            .toc
+            .iter()
+            .map(|item| item.title.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let text = html_to_plain_text(&page.html);
+
+        Self {
+            slug: page.slug.clone(),
+            title: page.title.clone(),
+            description: page.description.clone(),
+            title_lower: page.title.to_lowercase(),
+            headings_lower: headings.to_lowercase(),
+            text_lower: text.to_lowercase(),
+            text,
+        }
+    }
+
+    /// Sum the match weights for every token, or return [`None`] when any token
+    /// is missing from the page (all tokens must match for a page to appear).
+    fn score(&self, tokens: &[String]) -> Option<u32> {
+        let mut total = 0;
+        for token in tokens {
+            let mut token_score = 0;
+            if self.title_lower.contains(token) {
+                token_score += TITLE_MATCH_WEIGHT;
+            }
+            if self.headings_lower.contains(token) {
+                token_score += HEADING_MATCH_WEIGHT;
+            }
+            if self.text_lower.contains(token) {
+                token_score += BODY_MATCH_WEIGHT;
+            }
+            if token_score == 0 {
+                return None;
+            }
+            total += token_score;
+        }
+        Some(total)
+    }
+
+    fn to_hit(&self, tokens: &[String]) -> SearchHit {
+        SearchHit {
+            slug: self.slug.clone(),
+            title: self.title.clone(),
+            snippet: self.snippet(tokens),
+        }
+    }
+
+    /// Build a context snippet around the earliest body match, falling back to
+    /// the page description when the query only matched the title or headings.
+    fn snippet(&self, tokens: &[String]) -> String {
+        match tokens
+            .iter()
+            .filter_map(|token| self.text_lower.find(token))
+            .min()
+        {
+            Some(index) => build_snippet(&self.text, index, SNIPPET_RADIUS),
+            None => self.description.clone(),
+        }
+    }
+}
+
+/// Strip HTML tags and decode the handful of entities the renderer emits,
+/// collapsing runs of whitespace so matching and snippets stay clean.
+fn html_to_plain_text(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    let mut pending_space = false;
+
+    for char in html.chars() {
+        match char {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                pending_space = true;
+            }
+            _ if in_tag => {}
+            char if char.is_whitespace() => pending_space = true,
+            char => {
+                if pending_space && !text.is_empty() {
+                    text.push(' ');
+                }
+                pending_space = false;
+                text.push(char);
+            }
+        }
+    }
+
+    decode_html_entities(&text)
+}
+
+fn decode_html_entities(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        // `&amp;` is decoded last so an escaped entity is only decoded once.
+        .replace("&amp;", "&")
+}
+
+fn build_snippet(text: &str, match_index: usize, radius: usize) -> String {
+    let start = text.floor_char_boundary(match_index.saturating_sub(radius));
+    let end = text.ceil_char_boundary(match_index.saturating_add(radius));
+
+    let mut snippet = String::new();
+    if start > 0 {
+        snippet.push('…');
+    }
+    snippet.push_str(text[start..end].trim());
+    if end < text.len() {
+        snippet.push('…');
+    }
+    snippet
+}
+
 #[derive(Debug)]
 pub enum DocsError {
     MissingFrontmatter {
@@ -703,5 +903,64 @@ mod tests {
 
         assert!(rendered.contains(r#"<span class="code-language">Evil&lt;script&gt;</span>"#));
         assert!(!rendered.contains(r#"<span class="code-language">Evil<script></span>"#));
+    }
+
+    fn sample_registry() -> DocRegistry {
+        DocRegistry::from_sources([
+            DocSource::new(
+                "widgets",
+                "+++\ntitle = \"Widget Guide\"\ndescription = \"Working with widgets\"\norder = 1\n+++\n\n# Widget Guide\n\n## Zebra handling\n\nThe widget guide explains zebra handling in production.\n",
+            ),
+            DocSource::new(
+                "jobs",
+                "+++\ntitle = \"Background Jobs\"\ndescription = \"Queue and run work\"\norder = 2\n+++\n\n# Background Jobs\n\nJobs discuss giraffes and queues at length.\n",
+            ),
+        ])
+        .expect("sample registry builds")
+    }
+
+    #[test]
+    fn search_finds_page_by_body_term() {
+        let index = SearchIndex::from_registry(&sample_registry());
+
+        let hits = index.search("giraffes", 20);
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].slug, "jobs");
+        assert!(hits[0].snippet.contains("giraffes"));
+    }
+
+    #[test]
+    fn search_ranks_title_matches_above_body_matches() {
+        let index = SearchIndex::from_registry(&sample_registry());
+
+        // "widget" appears in the "Widget Guide" title and inside the jobs body
+        // only via unrelated words, so the titled page must come first.
+        let hits = index.search("widget", 20);
+
+        assert_eq!(hits.first().map(|hit| hit.slug.as_str()), Some("widgets"));
+    }
+
+    #[test]
+    fn search_requires_every_token_to_match() {
+        let index = SearchIndex::from_registry(&sample_registry());
+
+        assert!(index.search("zebra giraffes", 20).is_empty());
+        assert_eq!(index.search("zebra handling", 20).len(), 1);
+    }
+
+    #[test]
+    fn empty_query_returns_no_hits() {
+        let index = SearchIndex::from_registry(&sample_registry());
+
+        assert!(index.search("", 20).is_empty());
+        assert!(index.search("   ", 20).is_empty());
+    }
+
+    #[test]
+    fn html_to_plain_text_strips_tags_and_decodes_entities() {
+        let text = html_to_plain_text("<p>Tom &amp; Jerry &lt;code&gt;</p>");
+
+        assert_eq!(text, "Tom & Jerry <code>");
     }
 }

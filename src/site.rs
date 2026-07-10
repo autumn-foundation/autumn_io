@@ -1,7 +1,11 @@
+use autumn_web::prelude::HTMX_JS_PATH;
+use autumn_web::widgets::{ActiveSearchConfig, active_search, active_search_empty_state};
 use autumn_web::{Markup, PreEscaped, html};
 
-use crate::docs::{DocPage, DocRegistry, render_highlighted_code_block};
+use crate::docs::{DocPage, DocRegistry, SearchHit, render_highlighted_code_block};
 use crate::{DOCS_START_PATH, seo};
+
+const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 
 const VERSION_LABEL: &str = "Autumn 0.5.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
@@ -372,6 +376,7 @@ fn docs_navigation_pages(registry: &DocRegistry) -> Vec<&DocPage> {
 fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
     html! {
         aside id="docs-navigation" class="docs-sidebar" aria-label="Docs navigation" {
+            (docs_search_box())
             nav {
                 p class="sidebar-label" { "Docs" }
                 @for group in DOCS_NAV_GROUPS {
@@ -396,6 +401,93 @@ fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+fn docs_search_box() -> Markup {
+    let config = ActiveSearchConfig::new("/docs/search", DOCS_SEARCH_RESULTS_TARGET)
+        .placeholder("Search the guides…")
+        .min_length(2);
+
+    html! {
+        div class="docs-search" {
+            (active_search("docs-search", "Search docs", &config))
+        }
+        // The active-search widget is driven by htmx; the framework serves this
+        // script automatically at runtime.
+        script src=(HTMX_JS_PATH) defer {}
+    }
+}
+
+/// Render the htmx results partial returned by the docs search handler.
+pub fn render_docs_search_results(query: &str, hits: &[SearchHit]) -> Markup {
+    if hits.is_empty() {
+        return active_search_empty_state(&format!("No guides match “{query}”."));
+    }
+
+    html! {
+        p class="docs-search-summary" {
+            (format!(
+                "{} result{} for “{}”",
+                hits.len(),
+                if hits.len() == 1 { "" } else { "s" },
+                query
+            ))
+        }
+        ul class="docs-search-results-list" {
+            @for hit in hits {
+                li class="docs-search-result" {
+                    a class="docs-search-result-link" href=(seo::docs_path(&hit.slug)) {
+                        span class="docs-search-result-title" { (&hit.title) }
+                        @if !hit.snippet.is_empty() {
+                            span class="docs-search-result-snippet" { (&hit.snippet) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Render a full docs page wrapping the search results, used for non-htmx
+/// requests such as the widget's `<noscript>` GET-form fallback.
+pub fn render_docs_search_page(registry: &DocRegistry, query: &str, results: Markup) -> Markup {
+    html! {
+        (doctype())
+        html lang="en" {
+            (document_head(&PageMeta::noindex(
+                "Search the docs | Autumn",
+                "Search the Autumn documentation guides.",
+                "/docs/search",
+            )))
+            body class="site-shell docs-shell" {
+                (skip_link())
+                (site_header("docs"))
+                div class="docs-layout" {
+                    (docs_sidebar(registry, None))
+                    main id="main-content" class="docs-main" tabindex="-1" aria-labelledby="page-title" {
+                        article class="docs-article" aria-labelledby="page-title" {
+                            header class="article-header" {
+                                p class="eyebrow" { "Search" }
+                                h1 id="page-title" { "Search the guides" }
+                                @if query.is_empty() {
+                                    p { "Enter a search term to find matching guides." }
+                                } @else {
+                                    p { "Results for “" (query) "”." }
+                                }
+                                a class="docs-mobile-nav-link" href="#docs-navigation" {
+                                    "Browse docs"
+                                }
+                            }
+                            div class="article-body" {
+                                (results)
+                            }
+                        }
+                    }
+                }
+                (site_footer())
             }
         }
     }
