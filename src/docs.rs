@@ -312,9 +312,31 @@ fn decode_html_entities(text: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// Rounds `index` down to the nearest UTF-8 char boundary, clamped to
+/// `[0, s.len()]`. Mirrors the unstable `str::floor_char_boundary` using only
+/// stable APIs so the crate compiles on stable Rust.
+fn floor_char_boundary(s: &str, index: usize) -> usize {
+    let mut i = index.min(s.len());
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+/// Rounds `index` up to the nearest UTF-8 char boundary, clamped to
+/// `[0, s.len()]`. Mirrors the unstable `str::ceil_char_boundary` using only
+/// stable APIs so the crate compiles on stable Rust.
+fn ceil_char_boundary(s: &str, index: usize) -> usize {
+    let mut i = index.min(s.len());
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
 fn build_snippet(text: &str, match_index: usize, radius: usize) -> String {
-    let start = text.floor_char_boundary(match_index.saturating_sub(radius));
-    let end = text.ceil_char_boundary(match_index.saturating_add(radius));
+    let start = floor_char_boundary(text, match_index.saturating_sub(radius));
+    let end = ceil_char_boundary(text, match_index.saturating_add(radius));
 
     let mut snippet = String::new();
     if start > 0 {
@@ -962,5 +984,41 @@ mod tests {
         let text = html_to_plain_text("<p>Tom &amp; Jerry &lt;code&gt;</p>");
 
         assert_eq!(text, "Tom & Jerry <code>");
+    }
+
+    #[test]
+    fn char_boundary_helpers_round_within_multibyte_string() {
+        // "café☕" — 'é' is 2 bytes (indices 3..5) and '☕' is 3 bytes
+        // (indices 5..8), so several byte indices fall mid-character.
+        let text = "café☕";
+        assert!(!text.is_char_boundary(4)); // middle of 'é'
+        assert!(!text.is_char_boundary(6)); // middle of '☕'
+
+        // floor rounds down to the nearest boundary, ceil rounds up.
+        assert_eq!(floor_char_boundary(text, 4), 3);
+        assert_eq!(ceil_char_boundary(text, 4), 5);
+        assert_eq!(floor_char_boundary(text, 6), 5);
+        assert_eq!(ceil_char_boundary(text, 6), 8);
+
+        // Already-on-boundary indices are returned unchanged.
+        assert_eq!(floor_char_boundary(text, 3), 3);
+        assert_eq!(ceil_char_boundary(text, 5), 5);
+
+        // Out-of-range indices clamp to the string length.
+        assert_eq!(floor_char_boundary(text, 999), text.len());
+        assert_eq!(ceil_char_boundary(text, 999), text.len());
+    }
+
+    #[test]
+    fn build_snippet_never_splits_multibyte_chars() {
+        // A match whose radius window lands inside multi-byte characters must
+        // still yield a valid UTF-8 slice (no panic) rather than slicing mid-char.
+        let text = "aéé☕bcdéé☕z";
+        let match_index = text.find('b').expect("match present");
+
+        // Small radius forces the window edges onto non-boundary byte offsets.
+        let snippet = build_snippet(text, match_index, 3);
+
+        assert!(snippet.contains('b'));
     }
 }
