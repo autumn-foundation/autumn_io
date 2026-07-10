@@ -11,10 +11,15 @@ pub mod export;
 pub mod seo;
 pub mod site;
 
-use docs::{DocRegistry, DocSource, DocsError};
+use serde::Deserialize;
+
+use docs::{DocRegistry, DocSource, DocsError, SearchIndex};
 
 pub const DOCS_START_SLUG: &str = "getting-started";
 pub const DOCS_START_PATH: &str = "/docs/getting-started";
+
+/// Maximum number of guide results returned by the docs search handler.
+const DOCS_SEARCH_RESULT_LIMIT: usize = 20;
 
 macro_rules! guide_doc {
     ($slug:literal) => {
@@ -106,6 +111,16 @@ pub fn site_docs() -> Result<&'static DocRegistry, &'static DocsError> {
     }
 }
 
+/// In-memory search index over the embedded guides, built once from
+/// [`site_docs`]. `None` when the docs failed to load.
+static SITE_SEARCH_INDEX: LazyLock<Option<SearchIndex>> =
+    LazyLock::new(|| site_docs().ok().map(SearchIndex::from_registry));
+
+#[must_use]
+pub fn site_search_index() -> Option<&'static SearchIndex> {
+    SITE_SEARCH_INDEX.as_ref()
+}
+
 /// Optimize HTTP responses for repeat visitors.
 ///
 /// Framework static HTML routing is intentionally not registered for this app
@@ -163,6 +178,38 @@ pub async fn docs_page(Path(slug): Path<String>) -> Response {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DocsSearchQuery {
+    #[serde(default)]
+    q: String,
+}
+
+/// Search the embedded guides and return an htmx results partial, or a full
+/// docs page when reached directly (e.g. the widget's `<noscript>` GET form).
+#[get("/docs/search")]
+pub async fn docs_search(hx: HxRequest, Query(query): Query<DocsSearchQuery>) -> Response {
+    let term = query.q.trim();
+
+    let results = match site_search_index() {
+        Some(index) if !term.is_empty() => {
+            let hits = index.search(term, DOCS_SEARCH_RESULT_LIMIT);
+            site::render_docs_search_results(term, &hits)
+        }
+        Some(_) => active_search_empty_state("Type to search the guides."),
+        None => active_search_empty_state("Search is unavailable right now."),
+    };
+
+    if hx.is_htmx {
+        return results.into_response();
+    }
+
+    // Non-htmx request (no-JS fallback): wrap the results in the docs layout.
+    match site_docs() {
+        Ok(registry) => site::render_docs_search_page(registry, term, results).into_response(),
+        Err(error) => docs_load_error_response(error),
+    }
+}
+
 #[get("/robots.txt")]
 pub async fn robots_txt() -> Response {
     (
@@ -195,7 +242,14 @@ pub async fn sitemap_xml() -> Response {
 
 #[must_use]
 pub fn app_routes() -> Vec<autumn_web::Route> {
-    routes![index, docs_index, docs_page, robots_txt, sitemap_xml]
+    routes![
+        index,
+        docs_index,
+        docs_search,
+        docs_page,
+        robots_txt,
+        sitemap_xml
+    ]
 }
 
 fn docs_load_error_response(error: &DocsError) -> Response {
