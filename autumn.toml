@@ -9,6 +9,20 @@ port = 3000
 [profile.prod.server]
 host = "0.0.0.0"
 
+# Production hardening for Autumn 0.5.0's prod fail-fast.
+# Under AUTUMN_PROFILE=prod the framework refuses to start unless BOTH a signing
+# secret and a non-empty trusted-hosts allow-list are configured.
+#
+# The trusted-hosts list is non-secret and is committed here. The signing secret
+# MUST NOT be committed — set it at runtime as a Fly secret:
+#   fly secrets set AUTUMN_SECURITY__SIGNING_SECRET=$(openssl rand -hex 32) -a autumn-io
+# (read from the AUTUMN_SECURITY__SIGNING_SECRET env var at startup).
+#
+# localhost/127.0.0.1/::1 are auto-trusted in non-prod profiles, so this list
+# does not affect local development or the test harness.
+[security.trusted_hosts]
+hosts = ["autumn-web.app", "www.autumn-web.app", "autumn-io.fly.dev"]
+
 [log]
 level = "info"
 # format = "Auto"  # Auto | Pretty | Json
