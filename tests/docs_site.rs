@@ -149,6 +149,11 @@ fn rendered_docs_page_contains_nav_toc_and_copyable_code_block() {
 
     assert!(html.contains("docs-sidebar"));
     assert!(html.contains(r#"<aside id="docs-navigation" class="docs-sidebar""#));
+    // The search box wires an htmx loading indicator: the input targets the
+    // indicator via hx-indicator and the indicator element renders in-place.
+    assert!(html.contains(r##"hx-indicator="#docs-search-indicator""##));
+    assert!(html.contains(r#"id="docs-search-indicator""#));
+    assert!(html.contains("docs-search-spinner"));
     assert!(html.contains(r##"href="#docs-navigation""##));
     assert!(html.contains("href=\"/docs/routing\""));
     assert!(html.contains("docs-toc"));
