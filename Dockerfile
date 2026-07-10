@@ -19,6 +19,16 @@ COPY src ./src
 COPY static ./static
 COPY migrations ./migrations
 
+# Serialize compilation to keep peak build memory under the Fly builder's RAM
+# limit. The default parallelism (= number of CPUs) runs several rustc
+# processes at once; memory-heavy crates compiling concurrently (e.g. syn and
+# syntect alongside proc-macro crates like autumn-macros) push peak memory over
+# the limit and the OOM killer sends SIGKILL. Building one crate at a time gives
+# the single heaviest crate maximum memory headroom. This trades build time for
+# lower peak memory; it does not affect the optimization level of the runtime
+# binary.
+ENV CARGO_BUILD_JOBS=1
+
 RUN cargo build --locked --release --bin autumn_io
 
 FROM debian:bookworm-slim AS runtime
