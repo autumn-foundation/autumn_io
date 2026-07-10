@@ -1,8 +1,8 @@
----
-title: "Accessibility in Autumn"
-description: "Autumn is designed to produce WCAG 2.1 AA-compliant HTML by default. This guide explains the built-in helpers, the patterns recommended for htmx-driven pages, and how to integrate autumn check --a11y into your CI pipeline."
-order: 40
----
++++
+title = "Accessibility in Autumn"
+description = "Autumn is designed to produce WCAG 2.1 AA-compliant HTML by default. This guide explains the built-in helpers, the patterns recommended for htmx-driven pages, and how to integrate autumn check --a11y into your CI pipeline."
+order = 40
++++
 
 # Accessibility in Autumn
 

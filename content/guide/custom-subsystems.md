@@ -1,8 +1,8 @@
----
-title: "Replacing Autumn subsystems with custom impls"
-description: "This guide is the per-trait how-to for tier-1 subsystem replacement. For the bigger picture — when to reach for tier-1 vs tier-2 (#[intercept]) vs tier-3 (Plugin) — see `extensibility.md`."
-order: 250
----
++++
+title = "Replacing Autumn subsystems with custom impls"
+description = "This guide is the per-trait how-to for tier-1 subsystem replacement. For the bigger picture — when to reach for tier-1 vs tier-2 (#[intercept]) vs tier-3 (Plugin) — see `extensibility.md`."
+order = 250
++++
 
 # Replacing Autumn subsystems with custom impls
 

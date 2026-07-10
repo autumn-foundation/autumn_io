@@ -1,8 +1,8 @@
----
-title: "Extensibility in Autumn"
-description: "Autumn ships with sensible defaults for everything — config loading, the database pool, the session store, the telemetry subscriber, error pages, the request cache, route handlers, middleware. None of those defaults are written in stone. The framework gives you three different mechanisms to swap them out, each suited to a different scope of change. Knowing which tier a piece of behaviour lives in is the fastest way to find the right hook."
-order: 260
----
++++
+title = "Extensibility in Autumn"
+description = "Autumn ships with sensible defaults for everything — config loading, the database pool, the session store, the telemetry subscriber, error pages, the request cache, route handlers, middleware. None of those defaults are written in stone. The framework gives you three different mechanisms to swap them out, each suited to a different scope of change. Knowing which tier a piece of behaviour lives in is the fastest way to find the right hook."
+order = 260
++++
 
 # Extensibility in Autumn
 
@@ -200,3 +200,32 @@ issue — adding one is mechanical and we generally welcome the patch.
   `with_config_loader`.
 - [`autumn/src/plugin.rs`](../../autumn/src/plugin.rs) — `Plugin` trait
   documentation, including the naming conventions for distributed plugins.
+
+---
+
+## Forwarded headers in plugins
+
+Plugin middleware that reads `X-Forwarded-*` headers directly is one PR away
+from being CVE-shaped. Autumn centralises all forwarding-header trust logic in
+a single `[security.trusted_proxies]` policy that every built-in middleware
+honours.
+
+> **Rule: never read `X-Forwarded-*` directly. Use `ClientAddr`, `ClientHost`,
+> or `ClientScheme` from `autumn_web::extract`.**
+
+```rust,no_run
+use autumn_web::extract::ClientAddr;
+use autumn_web::prelude::*;
+
+// Good: uses resolver-validated IP
+#[get("/rate-check")]
+async fn rate_check(ClientAddr(ip): ClientAddr) -> String {
+    format!("your ip: {ip}")
+}
+
+// Bad: trusts attacker-controlled header
+// let ip = req.headers().get("x-forwarded-for").unwrap(); // ← DO NOT DO THIS
+```
+
+See [middleware.md](./middleware.md#forwarded-header-client-identity-plugin-author-guidance)
+for the full guide.

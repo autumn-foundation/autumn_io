@@ -1,8 +1,8 @@
----
-title: "`autumn routes` — Route Inspection CLI"
-description: "autumn routes prints every mounted route — method, path, handler name, registration source, and active middleware — without starting the HTTP server or connecting to a database."
-order: 70
----
++++
+title = "`autumn routes` — Route Inspection CLI"
+description = "autumn routes prints every mounted route — method, path, handler name, registration source, and active middleware — without starting the HTTP server or connecting to a database."
+order = 70
++++
 
 # `autumn routes` — Route Inspection CLI
 

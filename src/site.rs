@@ -3,7 +3,7 @@ use autumn_web::{Markup, PreEscaped, html};
 use crate::docs::{DocPage, DocRegistry, render_highlighted_code_block};
 use crate::{DOCS_START_PATH, seo};
 
-const VERSION_LABEL: &str = "Autumn 0.4.0";
+const VERSION_LABEL: &str = "Autumn 0.5.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
 const BRAND_MARK_1X_PATH: &str = "/static/img/autumn-mark-68.png";
@@ -42,6 +42,11 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "path-helpers",
             "routes-cli",
             "macro-transparency",
+            "compression",
+            "conditional-get",
+            "pagination",
+            "active-search-and-autocomplete",
+            "wizards",
         ],
     },
     DocsNavGroup {
@@ -55,6 +60,21 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "authorization",
             "signed-webhooks",
             "signing-secrets",
+            "hooks-and-transactions",
+            "repositories",
+            "migrations",
+            "soft-delete",
+            "state-machines",
+            "version-history",
+            "full-text-search",
+            "storage-variants",
+            "attribute-encryption",
+            "oauth",
+            "step-up-authentication",
+            "credentials",
+            "bot-protection",
+            "idempotency",
+            "logging-pii",
         ],
     },
     DocsNavGroup {
@@ -67,6 +87,40 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "operating-background-jobs",
             "scheduled-multi-replica",
             "admin",
+            "presence",
+        ],
+    },
+    DocsNavGroup {
+        label: "APIs and integrations",
+        slugs: &[
+            "api-versioning",
+            "outbound-http",
+            "outbound-webhooks",
+            "mcp",
+        ],
+    },
+    DocsNavGroup {
+        label: "Delivery and experiments",
+        slugs: &["feature-flags", "experiments", "runtime-config"],
+    },
+    DocsNavGroup {
+        label: "Operations and reliability",
+        slugs: &[
+            "resilience",
+            "health-indicators",
+            "metrics-sources",
+            "error-reporting",
+            "maintenance-mode",
+            "staged-deploys",
+        ],
+    },
+    DocsNavGroup {
+        label: "Developer experience",
+        slugs: &[
+            "dev-error-overlay",
+            "dev-inspector",
+            "dev-loop-latency",
+            "system-tests",
         ],
     },
     DocsNavGroup {
@@ -559,7 +613,7 @@ fn site_header(active: &str) -> Markup {
                     a href=(DOCS_START_PATH) { "Docs" }
                 }
                 a href=(HARVEST_DOC_PATH) { "Harvest" }
-                a href=(DOCS_START_PATH) { "0.4.0" }
+                a href=(DOCS_START_PATH) { "0.5.0" }
                 a href=(seo::GITHUB_REPOSITORY_URL) { "GitHub" }
                 a href=(seo::CRATES_IO_URL) { "crates.io" }
                 a href="/docs/deployment" { "Deploy" }

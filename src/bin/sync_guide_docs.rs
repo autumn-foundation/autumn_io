@@ -39,6 +39,47 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("deployment.md", 280),
     ("docs-smoke.md", 290),
     ("i18n.md", 300),
+    // New in Autumn 0.5.0. Order weights continue the existing scheme (tens),
+    // grouped by the sidebar clusters they are wired into so registry sort
+    // tracks navigation order.
+    ("compression.md", 310),
+    ("conditional-get.md", 320),
+    ("pagination.md", 330),
+    ("active-search-and-autocomplete.md", 340),
+    ("wizards.md", 350),
+    ("hooks-and-transactions.md", 360),
+    ("repositories.md", 370),
+    ("migrations.md", 380),
+    ("soft-delete.md", 390),
+    ("state-machines.md", 400),
+    ("version-history.md", 410),
+    ("full-text-search.md", 420),
+    ("storage-variants.md", 430),
+    ("attribute-encryption.md", 440),
+    ("oauth.md", 450),
+    ("step-up-authentication.md", 460),
+    ("credentials.md", 470),
+    ("bot-protection.md", 480),
+    ("idempotency.md", 490),
+    ("logging-pii.md", 500),
+    ("presence.md", 510),
+    ("api-versioning.md", 520),
+    ("outbound-http.md", 530),
+    ("outbound-webhooks.md", 540),
+    ("mcp.md", 550),
+    ("feature-flags.md", 560),
+    ("experiments.md", 570),
+    ("runtime-config.md", 580),
+    ("resilience.md", 590),
+    ("health-indicators.md", 600),
+    ("metrics-sources.md", 610),
+    ("error-reporting.md", 620),
+    ("maintenance-mode.md", 630),
+    ("staged-deploys.md", 640),
+    ("dev-error-overlay.md", 650),
+    ("dev-inspector.md", 660),
+    ("dev-loop-latency.md", 670),
+    ("system-tests.md", 680),
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -60,9 +101,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let slug = file_name.trim_end_matches(".md");
 
         let output = format!(
-            "---\ntitle: {}\ndescription: {}\norder: {order}\n---\n\n{}",
-            yaml_string(&title),
-            yaml_string(&description),
+            "+++\ntitle = {}\ndescription = {}\norder = {order}\n+++\n\n{}",
+            toml_string(&title),
+            toml_string(&description),
             raw.trim_start()
         );
         fs::write(args.destination.join(format!("{slug}.md")), output)?;
@@ -235,7 +276,7 @@ fn strip_inline_markdown(value: &str) -> String {
     output.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn yaml_string(value: &str) -> String {
+fn toml_string(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{escaped}\"")
 }

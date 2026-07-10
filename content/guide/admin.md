@@ -1,8 +1,8 @@
----
-title: "Admin Panel"
-description: "Autumn ships a first-party autumn-admin-plugin that gives you a server-rendered CRUD back-office at /admin (configurable). The autumn generate admin command turns an existing #[model] into a fully-wired AdminModel without hand-writing the adapter."
-order: 230
----
++++
+title = "Admin Panel"
+description = "Autumn ships a first-party autumn-admin-plugin that gives you a server-rendered CRUD back-office at /admin (configurable). The autumn generate admin command turns an existing #[model] into a fully-wired AdminModel without hand-writing the adapter."
+order = 230
++++
 
 # Admin Panel
 

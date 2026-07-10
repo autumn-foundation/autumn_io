@@ -1,8 +1,8 @@
----
-title: "Record-Level Authorization"
-description: "#[secured] answers \"are you in?\" — is this request authenticated, and is the user in one of the listed roles? It does not answer \"are you allowed to act on this specific record?\" That is the question every multi-user CRUD app has to answer at every write endpoint, and it is what Autumn's Policy trait, the #[authorize] macro, and the policy = argument on #[repository] exist for."
-order: 140
----
++++
+title = "Record-Level Authorization"
+description = "#[secured] answers \"are you in?\" — is this request authenticated, and is the user in one of the listed roles? It does not answer \"are you allowed to act on this specific record?\" That is the question every multi-user CRUD app has to answer at every write endpoint, and it is what Autumn's Policy trait, the #[authorize] macro, and the policy = argument on #[repository] exist for."
+order = 140
++++
 
 # Record-Level Authorization
 

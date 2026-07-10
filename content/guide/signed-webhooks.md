@@ -1,8 +1,8 @@
----
-title: "Signed Webhook Intake"
-description: "Autumn can verify third-party callbacks before your handler runs. The SignedWebhook extractor preserves the exact request bytes, checks the provider signature, applies timestamp tolerance, rejects replayed delivery IDs, and then hands the verified bytes and metadata to your route."
-order: 150
----
++++
+title = "Signed Webhook Intake"
+description = "Autumn can verify third-party callbacks before your handler runs. The SignedWebhook extractor preserves the exact request bytes, checks the provider signature, applies timestamp tolerance, rejects replayed delivery IDs, and then hands the verified bytes and metadata to your route."
+order = 150
++++
 
 # Signed Webhook Intake
 
@@ -163,5 +163,5 @@ projection, enqueue a `#[job]` after verification and return promptly. Jobs are
 recommended for follow-up processing, but they are not required to accept a
 signed webhook.
 
-See `examples/signed-webhooks/` for runnable fixture tests covering valid,
+See `examples/reddit-clone/src/routes/webhooks.rs` for runnable fixture tests covering valid,
 tampered-body, stale-timestamp, bad-signature, and duplicate-delivery cases.

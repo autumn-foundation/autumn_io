@@ -1,8 +1,8 @@
----
-title: "Multi-Replica Scheduled Tasks"
-description: "#[scheduled] defaults to the original in-process behavior: every running replica owns its own timer. That is convenient in development and preserves the local-compatible behavior of earlier releases, but it is not safe for tasks that send emails, call paid APIs, expire tokens, charge cards, or mutate shared state."
-order: 220
----
++++
+title = "Multi-Replica Scheduled Tasks"
+description = "#[scheduled] defaults to the original in-process behavior: every running replica owns its own timer. That is convenient in development and preserves the local-compatible behavior of earlier releases, but it is not safe for tasks that send emails, call paid APIs, expire tokens, charge cards, or mutate shared state."
+order = 220
++++
 
 # Multi-Replica Scheduled Tasks
 

@@ -1,8 +1,8 @@
----
-title: Autumn Harvest
-description: Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.3.0.
-order: 25
----
++++
+title = "Autumn Harvest"
+description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.3.0."
+order = 25
++++
 
 # Autumn Harvest
 

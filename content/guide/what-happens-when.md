@@ -1,8 +1,8 @@
----
-title: "What Happens When..."
-description: "The questions you have at hour two, not hour one. This guide covers the failure modes, edge cases, and \"what if\" scenarios that the getting-started guide doesn't cover."
-order: 20
----
++++
+title = "What Happens When..."
+description = "The questions you have at hour two, not hour one. This guide covers the failure modes, edge cases, and \"what if\" scenarios that the getting-started guide doesn't cover."
+order = 20
++++
 
 # What Happens When...
 
