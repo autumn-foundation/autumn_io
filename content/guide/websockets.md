@@ -38,7 +38,7 @@ async fn main() {
 Enable the feature in your `Cargo.toml`:
 
 ```toml
-autumn-web = { version = "0.4", features = ["ws"] }
+autumn-web = { version = "0.5", features = ["ws"] }
 ```
 
 ## The two-function pattern
@@ -142,9 +142,9 @@ multi-replica fan-out, and channel actuator metrics, see
 
 ## Testing
 
-See `examples/ws-echo` for a runnable minimal server and
-`autumn/tests/ws_integration.rs` for end-to-end tests that drive real
-WebSocket traffic against an Autumn app using `tokio-tungstenite`.
+See `examples/reddit-clone/src/routes/live.rs` for a runnable WebSocket live-feed
+implementation and `autumn/tests/ws_integration.rs` for end-to-end tests that
+drive real WebSocket traffic against an Autumn app using `tokio-tungstenite`.
 
 ## Out of scope
 

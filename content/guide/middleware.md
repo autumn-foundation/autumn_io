@@ -62,17 +62,31 @@ On a request's **ingress** path (outermost → innermost), layers run in this
 order:
 
 ```
-  Metrics
-    └─ ExceptionFilter
-         └─ ErrorPageContext
-              └─ Session
-                   └─ SecurityHeaders
-                        └─ RequestId
-                             └─ [your .layer() calls, first = outermost]
-                                  └─ CSRF
-                                       └─ CORS
-                                            └─ route handler
+  AccessLog (fallback)
+    └─ Metrics
+         └─ ExceptionFilter
+              └─ ErrorPageContext
+                   └─ Session
+                        └─ SecurityHeaders
+                             └─ RequestId
+                                  └─ LogContext
+                                       └─ AccessLog (primary)
+                                            └─ [your .layer() calls, first = outermost]
+                                                 └─ CSRF
+                                                      └─ CORS
+                                                           └─ route handler
 ```
+
+`LogContext` establishes the request-scoped log context (request id
+correlation for every log line); it sits inside `RequestId` so the id is
+always available, and outside your layers so events they emit are correlated.
+The structured per-request access line (`autumn::access`) is emitted by the
+**primary** `AccessLog` layer just inside `LogContext`, so the line is
+correlated to the request span and carries the request id. Responses that
+short-circuit above it — session-store outages, and in production startup
+503s, pre-built static page hits, and the MCP endpoint — are caught by the
+outermost **fallback** `AccessLog`, which logs them with the wire status (and
+without a request id, since `RequestIdLayer` never ran for them).
 
 The ordering guarantee that matters most: **user layers run inside
 `RequestIdLayer` on ingress**, so every `.layer()` you register can read the
@@ -186,6 +200,10 @@ header for downstream services.
 
 - [`AppBuilder::layer`] — method reference and trait bounds.
 - [`AppBuilder::scoped`] — the group-scoped variant.
+- [Error reporting guide](./error-reporting.md) — catch handler panics and ship
+  panics + 5xx errors to a pluggable reporter (Sentry/Slack/custom). The
+  panic-aware promotion of the `ExceptionFilter` concept shown in the ordering
+  diagram above.
 - [Extensibility guide](./extensibility.md) — picks the right tier for your
   extension point.
 
@@ -194,3 +212,47 @@ header for downstream services.
 [`tower::Layer`]: https://docs.rs/tower/latest/tower/trait.Layer.html
 [`tower::ServiceBuilder`]: https://docs.rs/tower/latest/tower/struct.ServiceBuilder.html
 [`axum::error_handling::HandleErrorLayer`]: https://docs.rs/axum/latest/axum/error_handling/struct.HandleErrorLayer.html
+
+---
+
+## Forwarded-header client identity (plugin author guidance)
+
+When writing middleware that needs the real client IP, hostname, or scheme,
+**never read `X-Forwarded-*` headers directly.** Direct reads are fragile,
+bypass the operator's trust policy, and can introduce SSRF / IP-spoofing
+vulnerabilities. Use the blessed extractors instead:
+
+| Extractor | What it resolves |
+|-----------|-----------------|
+| `ClientAddr` | Real client IP after trust evaluation |
+| `ClientHost` | External host (`X-Forwarded-Host` or `Host`) |
+| `ClientScheme` | External scheme (`X-Forwarded-Proto` or URI scheme) |
+
+```rust,no_run
+use autumn_web::extract::{ClientAddr, ClientHost, ClientScheme};
+use autumn_web::prelude::*;
+
+#[get("/info")]
+async fn info(
+    ClientAddr(ip): ClientAddr,
+    ClientHost(host): ClientHost,
+    ClientScheme(scheme): ClientScheme,
+) -> String {
+    format!("client={ip} host={host} scheme={scheme}")
+}
+```
+
+The values are resolved once per request by the framework's
+`TrustedProxiesLayer`, using the operator's `[security.trusted_proxies]`
+configuration. Middleware written inside the framework stack can read
+`ResolvedClientIdentity` directly from request extensions:
+
+```rust,no_run
+use autumn_web::security::ResolvedClientIdentity;
+
+// Inside a Tower Service::call:
+let identity = req.extensions().get::<ResolvedClientIdentity>();
+```
+
+See [`security.trusted_proxies` configuration](../guide/getting-started.md)
+for operator setup instructions.

@@ -1,13 +1,13 @@
 +++
 title = "Docs Smoke Procedure"
-description = "This docs-smoke procedure certifies the public first-run path for the published Autumn 0.4.x line. It must use Rust 1.88.0+ and the published autumn-cli and autumn-web crates unless the release is explicitly in a pre-publish rehearsal."
+description = "This docs-smoke procedure certifies the public first-run path for the published Autumn 0.5.x line. It must use Rust 1.88.0+ and the published autumn-cli and autumn-web crates unless the release is explicitly in a pre-publish rehearsal."
 order = 290
 +++
 
 # Docs Smoke Procedure
 
 This docs-smoke procedure certifies the public first-run path for the published
-Autumn 0.4.x line. It must use Rust 1.88.0+ and the published `autumn-cli` and
+Autumn 0.5.x line. It must use Rust 1.88.0+ and the published `autumn-cli` and
 `autumn-web` crates unless the release is explicitly in a pre-publish rehearsal.
 
 Run it in a clean temporary directory, not inside the Autumn checkout:
@@ -53,7 +53,7 @@ commands may be rehearsed against the workspace only if the release notes record
 why the smoke is temporary:
 
 ```text
-docs-smoke: workspace-prepublish rehearsal because autumn-cli/autumn-web 0.4.0
+docs-smoke: workspace-prepublish rehearsal because autumn-cli/autumn-web 0.5.0
 were not yet available on crates.io.
 ```
 
