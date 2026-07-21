@@ -9,6 +9,15 @@ port = 3000
 [profile.prod.server]
 host = "0.0.0.0"
 
+# Widget storybook (Autumn 0.6.0). Enabled in every profile — including prod —
+# so the framework's built-in widget gallery is a public showcase at /_stories.
+# This is safe for public exposure: stories are zero-arg pure functions that
+# only ever render synthetic demo data defined inside their own blocks (no
+# request data, no app state, no I/O). Registered on the builder via
+# `.with_story_gallery(StoryGallery::builtin())` in src/main.rs.
+[stories]
+enabled = true
+
 # Production hardening for Autumn 0.5.0's prod fail-fast.
 # Under AUTUMN_PROFILE=prod the framework refuses to start unless BOTH a signing
 # secret and a non-empty trusted-hosts allow-list are configured.
