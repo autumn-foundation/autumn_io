@@ -80,6 +80,37 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("dev-inspector.md", 660),
     ("dev-loop-latency.md", 670),
     ("system-tests.md", 680),
+    // New in Autumn 0.6.0. Order weights continue the tens scheme, grouped by
+    // the sidebar clusters they are wired into so registry sort tracks the
+    // navigation order.
+    ("flash.md", 690),
+    ("tabs.md", 700),
+    ("declarative-schema.md", 710),
+    ("events.md", 720),
+    ("lifecycle.md", 730),
+    ("mail-compliance.md", 740),
+    ("cache-stampede.md", 750),
+    ("daemon.md", 760),
+    ("distributed-locks.md", 770),
+    ("fragment-caching.md", 780),
+    ("operator-alerts.md", 790),
+    ("rate-limiting.md", 800),
+    ("security-posture-manifest.md", 810),
+    ("tls.md", 820),
+    ("format-helpers.md", 830),
+    ("stories.md", 840),
+    ("time-zones.md", 850),
+    ("transition-effects.md", 860),
+    ("wasm-islands.md", 870),
+    ("widget-styling.md", 880),
+    ("sharding.md", 890),
+    ("sqlite-in-production.md", 900),
+    ("tenant-cells.md", 910),
+    ("tauri.md", 920),
+    ("tauri-mobile-in-process.md", 930),
+    ("tauri-mobile-offline-sync.md", 940),
+    ("tauri-mobile-thin-client.md", 950),
+    ("starters.md", 960),
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {

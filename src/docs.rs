@@ -85,7 +85,11 @@ impl DocRegistry {
         let registry =
             MarkdownRegistry::from_embedded(&markdown_sources).map_err(map_markdown_error)?;
 
-        let pages: Vec<DocPage> = registry.all_sorted().into_iter().map(render_doc_page).collect();
+        let pages: Vec<DocPage> = registry
+            .all_sorted()
+            .into_iter()
+            .map(render_doc_page)
+            .collect();
 
         let index_by_slug = pages
             .iter()
@@ -351,13 +355,8 @@ fn build_snippet(text: &str, match_index: usize, radius: usize) -> String {
 
 #[derive(Debug)]
 pub enum DocsError {
-    MissingFrontmatter {
-        slug: String,
-    },
-    InvalidFrontmatter {
-        slug: String,
-        message: String,
-    },
+    MissingFrontmatter { slug: String },
+    InvalidFrontmatter { slug: String, message: String },
     InvalidSlug(String),
     DuplicateSlug(String),
 }

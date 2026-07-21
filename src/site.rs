@@ -8,7 +8,7 @@ use crate::{DOCS_START_PATH, seo};
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
-const VERSION_LABEL: &str = "Autumn 0.5.0";
+const VERSION_LABEL: &str = "Autumn 0.6.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
 const BRAND_MARK_1X_PATH: &str = "/static/img/autumn-mark-68.png";
@@ -37,6 +37,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "autumn-harvest",
             "coming-from-other-frameworks",
             "generators",
+            "starters",
         ],
     },
     DocsNavGroup {
@@ -52,6 +53,8 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "pagination",
             "active-search-and-autocomplete",
             "wizards",
+            "flash",
+            "tabs",
         ],
     },
     DocsNavGroup {
@@ -62,6 +65,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "seeding",
             "storage",
             "mail",
+            "mail-compliance",
             "authorization",
             "signed-webhooks",
             "signing-secrets",
@@ -80,6 +84,9 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "bot-protection",
             "idempotency",
             "logging-pii",
+            "declarative-schema",
+            "events",
+            "lifecycle",
         ],
     },
     DocsNavGroup {
@@ -117,6 +124,14 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "error-reporting",
             "maintenance-mode",
             "staged-deploys",
+            "rate-limiting",
+            "distributed-locks",
+            "cache-stampede",
+            "fragment-caching",
+            "operator-alerts",
+            "security-posture-manifest",
+            "tls",
+            "daemon",
         ],
     },
     DocsNavGroup {
@@ -126,6 +141,25 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "dev-inspector",
             "dev-loop-latency",
             "system-tests",
+            "format-helpers",
+            "widget-styling",
+            "transition-effects",
+            "wasm-islands",
+            "stories",
+            "time-zones",
+        ],
+    },
+    DocsNavGroup {
+        label: "Scale and tenancy",
+        slugs: &["sharding", "tenant-cells", "sqlite-in-production"],
+    },
+    DocsNavGroup {
+        label: "Desktop and mobile",
+        slugs: &[
+            "tauri",
+            "tauri-mobile-in-process",
+            "tauri-mobile-offline-sync",
+            "tauri-mobile-thin-client",
         ],
     },
     DocsNavGroup {
@@ -722,7 +756,7 @@ fn site_header(active: &str) -> Markup {
                     a href=(DOCS_START_PATH) { "Docs" }
                 }
                 a href=(HARVEST_DOC_PATH) { "Harvest" }
-                a href=(DOCS_START_PATH) { "0.5.0" }
+                a href=(DOCS_START_PATH) { "0.6.0" }
                 a href=(seo::GITHUB_REPOSITORY_URL) { "GitHub" }
                 a href=(seo::CRATES_IO_URL) { "crates.io" }
                 a href="/docs/deployment" { "Deploy" }
