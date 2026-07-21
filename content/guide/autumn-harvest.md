@@ -76,12 +76,12 @@ async fn main() {
 
 ## Guide and Reference
 
-- [Harvest getting started guide](https://github.com/madmax983/autumn-harvest/tree/trunk/docs/getting-started)
-- [Harvest repository](https://github.com/madmax983/autumn-harvest)
+- [Harvest getting started guide](https://github.com/autumn-foundation/autumn-harvest/tree/trunk/docs/getting-started)
+- [Harvest repository](https://github.com/autumn-foundation/autumn-harvest)
 - [autumn-harvest on crates.io](https://crates.io/crates/autumn-harvest)
 - [autumn-harvest API docs](https://docs.rs/autumn-harvest)
-- [Autumn billing integration example](https://github.com/madmax983/autumn-harvest/tree/trunk/examples/billing-autumn-web)
-- [Standalone runner example](https://github.com/madmax983/autumn-harvest/tree/trunk/examples/standalone-runner)
+- [Autumn billing integration example](https://github.com/autumn-foundation/autumn-harvest/tree/trunk/examples/billing-autumn-web)
+- [Standalone runner example](https://github.com/autumn-foundation/autumn-harvest/tree/trunk/examples/standalone-runner)
 
 ## When to Reach for It
 

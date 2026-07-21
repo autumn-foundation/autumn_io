@@ -8,6 +8,18 @@ const DEFAULT_AUTUMN_REPO: &str = "../autumn";
 const DEFAULT_DESTINATION: &str = "content/guide";
 const SOURCE_ENV: &str = "AUTUMN_REPO_DIR";
 
+/// The GitHub org was renamed from `madmax983` to `autumn-foundation`.
+/// Upstream guide markdown still references the old org, so rewrite every
+/// occurrence when vendoring so the vendored snapshot stays on the new org.
+const OLD_ORG_PREFIX: &str = "github.com/madmax983/";
+const NEW_ORG_PREFIX: &str = "github.com/autumn-foundation/";
+
+/// Rewrite upstream GitHub org references onto the renamed `autumn-foundation`
+/// org. Applied to every guide body before it is written.
+fn rewrite_org_urls(markdown: &str) -> String {
+    markdown.replace(OLD_ORG_PREFIX, NEW_ORG_PREFIX)
+}
+
 const GUIDE_FILES: &[(&str, u32)] = &[
     ("getting-started.md", 10),
     ("what-happens-when.md", 20),
@@ -111,6 +123,12 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("tauri-mobile-offline-sync.md", 940),
     ("tauri-mobile-thin-client.md", 950),
     ("starters.md", 960),
+    // New guides folded in after the 0.6.0 sync. Weights continue the trailing
+    // tens block (the established append-as-batch pattern); the sidebar order
+    // itself is governed by `DOCS_NAV_GROUPS` in `site.rs`.
+    ("submit-tokens.md", 970),
+    ("downloads.md", 980),
+    ("media.md", 990),
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -122,6 +140,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let source_file = source.join(file_name);
         let raw = fs::read_to_string(&source_file)
             .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
+        let raw = rewrite_org_urls(&raw);
         let title = first_heading(&raw).ok_or_else(|| {
             format!(
                 "guide file {} must start with a level-one heading",

@@ -50,6 +50,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "macro-transparency",
             "compression",
             "conditional-get",
+            "downloads",
             "pagination",
             "active-search-and-autocomplete",
             "wizards",
@@ -83,6 +84,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "credentials",
             "bot-protection",
             "idempotency",
+            "submit-tokens",
             "logging-pii",
             "declarative-schema",
             "events",
@@ -167,6 +169,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
         slugs: &[
             "custom-subsystems",
             "extensibility",
+            "media",
             "cloud-native",
             "i18n",
             "deployment",

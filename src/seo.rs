@@ -6,14 +6,14 @@ pub const SITE_BASE_URL: &str = "https://autumn-web.app";
 pub const SITE_NAME: &str = "Autumn";
 pub const SITE_DESCRIPTION: &str = "Autumn is a Rust web framework for fast server-rendered apps, typed routes, Maud templates, static assets, and production defaults.";
 pub const SITE_IMAGE_PATH: &str = "/static/img/autumn-social.png";
-pub const GITHUB_REPOSITORY_URL: &str = "https://github.com/madmax983/autumn";
-pub const WEBSITE_REPOSITORY_URL: &str = "https://github.com/madmax983/autumn_io";
+pub const GITHUB_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn";
+pub const WEBSITE_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn_io";
 pub const CRATES_IO_URL: &str = "https://crates.io/crates/autumn-web";
 pub const RUSTDOC_URL: &str = "https://docs.rs/autumn-web";
 pub const AUTUMN_VERSION: &str = "0.6.0";
-pub const HARVEST_REPOSITORY_URL: &str = "https://github.com/madmax983/autumn-harvest";
+pub const HARVEST_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn-harvest";
 pub const HARVEST_GUIDE_URL: &str =
-    "https://github.com/madmax983/autumn-harvest/tree/trunk/docs/getting-started";
+    "https://github.com/autumn-foundation/autumn-harvest/tree/trunk/docs/getting-started";
 pub const HARVEST_CRATES_IO_URL: &str = "https://crates.io/crates/autumn-harvest";
 pub const HARVEST_RUSTDOC_URL: &str = "https://docs.rs/autumn-harvest";
 pub const HARVEST_VERSION: &str = "0.3.0";
