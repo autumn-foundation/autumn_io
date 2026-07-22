@@ -308,11 +308,11 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     assert!(html.contains("Autumn Harvest 0.3.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
-    assert!(html.contains(r#"href="https://github.com/madmax983/autumn-harvest""#));
+    assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
     assert!(html.contains(r#"href="https://crates.io/crates/autumn-harvest""#));
     assert!(html.contains(r#"href="https://docs.rs/autumn-harvest""#));
     assert!(html.contains(
-        r#"href="https://github.com/madmax983/autumn-harvest/tree/trunk/docs/getting-started""#
+        r#"href="https://github.com/autumn-foundation/autumn-harvest/tree/trunk/docs/getting-started""#
     ));
 }
 
@@ -421,7 +421,7 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
     assert!(harvest.html.contains("autumn_harvest::prelude"));
     assert!(harvest.html.contains("HarvestPlugin"));
     assert!(harvest.html.contains(
-        r#"href="https://github.com/madmax983/autumn-harvest/tree/trunk/docs/getting-started""#
+        r#"href="https://github.com/autumn-foundation/autumn-harvest/tree/trunk/docs/getting-started""#
     ));
     assert!(
         registry.page("docs-smoke").is_none(),
@@ -557,11 +557,11 @@ fn rendered_site_chrome_links_to_autumn_sources_and_crate() {
         .expect("valid docs source should parse");
     let html = render_home_page(&registry).into_string();
 
-    assert!(html.contains(r#"href="https://github.com/madmax983/autumn""#));
+    assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn""#));
     assert!(html.contains(r#"href="https://crates.io/crates/autumn-web""#));
-    assert!(html.contains(r#"href="https://github.com/madmax983/autumn_io""#));
+    assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn_io""#));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
-    assert!(html.contains(r#"href="https://github.com/madmax983/autumn-harvest""#));
+    assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
     assert!(html.contains(r#"href="https://crates.io/crates/autumn-harvest""#));
 }
 
@@ -585,7 +585,7 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
         .page("getting-started")
         .expect("getting started guide should be bundled");
     assert!(getting_started.html.contains(
-        r#"href="https://github.com/madmax983/autumn/tree/trunk-dev/examples/todo-app""#
+        r#"href="https://github.com/autumn-foundation/autumn/tree/trunk-dev/examples/todo-app""#
     ));
     assert!(
         !getting_started
@@ -602,10 +602,10 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
             .contains(r#"href="/docs/extensibility""#)
     );
     assert!(custom_subsystems.html.contains(
-        r#"href="https://github.com/madmax983/autumn/tree/trunk-dev/examples/custom_config_loader""#
+        r#"href="https://github.com/autumn-foundation/autumn/tree/trunk-dev/examples/custom_config_loader""#
     ));
     assert!(custom_subsystems.html.contains(
-        r#"href="https://github.com/madmax983/autumn/blob/trunk-dev/autumn/src/plugin.rs""#
+        r#"href="https://github.com/autumn-foundation/autumn/blob/trunk-dev/autumn/src/plugin.rs""#
     ));
     assert!(
         !custom_subsystems
@@ -622,13 +622,13 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
             );
             assert!(
                 !href.ends_with(".md")
-                    || href.starts_with("https://github.com/madmax983/autumn/blob/trunk-dev/"),
+                    || href.starts_with("https://github.com/autumn-foundation/autumn/blob/trunk-dev/"),
                 "{} should not render site-local Markdown href {href}",
                 page.slug
             );
             assert!(
                 !href.contains(".md#")
-                    || href.starts_with("https://github.com/madmax983/autumn/blob/trunk-dev/"),
+                    || href.starts_with("https://github.com/autumn-foundation/autumn/blob/trunk-dev/"),
                 "{} should not render site-local Markdown anchor href {href}",
                 page.slug
             );

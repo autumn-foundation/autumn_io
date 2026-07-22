@@ -58,7 +58,7 @@ async fn main() {
 }
 ```
 
-A runnable version lives in [`examples/error-reporting`](https://github.com/madmax983/autumn/tree/main/examples/error-reporting).
+A runnable version lives in [`examples/error-reporting`](https://github.com/autumn-foundation/autumn/tree/main/examples/error-reporting).
 
 ---
 

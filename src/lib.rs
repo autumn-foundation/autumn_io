@@ -130,6 +130,10 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("tauri-mobile-offline-sync"),
         guide_doc!("tauri-mobile-thin-client"),
         guide_doc!("starters"),
+        // New guides folded in after the 0.6.0 sync.
+        guide_doc!("submit-tokens"),
+        guide_doc!("downloads"),
+        guide_doc!("media"),
     ])
 });
 
@@ -152,8 +156,23 @@ pub fn site_search_index() -> Option<&'static SearchIndex> {
 
 /// Optimize HTTP responses for repeat visitors.
 ///
-/// Framework static HTML routing is intentionally not registered for this app
-/// until Autumn applies user layers to static-first responses.
+/// Autumn 0.6.0 (issue #752) now applies user layers to static-first responses,
+/// so wiring the framework's `dist/` static HTML serving is possible. We
+/// deliberately do not: the docs are served dynamically from the in-memory
+/// registry (content is already resident, so a request costs a HashMap lookup +
+/// template wrap + on-the-fly compression). Serving `dist/` would duplicate the
+/// embedded content on disk for no latency or bandwidth win on the 256 MB
+/// scale-to-zero VM. The `build_site`/`dist` exporter is kept only as a
+/// CDN/static-hosting bundle generator.
+///
+/// The stack also provides weak-ETag conditional-GET: [`EtagLayer`] is the
+/// innermost layer, so on the response path it runs first and derives a weak
+/// `ETag` from the raw uncompressed handler body, returning `304 Not Modified`
+/// when a repeat visit's `If-None-Match` matches. `CompressionLayer` then
+/// encodes the body and adds `Vary: Accept-Encoding`, keeping the ETag computed
+/// over the unencoded bytes (framework-blessed ordering — see `router.rs`).
+///
+/// [`EtagLayer`]: autumn_web::etag::EtagLayer
 pub fn response_compression_layer() -> impl autumn_web::app::IntoAppLayer {
     tower::ServiceBuilder::new()
         .layer(middleware::from_fn(cache_static_assets))
@@ -161,6 +180,7 @@ pub fn response_compression_layer() -> impl autumn_web::app::IntoAppLayer {
             autumn_web::reexports::axum::body::Body::new,
         ))
         .layer(tower_http::compression::CompressionLayer::new())
+        .layer(autumn_web::etag::EtagLayer::new())
 }
 
 async fn cache_static_assets(request: Request, next: Next) -> Response {

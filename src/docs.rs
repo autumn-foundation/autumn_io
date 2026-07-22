@@ -14,7 +14,7 @@ use syntect::util::LinesWithEndings;
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 const CODE_THEME: &str = "base16-ocean.dark";
-const AUTUMN_REPOSITORY_URL: &str = "https://github.com/madmax983/autumn";
+const AUTUMN_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn";
 const AUTUMN_REPOSITORY_BRANCH: &str = "trunk-dev";
 const GUIDE_SOURCE_ROOT: [&str; 2] = ["docs", "guide"];
 
