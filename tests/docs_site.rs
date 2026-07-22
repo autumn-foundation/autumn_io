@@ -305,15 +305,14 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.3.0"));
+    assert!(html.contains("Autumn Harvest 0.5.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
     assert!(html.contains(r#"href="https://crates.io/crates/autumn-harvest""#));
     assert!(html.contains(r#"href="https://docs.rs/autumn-harvest""#));
-    assert!(html.contains(
-        r#"href="https://github.com/autumn-foundation/autumn-harvest/tree/trunk/docs/getting-started""#
-    ));
+    // The home "Guide" button now leads into the on-site Harvest guide.
+    assert!(html.contains(r#"href="/docs/harvest-project-skeleton""#));
 }
 
 #[test]
@@ -326,6 +325,7 @@ fn bundled_docs_sidebar_groups_guides_by_workflow() {
 
     for label in [
         "Start here",
+        "Harvest",
         "Request surface",
         "Data and auth",
         "Realtime and jobs",
@@ -342,20 +342,30 @@ fn bundled_docs_sidebar_groups_guides_by_workflow() {
         .map(|(sidebar, _)| sidebar)
         .expect("docs sidebar should render");
     let start_position = sidebar.find("Start here").expect("start group label");
-    let harvest_position = sidebar
-        .find(r#"href="/docs/autumn-harvest""#)
-        .expect("Harvest docs link");
     let generators_position = sidebar
         .find(r#"href="/docs/generators""#)
         .expect("generators link");
+    let harvest_label_position = sidebar
+        .find(r#"<p class="docs-nav-section-title">Harvest</p>"#)
+        .expect("Harvest group label");
+    let harvest_intro_position = sidebar
+        .find(r#"href="/docs/autumn-harvest""#)
+        .expect("Harvest intro docs link");
+    let harvest_chapter_position = sidebar
+        .find(r#"href="/docs/harvest-project-skeleton""#)
+        .expect("Harvest chapter link");
     let request_surface_position = sidebar
         .find("Request surface")
         .expect("request surface group label");
+    // generators stays in "Start here"; the dedicated "Harvest" group follows,
+    // anchored by the intro and then its chapters, ahead of "Request surface".
     assert!(
-        start_position < harvest_position
-            && harvest_position < generators_position
-            && generators_position < request_surface_position,
-        "Harvest and generators should be in the first docs navigation group"
+        start_position < generators_position
+            && generators_position < harvest_label_position
+            && harvest_label_position < harvest_intro_position
+            && harvest_intro_position < harvest_chapter_position
+            && harvest_chapter_position < request_surface_position,
+        "the Harvest group should sit after Start here and before Request surface"
     );
 
     let deployment_position = sidebar
@@ -420,9 +430,12 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
     assert_eq!(harvest.title, "Autumn Harvest");
     assert!(harvest.html.contains("autumn_harvest::prelude"));
     assert!(harvest.html.contains("HarvestPlugin"));
-    assert!(harvest.html.contains(
-        r#"href="https://github.com/autumn-foundation/autumn-harvest/tree/trunk/docs/getting-started""#
-    ));
+    // The intro now points into the on-site Harvest guide rather than upstream.
+    assert!(
+        harvest
+            .html
+            .contains(r#"href="/docs/harvest-project-skeleton""#)
+    );
     assert!(
         registry.page("docs-smoke").is_none(),
         "internal release smoke procedure should not ship as public docs"
@@ -613,6 +626,47 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
             .contains(r#"href="../../examples/custom_config_loader""#)
     );
 
+    // The vendored Harvest chapters cross-link back into the autumn-harvest
+    // repo for files this site does not vendor; those links are resolved to
+    // absolute upstream URLs at sync time.
+    let harvest_signals = registry
+        .page("harvest-signals")
+        .expect("harvest signals chapter should be bundled");
+    assert!(
+        harvest_signals
+            .html
+            .contains(r#"href="/docs/harvest-idempotency#idempotent-signal-delivery""#)
+    );
+    assert!(harvest_signals.html.contains(
+        r#"href="https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/management-api.md""#
+    ));
+    // A sibling-chapter link rendered as a bare site route.
+    let harvest_first_workflow = registry
+        .page("harvest-first-workflow")
+        .expect("harvest first-workflow chapter should be bundled");
+    assert!(
+        harvest_first_workflow
+            .html
+            .contains(r#"href="/docs/harvest-idempotency""#)
+    );
+    // The upstream guide index (`README.md`) resolves to the Harvest intro.
+    let harvest_testing = registry
+        .page("harvest-testing")
+        .expect("harvest testing chapter should be bundled");
+    assert!(
+        harvest_testing
+            .html
+            .contains(r#"href="/docs/autumn-harvest""#)
+    );
+
+    // Upstream `.md`/`.md#` links are only ever rendered as absolute upstream
+    // source URLs — into the framework repo for framework guides, or the
+    // autumn-harvest repo for the Harvest guide — never as repo-relative or
+    // site-local Markdown paths.
+    let upstream_markdown_prefixes = [
+        "https://github.com/autumn-foundation/autumn/blob/trunk-dev/",
+        "https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/",
+    ];
     for page in registry.pages() {
         for href in html_hrefs(&page.html) {
             assert!(
@@ -620,15 +674,16 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
                 "{} should not render repo-relative href {href}",
                 page.slug
             );
+            let is_upstream_markdown = upstream_markdown_prefixes
+                .iter()
+                .any(|prefix| href.starts_with(prefix));
             assert!(
-                !href.ends_with(".md")
-                    || href.starts_with("https://github.com/autumn-foundation/autumn/blob/trunk-dev/"),
+                !href.ends_with(".md") || is_upstream_markdown,
                 "{} should not render site-local Markdown href {href}",
                 page.slug
             );
             assert!(
-                !href.contains(".md#")
-                    || href.starts_with("https://github.com/autumn-foundation/autumn/blob/trunk-dev/"),
+                !href.contains(".md#") || is_upstream_markdown,
                 "{} should not render site-local Markdown anchor href {href}",
                 page.slug
             );
@@ -724,6 +779,17 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .assert_body_contains("docs-sidebar")
         .assert_body_contains("data-copy-code");
 
+    // The vendored Autumn Harvest 0.5 guide renders, is grouped under the
+    // "Harvest" sidebar heading, and its cleaned chapter title (not the raw
+    // "Chapter 1 — …" upstream heading) is what the page shows.
+    app.get("/docs/harvest-project-skeleton")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("<h1 id=\"page-title\">Project skeleton</h1>")
+        .assert_body_contains("Harvest")
+        .assert_body_contains(r#"href="/docs/harvest-first-workflow""#);
+
     app.get("/docs/no-such-page")
         .send()
         .await
@@ -793,6 +859,7 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_body_contains("<loc>https://autumn-web.app/</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/getting-started</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/autumn-harvest</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-project-skeleton</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/deployment</loc>")
         .text();
 

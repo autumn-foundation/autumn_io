@@ -129,6 +129,50 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("submit-tokens.md", 970),
     ("downloads.md", 980),
     ("media.md", 990),
+    // Two newer upstream guides folded in alongside the Harvest 0.5 sync.
+    ("content-negotiation.md", 1000),
+    ("nested-forms.md", 1010),
+];
+
+const DEFAULT_HARVEST_REPO: &str = "../autumn-harvest";
+const HARVEST_SOURCE_ENV: &str = "AUTUMN_HARVEST_REPO_DIR";
+
+/// The `autumn-harvest` repository the guide chapters cross-link back into for
+/// files the site does not vendor (the reference examples, the management-API
+/// spec, and so on). Chapter cross-links are resolved to absolute URLs against
+/// this repo/branch at sync time so the runtime link rewriter — which only
+/// knows the framework repo — leaves them untouched.
+const HARVEST_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn-harvest";
+const HARVEST_REPOSITORY_BRANCH: &str = "trunk-dev";
+
+/// The site slug the hand-authored Harvest section intro is served at. The
+/// upstream guide's `README.md` index links resolve here.
+const HARVEST_INTRO_SLUG: &str = "autumn-harvest";
+
+/// Harvest's own guide — the `docs/getting-started/` chapter sequence — folded
+/// into this site. Each entry maps an upstream chapter file to the site slug it
+/// is served at and its registry `order`. Slugs carry a `harvest-` prefix so
+/// they share the guide namespace without colliding with the framework guides;
+/// the sidebar home is the "Harvest" group in `site.rs`, anchored by the
+/// `autumn-harvest` intro. The orphaned `activities.md` reference (not part of
+/// the upstream chapter flow) is intentionally not vendored.
+const HARVEST_GUIDE_FILES: &[(&str, &str, u32)] = &[
+    ("01-project-skeleton.md", "harvest-project-skeleton", 1020),
+    ("02-first-workflow.md", "harvest-first-workflow", 1030),
+    ("03-durable-timers.md", "harvest-durable-timers", 1040),
+    ("04-signals.md", "harvest-signals", 1050),
+    ("05-child-workflows.md", "harvest-child-workflows", 1060),
+    ("06-idempotency.md", "harvest-idempotency", 1070),
+    ("07-reliability-knobs.md", "harvest-reliability-knobs", 1080),
+    (
+        "08-dags-and-schedules.md",
+        "harvest-dags-and-schedules",
+        1090,
+    ),
+    ("09-worker-routing.md", "harvest-worker-routing", 1100),
+    ("10-operations.md", "harvest-operations", 1110),
+    ("11-testing.md", "harvest-testing", 1120),
+    ("12-webhooks.md", "harvest-webhooks", 1130),
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -150,20 +194,272 @@ fn main() -> Result<(), Box<dyn Error>> {
         let description = first_description(&raw).unwrap_or_else(|| title.clone());
         let slug = file_name.trim_end_matches(".md");
 
-        let output = format!(
-            "+++\ntitle = {}\ndescription = {}\norder = {order}\n+++\n\n{}",
-            toml_string(&title),
-            toml_string(&description),
-            raw.trim_start()
-        );
-        fs::write(args.destination.join(format!("{slug}.md")), output)?;
+        write_guide(&args.destination, slug, &title, &description, order, &raw)?;
+    }
+
+    sync_harvest_guide(&args.harvest_source, &args.destination)?;
+
+    Ok(())
+}
+
+/// Fold Harvest's own guide (the `docs/getting-started/` chapter sequence) into
+/// the vendored snapshot. The chapters are massaged for the site: verbose
+/// `Chapter N — …` headings become clean nav titles, the redundant top/bottom
+/// chapter-nav chrome is stripped (the site supplies its own prev/next), and
+/// every relative link is resolved — sibling chapters to their `/docs/harvest-*`
+/// route, the guide index to the Harvest section intro, and everything else to
+/// an absolute `autumn-harvest` source URL.
+fn sync_harvest_guide(harvest_source: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
+    let source = harvest_guide_source_dir(harvest_source)?;
+
+    for (file_name, slug, order) in HARVEST_GUIDE_FILES {
+        let source_file = source.join(file_name);
+        let raw = fs::read_to_string(&source_file)
+            .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
+        let raw = rewrite_org_urls(&raw);
+        let raw = rewrite_harvest_links(&raw);
+
+        let heading = first_heading(&raw).ok_or_else(|| {
+            format!(
+                "harvest guide file {} must start with a level-one heading",
+                source_file.display()
+            )
+        })?;
+        let title = clean_harvest_title(&heading);
+        let body = prepare_harvest_body(&raw, &title);
+        let description = first_description(&body).unwrap_or_else(|| title.clone());
+
+        write_guide(destination, slug, &title, &description, order, &body)?;
     }
 
     Ok(())
 }
 
+fn write_guide(
+    destination: &Path,
+    slug: &str,
+    title: &str,
+    description: &str,
+    order: &u32,
+    body: &str,
+) -> Result<(), Box<dyn Error>> {
+    let output = format!(
+        "+++\ntitle = {}\ndescription = {}\norder = {order}\n+++\n\n{}",
+        toml_string(title),
+        toml_string(description),
+        body.trim_start()
+    );
+    fs::write(destination.join(format!("{slug}.md")), output)?;
+    Ok(())
+}
+
+/// Strip the verbose `Chapter N — `/`Chapter N: ` prefix from a Harvest chapter
+/// heading, leaving a clean sidebar/title label (`Project skeleton`).
+fn clean_harvest_title(heading: &str) -> String {
+    let heading = heading.trim();
+    if let Some(rest) = heading.strip_prefix("Chapter ") {
+        let after_number = rest.trim_start_matches(|char: char| char.is_ascii_digit());
+        let cleaned = after_number
+            .trim_start()
+            .trim_start_matches(['—', ':', '-'])
+            .trim();
+        if !cleaned.is_empty() {
+            return cleaned.to_owned();
+        }
+    }
+    heading.to_owned()
+}
+
+/// Rewrite the H1 to the cleaned title (so the site's redundant-title stripping
+/// removes it) and drop the redundant chapter-nav chrome: the `[← …] · [Next …]`
+/// lines plus the top and bottom thematic-break dividers that framed them.
+fn prepare_harvest_body(markdown: &str, title: &str) -> String {
+    let mut lines: Vec<String> = markdown
+        .lines()
+        .filter(|line| !is_chapter_nav_line(line))
+        .map(str::to_owned)
+        .collect();
+
+    if let Some(heading) = lines.iter_mut().find(|line| line.starts_with("# ")) {
+        *heading = format!("# {title}");
+    }
+
+    strip_divider_after_heading(&mut lines);
+    strip_trailing_divider(&mut lines);
+
+    lines.join("\n")
+}
+
+/// A chapter-nav line is the upstream `[← Prev](…) · [Index](…) · [Next →](…)`
+/// chrome: a link line carrying a `←`/`→` arrow. Prose that merely mentions an
+/// arrow (`RUNNING → COMPLETED`) is not a link line and is kept.
+fn is_chapter_nav_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('[')
+        && trimmed.contains("](")
+        && (trimmed.contains('←') || trimmed.contains('→'))
+}
+
+/// Remove a `---` divider that sits directly under the H1 (once the nav line it
+/// framed is gone), so the article does not open on a stray horizontal rule.
+fn strip_divider_after_heading(lines: &mut Vec<String>) {
+    let Some(heading_index) = lines.iter().position(|line| line.starts_with("# ")) else {
+        return;
+    };
+    let divider = lines
+        .iter()
+        .enumerate()
+        .skip(heading_index + 1)
+        .find(|(_, line)| !line.trim().is_empty());
+    if let Some((index, line)) = divider
+        && line.trim() == "---"
+    {
+        lines.remove(index);
+    }
+}
+
+/// Remove a trailing `---` divider left dangling once the bottom nav line is
+/// gone.
+fn strip_trailing_divider(lines: &mut Vec<String>) {
+    let last = lines
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, line)| !line.trim().is_empty());
+    if let Some((index, line)) = last
+        && line.trim() == "---"
+    {
+        lines.remove(index);
+    }
+}
+
+/// Rewrite the relative links inside a Harvest chapter. Sibling chapters map to
+/// their site route, the guide index maps to the Harvest intro, and every other
+/// relative path resolves to an absolute `autumn-harvest` source URL (so the
+/// runtime rewriter, which only knows the framework repo, leaves it alone).
+fn rewrite_harvest_links(markdown: &str) -> String {
+    let mut output = String::with_capacity(markdown.len());
+    let mut in_fence = false;
+
+    for line in markdown.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            output.push_str(line);
+            output.push('\n');
+            continue;
+        }
+        if in_fence {
+            output.push_str(line);
+            output.push('\n');
+            continue;
+        }
+
+        output.push_str(&rewrite_harvest_links_in_line(line));
+        output.push('\n');
+    }
+
+    output
+}
+
+fn rewrite_harvest_links_in_line(line: &str) -> String {
+    let mut output = String::with_capacity(line.len());
+    let mut rest = line;
+
+    while let Some(open) = rest.find("](") {
+        let after = &rest[open + 2..];
+        let Some(close) = after.find(')') else {
+            break;
+        };
+        output.push_str(&rest[..open + 2]);
+        output.push_str(&rewrite_harvest_destination(&after[..close]));
+        output.push(')');
+        rest = &after[close + 1..];
+    }
+
+    output.push_str(rest);
+    output
+}
+
+fn rewrite_harvest_destination(destination: &str) -> String {
+    let destination = destination.trim();
+    let lower = destination.to_ascii_lowercase();
+    if destination.is_empty()
+        || destination.starts_with('#')
+        || lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("tel:")
+    {
+        return destination.to_owned();
+    }
+
+    let (path, fragment) = destination
+        .split_once('#')
+        .map_or((destination, String::new()), |(path, fragment)| {
+            (path, format!("#{fragment}"))
+        });
+    let path = path.strip_prefix("./").unwrap_or(path);
+
+    if let Some((_, slug, _)) = HARVEST_GUIDE_FILES
+        .iter()
+        .find(|(file_name, _, _)| *file_name == path)
+    {
+        return format!("/docs/{slug}{fragment}");
+    }
+
+    if path == "README.md" {
+        return format!("/docs/{HARVEST_INTRO_SLUG}{fragment}");
+    }
+
+    let resolved = resolve_harvest_source_path(path);
+    let mode = if resolved
+        .rsplit('/')
+        .next()
+        .is_some_and(|last| last.contains('.'))
+    {
+        "blob"
+    } else {
+        "tree"
+    };
+    format!("{HARVEST_REPOSITORY_URL}/{mode}/{HARVEST_REPOSITORY_BRANCH}/{resolved}{fragment}")
+}
+
+/// Resolve a chapter-relative path (from `docs/getting-started/`) into a
+/// repository-root path for an absolute `autumn-harvest` source link.
+fn resolve_harvest_source_path(path: &str) -> String {
+    let mut segments = vec!["docs", "getting-started"];
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            segment => segments.push(segment),
+        }
+    }
+    segments.join("/")
+}
+
+fn harvest_guide_source_dir(source: &Path) -> Result<PathBuf, Box<dyn Error>> {
+    let nested = source.join("docs").join("getting-started");
+    if nested.is_dir() {
+        return Ok(nested);
+    }
+
+    if source.join("01-project-skeleton.md").is_file() {
+        return Ok(source.to_owned());
+    }
+
+    Err(format!(
+        "{} is neither an autumn-harvest repo root nor a docs/getting-started directory",
+        source.display()
+    )
+    .into())
+}
+
 struct Args {
     source: PathBuf,
+    harvest_source: PathBuf,
     destination: PathBuf,
 }
 
@@ -172,6 +468,9 @@ impl Args {
         let mut source = env::var_os(SOURCE_ENV)
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(DEFAULT_AUTUMN_REPO));
+        let mut harvest_source = env::var_os(HARVEST_SOURCE_ENV)
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_HARVEST_REPO));
         let mut destination = PathBuf::from(DEFAULT_DESTINATION);
 
         let mut args = args.into_iter();
@@ -182,6 +481,12 @@ impl Args {
                         .next()
                         .map(PathBuf::from)
                         .ok_or("--source needs a path")?;
+                }
+                "--harvest-source" => {
+                    harvest_source = args
+                        .next()
+                        .map(PathBuf::from)
+                        .ok_or("--harvest-source needs a path")?;
                 }
                 "--dest" => {
                     destination = args
@@ -201,6 +506,7 @@ impl Args {
 
         Ok(Self {
             source,
+            harvest_source,
             destination,
         })
     }
@@ -208,17 +514,22 @@ impl Args {
 
 fn print_help() {
     println!(
-        "Sync Autumn guide docs into this site's vendored snapshot.\n\
+        "Sync the Autumn and Autumn Harvest guide docs into this site's vendored snapshot.\n\
 \n\
 Usage:\n\
-  cargo run --bin sync_guide_docs -- --source <autumn-repo-or-docs-guide> [--dest content/guide]\n\
+  cargo run --bin sync_guide_docs -- \\\n\
+    [--source <autumn-repo-or-docs-guide>] \\\n\
+    [--harvest-source <autumn-harvest-repo-or-docs-getting-started>] \\\n\
+    [--dest content/guide]\n\
 \n\
 Environment:\n\
   {SOURCE_ENV}=<autumn-repo-or-docs-guide>\n\
+  {HARVEST_SOURCE_ENV}=<autumn-harvest-repo-or-docs-getting-started>\n\
 \n\
 Defaults:\n\
-  source: {DEFAULT_AUTUMN_REPO}\n\
-  dest:   {DEFAULT_DESTINATION}"
+  source:         {DEFAULT_AUTUMN_REPO}\n\
+  harvest-source: {DEFAULT_HARVEST_REPO}\n\
+  dest:           {DEFAULT_DESTINATION}"
     );
 }
 

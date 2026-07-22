@@ -10,6 +10,7 @@ const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
 const VERSION_LABEL: &str = "Autumn 0.6.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
+const HARVEST_GUIDE_START_PATH: &str = "/docs/harvest-project-skeleton";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
 const BRAND_MARK_1X_PATH: &str = "/static/img/autumn-mark-68.png";
 const BRAND_MARK_2X_PATH: &str = "/static/img/autumn-mark-136.png";
@@ -34,10 +35,27 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
         slugs: &[
             "getting-started",
             "what-happens-when",
-            "autumn-harvest",
             "coming-from-other-frameworks",
             "generators",
             "starters",
+        ],
+    },
+    DocsNavGroup {
+        label: "Harvest",
+        slugs: &[
+            "autumn-harvest",
+            "harvest-project-skeleton",
+            "harvest-first-workflow",
+            "harvest-durable-timers",
+            "harvest-signals",
+            "harvest-child-workflows",
+            "harvest-idempotency",
+            "harvest-reliability-knobs",
+            "harvest-dags-and-schedules",
+            "harvest-worker-routing",
+            "harvest-operations",
+            "harvest-testing",
+            "harvest-webhooks",
         ],
     },
     DocsNavGroup {
@@ -48,12 +66,14 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "path-helpers",
             "routes-cli",
             "macro-transparency",
+            "content-negotiation",
             "compression",
             "conditional-get",
             "downloads",
             "pagination",
             "active-search-and-autocomplete",
             "wizards",
+            "nested-forms",
             "flash",
             "tabs",
         ],
@@ -262,7 +282,7 @@ fn home_harvest_release() -> Markup {
             }
             div class="home-harvest-actions" {
                 a class="button button-primary" href=(HARVEST_DOC_PATH) { "Read Harvest overview" }
-                a class="button button-secondary" href=(seo::HARVEST_GUIDE_URL) { "Guide" }
+                a class="button button-secondary" href=(HARVEST_GUIDE_START_PATH) { "Guide" }
                 a class="button button-secondary" href=(seo::HARVEST_RUSTDOC_URL) { "API docs" }
                 a class="button button-secondary" href=(seo::HARVEST_CRATES_IO_URL) { "Crate" }
             }

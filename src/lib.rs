@@ -134,6 +134,24 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("submit-tokens"),
         guide_doc!("downloads"),
         guide_doc!("media"),
+        // Two newer upstream framework guides.
+        guide_doc!("content-negotiation"),
+        guide_doc!("nested-forms"),
+        // Autumn Harvest 0.5 guide — the upstream getting-started chapter
+        // sequence, vendored under `harvest-*` slugs and grouped as "Harvest"
+        // in the sidebar, anchored by the `autumn-harvest` intro above.
+        guide_doc!("harvest-project-skeleton"),
+        guide_doc!("harvest-first-workflow"),
+        guide_doc!("harvest-durable-timers"),
+        guide_doc!("harvest-signals"),
+        guide_doc!("harvest-child-workflows"),
+        guide_doc!("harvest-idempotency"),
+        guide_doc!("harvest-reliability-knobs"),
+        guide_doc!("harvest-dags-and-schedules"),
+        guide_doc!("harvest-worker-routing"),
+        guide_doc!("harvest-operations"),
+        guide_doc!("harvest-testing"),
+        guide_doc!("harvest-webhooks"),
     ])
 });
 
