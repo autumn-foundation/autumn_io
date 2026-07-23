@@ -1,12 +1,12 @@
 +++
 title = "Autumn Harvest"
-description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.3.0."
-order = 25
+description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.5.0."
+order = 1015
 +++
 
 # Autumn Harvest
 
-Autumn Harvest 0.3.0 is the durable workflow engine for Autumn apps. Use it
+Autumn Harvest 0.5.0 is the durable workflow engine for Autumn apps. Use it
 when a request should start work that must survive restarts, retries, timers,
 signals, child workflows, and scheduled dependency graphs.
 
@@ -25,6 +25,8 @@ history instead of a hopeful background task.
 - Durable timers, signals, queries, child workflows, cancellation, workflow
   reset, and continue-as-new support.
 - DAG schedules, manual triggers, offline linting, simulation, and profiling.
+- Inbound webhook triggers, worker routing by queue and capability, and a
+  single-writer SQLite backend for edge and single-server deployments.
 - A management API, dashboard, CLI, dead-letter inspection and replay, audit
   trails, search attributes, and telemetry hooks.
 
@@ -67,6 +69,7 @@ async fn main() {
             HarvestPlugin::new()
                 .workflows(workflows![onboarding])
                 .activities(activities![send_welcome_email])
+                .worker(WorkerConfig::default())
                 .api("/api/harvest"),
         )
         .run()
@@ -76,12 +79,18 @@ async fn main() {
 
 ## Guide and Reference
 
-- [Harvest getting started guide](https://github.com/autumn-foundation/autumn-harvest/tree/trunk/docs/getting-started)
+The Harvest guide is folded into this site — the twelve chapters below the
+Harvest heading in the sidebar walk from a bare project skeleton through
+activities, durable timers, signals, child workflows, idempotency, reliability
+knobs, DAG schedules, worker routing, operations, testing, and inbound
+webhooks.
+
+- [Start the Harvest guide](harvest-project-skeleton.md)
 - [Harvest repository](https://github.com/autumn-foundation/autumn-harvest)
 - [autumn-harvest on crates.io](https://crates.io/crates/autumn-harvest)
 - [autumn-harvest API docs](https://docs.rs/autumn-harvest)
-- [Autumn billing integration example](https://github.com/autumn-foundation/autumn-harvest/tree/trunk/examples/billing-autumn-web)
-- [Standalone runner example](https://github.com/autumn-foundation/autumn-harvest/tree/trunk/examples/standalone-runner)
+- [Autumn billing integration example](https://github.com/autumn-foundation/autumn-harvest/tree/trunk-dev/examples/billing-autumn-web)
+- [Standalone runner example](https://github.com/autumn-foundation/autumn-harvest/tree/trunk-dev/examples/standalone-runner)
 
 ## When to Reach for It
 
