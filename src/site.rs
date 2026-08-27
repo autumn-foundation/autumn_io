@@ -3,7 +3,7 @@ use autumn_web::widgets::{ActiveSearchConfig, active_search, active_search_empty
 use autumn_web::{Markup, PreEscaped, html};
 
 use crate::docs::{DocPage, DocRegistry, SearchHit, render_highlighted_code_block};
-use crate::{DOCS_START_PATH, seo};
+use crate::{DOCS_SEARCH_PATH, DOCS_START_PATH, seo};
 
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
@@ -501,7 +501,7 @@ fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
 }
 
 fn docs_search_box() -> Markup {
-    let config = ActiveSearchConfig::new("/docs/search", DOCS_SEARCH_RESULTS_TARGET)
+    let config = ActiveSearchConfig::new(DOCS_SEARCH_PATH, DOCS_SEARCH_RESULTS_TARGET)
         .placeholder("Search the guides…")
         .min_length(2)
         // htmx toggles the `htmx-request` class on this element while the search
@@ -570,7 +570,7 @@ pub fn render_docs_search_page(registry: &DocRegistry, query: &str, results: Mar
             (document_head(&PageMeta::noindex(
                 "Search the docs | Autumn",
                 "Search the Autumn documentation guides.",
-                "/docs/search",
+                DOCS_SEARCH_PATH,
             )))
             body class="site-shell docs-shell" {
                 (skip_link())

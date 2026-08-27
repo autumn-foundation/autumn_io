@@ -18,6 +18,14 @@ use docs::{DocRegistry, DocSource, DocsError, SearchIndex};
 pub const DOCS_START_SLUG: &str = "getting-started";
 pub const DOCS_START_PATH: &str = "/docs/getting-started";
 
+/// Path of the docs-search UI.
+///
+/// Deliberately outside the `/docs/{slug}` namespace: an exact route there
+/// silently shadows the guide of the same slug, and guide slugs come from
+/// upstream file names we do not control — upstream 0.7.0 added `search.md`,
+/// which would have been unreachable behind a `/docs/search` endpoint.
+pub const DOCS_SEARCH_PATH: &str = "/search";
+
 /// Maximum number of guide results returned by the docs search handler.
 const DOCS_SEARCH_RESULT_LIMIT: usize = 20;
 
@@ -282,7 +290,9 @@ pub struct DocsSearchQuery {
 
 /// Search the embedded guides and return an htmx results partial, or a full
 /// docs page when reached directly (e.g. the widget's `<noscript>` GET form).
-#[get("/docs/search")]
+///
+/// Served at [`DOCS_SEARCH_PATH`], outside the `/docs/{slug}` namespace.
+#[get("/search")]
 pub async fn docs_search(hx: HxRequest, Query(query): Query<DocsSearchQuery>) -> Response {
     let term = query.q.trim();
 

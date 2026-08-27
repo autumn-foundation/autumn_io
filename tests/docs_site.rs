@@ -447,6 +447,32 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
     );
 }
 
+/// Guide slugs come from upstream file names, so an exact route under
+/// `/docs/…` silently shadows any guide that later takes that slug — Axum
+/// matches the literal path first and the guide becomes unreachable. Upstream
+/// 0.7.0 added `search.md`, which is why the docs-search UI lives at `/search`.
+#[test]
+fn no_exact_route_shadows_a_bundled_guide_slug() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    for route in autumn_io::app_routes() {
+        let Some(rest) = route.path.strip_prefix("/docs/") else {
+            continue;
+        };
+        assert!(
+            rest.starts_with('{'),
+            "route `{}` is an exact path under /docs/ and would shadow a guide slug; \
+             serve it outside the /docs/{{slug}} namespace",
+            route.path
+        );
+    }
+
+    // The specific collision that motivated this guard: the search guide is
+    // reachable, and the search UI has moved off the guide namespace.
+    assert!(registry.page("search").is_some());
+    assert_eq!(autumn_io::DOCS_SEARCH_PATH, "/search");
+}
+
 #[test]
 fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
@@ -894,6 +920,21 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .await
         .assert_status(200)
         .assert_body_contains("<h1 id=\"page-title\">Broker connectors (Kafka, SQS)</h1>");
+
+    // The search guide is served at its own slug; the docs-search UI lives
+    // outside the guide namespace and no longer shadows it.
+    app.get("/docs/search")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("Search: keyword and vector")
+        .assert_body_contains("autumn-search");
+
+    app.get("/search")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("Search the guides");
 
     app.get("/docs/no-such-page")
         .send()
