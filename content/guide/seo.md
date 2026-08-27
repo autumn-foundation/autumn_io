@@ -49,7 +49,7 @@ Set it to the real public host. A wrong `base_url` sends crawlers to URLs that
 do not exist.
 
 The routes also appear when you register a sitemap source (see
-[Sitemap](#sitemapxml)). You do not need both.
+[Sitemap](#sitemap-xml)). You do not need both.
 
 ---
 

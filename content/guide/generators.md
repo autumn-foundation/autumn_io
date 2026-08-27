@@ -1154,7 +1154,7 @@ for a second, explicit submit.
 
 Declare a column named `lock_version` and the scaffold wires the
 framework's [optimistic-concurrency
-primitive](./cloud-native.md#optimistic-concurrency-via-lock_version)
+primitive](./cloud-native.md#optimistic-concurrency-via-lock-version)
 through the HTML edit flow (issue #1318) — no extra flag, no extra code:
 
 `lock_version` is a **magic column name**, like `slug` and `deleted_at`.
@@ -1823,8 +1823,8 @@ autumn generate scaffold Bookmark url:String title:String tag:String alive:bool 
 | `--default FIELD=VALUE` | Adds `#[default]` and a SQL `DEFAULT` for bool, string/text, integer, and float fields. `i32` defaults must fit PostgreSQL's `INTEGER` range. Defaulted fields are omitted from generated HTML forms and update columns because the model macro keeps them out of `NewX`. |
 | `--query METHOD:FIELD` | Adds a derived repository method such as `find_by_tag(tag: String) -> Vec<Model>`. The `find_by_` suffix must match `FIELD`. |
 | `--api` | Generates a JSON API-only scaffold (skips HTML routes/templates, registers 5 REST JSON routes, and generates a JSON-based smoke test). |
-| `--i18n` | Emits translatable views: every view string becomes a `t!(locale, "key")` lookup, view handlers take the `Locale` extractor, and `i18n/en.ftl` is back-filled with the English. See [Translatable views](#translatable-views---i18n). |
-| `--import` | Emits a CSV import route: an upload form, a dry-run preview with per-row errors, and a confirmed commit. See [Import CSV with a dry-run preview](#import-csv-with-a-dry-run-preview---import). |
+| `--i18n` | Emits translatable views: every view string becomes a `t!(locale, "key")` lookup, view handlers take the `Locale` extractor, and `i18n/en.ftl` is back-filled with the English. See [Translatable views](#translatable-views-i18n). |
+| `--import` | Emits a CSV import route: an upload form, a dry-run preview with per-row errors, and a confirmed commit. See [Import CSV with a dry-run preview](#import-csv-with-a-dry-run-preview-import). |
 
 | Generated file                        | Existing concept it maps to                                                                |
 | ------------------------------------- | ------------------------------------------------------------------------------------------ |

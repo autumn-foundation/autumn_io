@@ -17,7 +17,7 @@ is allowed to *do* is [authorization](./authorization.md); proving identity
 
 This guide covers:
 
-- [What's in the box](#whats-in-the-box) — the primitive behind each capability.
+- [What's in the box](#what-s-in-the-box) — the primitive behind each capability.
 - [Quick start: `autumn generate auth`](#quick-start-autumn-generate-auth).
 - [Sessions](#sessions) — the `Session` extractor, cookie, and stores.
 - [Passwords](#passwords) — hashing, verification, and the password policy.
@@ -448,7 +448,7 @@ For token-authenticated routes, `#[secured(scopes = ["posts:write"])]` is
 default-deny: every required scope must be present in the presenting token's
 grants.
 
-See [macro transparency](./macro-transparency.md#securedrole) for the exact
+See [macro transparency](./macro-transparency.md#secured-role) for the exact
 expansion.
 
 ### `RequireAuth` and `Auth<T>`

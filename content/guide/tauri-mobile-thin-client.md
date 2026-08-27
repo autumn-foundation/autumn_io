@@ -179,7 +179,7 @@ hand-maintained project.
   certificate-error interstitials; a bad cert is just a blank screen.
 - `session.secure = true` (or `AUTUMN_SESSION__SECURE=true`) in production so
   session cookies carry the `Secure` attribute (see
-  [Sessions & auth](#sessions--auth-handoff) below).
+  [Sessions & auth](#sessions-auth-handoff) below).
 - If you restrict trusted hosts (`AUTUMN_SECURITY__TRUSTED_HOSTS__HOSTS`),
   include the domain the app loads.
 

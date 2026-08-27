@@ -165,7 +165,7 @@ To bypass deferral and always spawn immediately — for example when outside a
 transaction or when you deliberately want fire-and-forget semantics — use
 `deliver_later_eager` / `try_deliver_later_eager`.
 
-See [Transactions -> after_commit](transactions.md#after_commit--post-commit-process-local-callbacks)
+See [Transactions -> after_commit](transactions.md#after-commit-post-commit-process-local-callbacks)
 for the full story on atomic DB + mail patterns.
 
 ## Generator (`autumn generate mailer`)

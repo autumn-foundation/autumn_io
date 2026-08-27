@@ -447,6 +447,66 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
     );
 }
 
+/// Upstream guides are authored for GitHub, so their in-page and cross-page
+/// link fragments use GitHub's anchor convention (`#securedrole`, `#api_doc`) —
+/// which is not what this site's renderer emits (`secured-role`, `api-doc`).
+/// The sync tool rewrites those onto real heading IDs; this asserts none is
+/// left dangling, so a reader who follows one actually lands on the heading.
+#[test]
+fn vendored_link_fragments_resolve_to_real_heading_ids() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Fragments that are broken upstream too: hand-written stubs matching no
+    // heading under either convention, so there is nothing to rewrite them to.
+    // The sync tool leaves an unresolvable fragment exactly as authored rather
+    // than guessing at a heading and sending the reader somewhere wrong.
+    let dangling_upstream = [
+        ("mail-compliance", "/docs/mail#deferred-delivery"),
+        ("authorization", "/docs/macro-transparency#authorize"),
+    ];
+
+    let mut unresolved = Vec::new();
+    for page in registry.pages() {
+        // Code spans can contain literal markup (`<a href="#panel-id">` is prose
+        // in the tabs guide, not a link), so scan only real anchors.
+        let prose = strip_code_spans(&page.html);
+        for href in html_hrefs(&prose) {
+            let Some((path, fragment)) = href.split_once('#') else {
+                continue;
+            };
+            if fragment.is_empty() {
+                continue;
+            }
+            let target_slug = if path.is_empty() {
+                page.slug.as_str()
+            } else {
+                match path.strip_prefix("/docs/") {
+                    Some(slug) if !slug.contains('/') => slug,
+                    _ => continue,
+                }
+            };
+            let Some(target) = registry.page(target_slug) else {
+                continue;
+            };
+            if target.toc.iter().any(|item| item.id == fragment) {
+                continue;
+            }
+            if dangling_upstream
+                .iter()
+                .any(|(slug, link)| *slug == page.slug && *link == href)
+            {
+                continue;
+            }
+            unresolved.push(format!("{} -> {href}", page.slug));
+        }
+    }
+
+    assert!(
+        unresolved.is_empty(),
+        "vendored links point at heading IDs that do not exist: {unresolved:#?}"
+    );
+}
+
 /// Guide slugs come from upstream file names, so an exact route under
 /// `/docs/…` silently shadows any guide that later takes that slug — Axum
 /// matches the literal path first and the guide becomes unreachable. Upstream
@@ -1160,6 +1220,25 @@ fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("temp dir should be created");
     dir
+}
+
+/// Drop the contents of `<code>` elements. Inline code keeps its quotes
+/// unescaped, so markup quoted as prose would otherwise read as real markup.
+fn strip_code_spans(html: &str) -> String {
+    let mut output = String::with_capacity(html.len());
+    let mut rest = html;
+
+    while let Some(open) = rest.find("<code") {
+        output.push_str(&rest[..open]);
+        let after = &rest[open..];
+        match after.find("</code>") {
+            Some(close) => rest = &after[close + "</code>".len()..],
+            None => return output,
+        }
+    }
+
+    output.push_str(rest);
+    output
 }
 
 fn html_hrefs(html: &str) -> impl Iterator<Item = &str> {

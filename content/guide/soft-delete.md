@@ -99,7 +99,7 @@ UI, so nothing about the flow is hand-written:
 Both write handlers load their row with `deleted_at IS NOT NULL` before acting,
 so a request for a row that is not in the trash 404s rather than purging a live
 record. The trash surface is emitted only on the standard HTML path — see
-[generators](./generators.md#trash-restore-and-purge---soft-delete) for the
+[generators](./generators.md#trash-restore-and-purge-soft-delete) for the
 gated-off variants and the reasoning.
 
 ## Lifecycle example

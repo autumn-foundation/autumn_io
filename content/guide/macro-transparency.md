@@ -25,14 +25,14 @@ in `autumn-macros/src/*.rs` and by trybuild/integration tests.
 - [Startup Log: What Did Autumn Configure?](#startup-log-what-did-autumn-configure)
 - [Using `cargo expand` to See Generated Code](#using-cargo-expand-to-see-generated-code)
 - **Macro-by-Macro Expansion Reference**
-  - [Routing & Handlers](#routing--handlers) — `#[get]`/`#[post]`/`#[put]`/`#[delete]`/`#[patch]`, `#[oauth2_callback]`, `routes![]`, `#[static_get]` + `static_routes![]`, `#[ws]`, `#[api_doc]`, `#[autumn_web::main]`
+  - [Routing & Handlers](#routing-handlers) — `#[get]`/`#[post]`/`#[put]`/`#[delete]`/`#[patch]`, `#[oauth2_callback]`, `routes![]`, `#[static_get]` + `static_routes![]`, `#[ws]`, `#[api_doc]`, `#[autumn_web::main]`
   - [Models](#models) — `#[model]` and its field-level attributes
   - [Repositories](#repositories) — `#[repository(Model)]` and its advanced surface
   - [Services](#services) — `#[service]`
   - [Background Work: Scheduled Tasks, Jobs, Events, Listeners, One-off Tasks](#background-work-scheduled-tasks-jobs-events-listeners-one-off-tasks) — `#[scheduled]` + `tasks![]`, `#[job]` + `jobs![]`, `#[event]`, `#[listener]` + `listeners![]`, `#[task]` + `one_off_tasks![]`, `#[cached]`
-  - [Guards & Rate Limiting](#guards--rate-limiting) — `#[secured]`, `#[authorize]`, `#[step_up]`, `#[feature_flag]`, `#[throttle]`, `#[query_budget]`
+  - [Guards & Rate Limiting](#guards-rate-limiting) — `#[secured]`, `#[authorize]`, `#[step_up]`, `#[feature_flag]`, `#[throttle]`, `#[query_budget]`
   - [Mail](#mail) — `#[mailer]`, `#[mailer_preview]` + `mail_previews![]`, `#[inbound_mail]`
-  - [i18n, Stories & Path Helpers](#i18n-stories--path-helpers) — `t!`, `story!`, `paths![]`
+  - [i18n, Stories & Path Helpers](#i18n-stories-path-helpers) — `t!`, `story!`, `paths![]`
 - [The Companion Function Pattern](#the-companion-function-pattern)
 - [Debugging Macro Issues](#debugging-macro-issues)
 
@@ -217,7 +217,7 @@ is purely to signal intent at the call site.
 **`#[api_doc]` ordering caveat.** The expansion matches `#[get]`, but the *name*
 `oauth2_callback` is **not** in `#[api_doc]`'s route recognizer
 (`ROUTE_ATTR_NAMES`, which lists only `get`/`post`/`put`/`delete`/`patch`/
-`static_get`/`ws`). So the [flexible `#[api_doc]` ordering](#api_doc) does **not**
+`static_get`/`ws`). So the [flexible `#[api_doc]` ordering](#api-doc) does **not**
 apply here: an `#[api_doc]` placed *above* `#[oauth2_callback]` is treated as
 standalone and silently stripped, and its OpenAPI metadata is lost. Place
 `#[api_doc]` **below** `#[oauth2_callback]`, where the expanded GET route
@@ -384,7 +384,7 @@ consumed; nothing is left on the function.
   `#[oauth2_callback]`. Because that name is unrecognized, an `#[api_doc]` placed
   *above* `#[oauth2_callback]` is treated as standalone and silently dropped;
   put it *below* the callback instead (see
-  [`#[oauth2_callback]`](#oauth2_callbackpath)).
+  [`#[oauth2_callback]`](#oauth2-callback-path)).
 - **Only the standard HTTP route macros actually consume the metadata.** Being
   listed in `ROUTE_ATTR_NAMES` only stops `#[api_doc]` from dropping *itself* as
   standalone — it does **not** guarantee the paired macro reads the keys. Only

@@ -23,9 +23,9 @@ it, and which one you want depends on where TLS is terminated:
   deployments**, and still the recommendation when a proxy already fronts your
   fleet.
 
-> **Quick decision.** Own cert, single host → [Direct TLS](#direct-in-process-tls-servertls).
+> **Quick decision.** Own cert, single host → [Direct TLS](#direct-in-process-tls-server-tls).
 > Want auto-issued certs, single host, no proxy →
-> [ACME](#automatic-acme-certificates-servertlsacme). Using `autumn deploy`, a
+> [ACME](#automatic-acme-certificates-server-tls-acme). Using `autumn deploy`, a
 > proxy, or multiple replicas → [Reverse-proxy termination](#terminating-tls-at-a-reverse-proxy).
 
 Direct TLS and ACME are both **off by default** and each gated behind an
@@ -151,7 +151,7 @@ back to the same paths, and the hot-reload picks them up.
    ```
 
 If you would rather not run certbot at all, the app can obtain and renew its own
-certificate — see [Automatic ACME certificates](#automatic-acme-certificates-servertlsacme)
+certificate — see [Automatic ACME certificates](#automatic-acme-certificates-server-tls-acme)
 below.
 
 ### Local development certificates (mkcert)
@@ -361,8 +361,8 @@ When TLS is terminated in front, the app needs **neither** the `tls` **nor** the
 `acme` cargo feature and **no** `[server.tls]` section — the terminating proxy
 owns the certificate.
 
-In-process [`[server.tls]`](#direct-in-process-tls-servertls) and
-[ACME](#automatic-acme-certificates-servertlsacme) (the sections above) remain
+In-process [`[server.tls]`](#direct-in-process-tls-server-tls) and
+[ACME](#automatic-acme-certificates-server-tls-acme) (the sections above) remain
 the right choice for a **self-run / standalone** app you start yourself — one
 that owns its own public host:port, not one deployed via `autumn deploy`.
 

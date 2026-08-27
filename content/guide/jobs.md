@@ -944,7 +944,7 @@ async fn create_order(mut db: Db) -> AutumnResult<()> {
 }
 ```
 
-See [Transactions -> after_commit](transactions.md#after_commit--post-commit-process-local-callbacks)
+See [Transactions -> after_commit](transactions.md#after-commit-post-commit-process-local-callbacks)
 for a full comparison of the two strategies and guidance on when to use each.
 
 For cloud-native rollout run the migration job first, then start web and workers.

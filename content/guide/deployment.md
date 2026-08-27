@@ -56,7 +56,7 @@ mid-rollout failure halts and rolls the hosts that already cut over back. See
 This is the **primary** deployment path. A few alternatives remain documented
 below and are better fits in specific cases:
 
-- **[Deploy to fly.io](#deploy-to-flyio)** — a managed platform (machines,
+- **[Deploy to fly.io](#deploy-to-fly-io)** — a managed platform (machines,
   built-in metrics scraping, `fly deploy`).
 - **[Deploy to Azure Container Apps](#deploy-to-azure-container-apps)** —
   Terraform-provisioned Container Apps, ACR, Postgres Flexible Server, and
@@ -73,7 +73,7 @@ below and are better fits in specific cases:
   behind a Serverless VPC Access connector, and Secret Manager-backed
   secrets, for GCP shops that already have workload identity federation in
   place.
-- **The container path** ([Step 1](#step-1--create-the-project) through
+- **The container path** ([Step 1](#step-1-create-the-project) through
   [How the production image works](#how-the-production-image-works)) — a
   portable OCI image you run on Kubernetes, ECS, Nomad, or any Docker host.
 
@@ -125,7 +125,7 @@ A host that still needs the reverse-proxy binary installed additionally needs
 **apt** (host preparation is Debian/Ubuntu-only — on another systemd distro,
 install `kamal-proxy` yourself and set `install_proxy = false`) and **outbound
 HTTPS** to your distro mirrors and to Docker Hub. Once prepared, neither is
-needed again. See [Host preparation](#host-preparation-install_proxy).
+needed again. See [Host preparation](#host-preparation-install-proxy).
 
 #### Host preparation (`install_proxy`)
 

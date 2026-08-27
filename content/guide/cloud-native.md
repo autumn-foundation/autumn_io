@@ -229,7 +229,7 @@ tls = "starttls"
 ```
 
 For durable retries across replicas, register a durable
-[`MailDeliveryQueue`](mail.md#deferred-delivery-deliver_later) via
+[`MailDeliveryQueue`](mail.md#deferred-delivery-deliver-later) via
 `AppBuilder::with_mail_delivery_queue` before `.run()` (see the Mail Guide
 for the trait definition and an outbox example). Without one,
 `try_deliver_later`/`try_deliver_later_eager` return
@@ -249,7 +249,7 @@ Autumn will automatically defer the mail spawn until after commit, so no emails
 will be sent for rolled-back writes. That deferral is still process-local; use a
 durable outbox or queue row written inside the transaction when the handoff must
 survive restarts. See
-[Transactions -> after_commit](transactions.md#after_commit--post-commit-process-local-callbacks)
+[Transactions -> after_commit](transactions.md#after-commit-post-commit-process-local-callbacks)
 for the complete pattern including jobs.
 
 ## Background Work
@@ -654,7 +654,7 @@ Add the attribute to any model field named `lock_version`:
 > additionally wires the whole conflict-aware HTML edit flow — hidden
 > version field, guarded `UPDATE`, and a 409 re-render instead of a lost
 > update. See
-> [Concurrent edits: `lock_version`](./generators.md#concurrent-edits-lock_version-optimistic-locking).
+> [Concurrent edits: `lock_version`](./generators.md#concurrent-edits-lock-version-optimistic-locking).
 
 ```rust
 #[autumn_web::model]

@@ -981,7 +981,7 @@ See `autumn-harvest/examples/incremental_etl_schedule.rs` for the full pattern.
 | Use a **workflow schedule** when… | Use a **DAG** when… |
 |---|---|
 | The work is one ordered sequence with a clear linear shape. | The work is a graph: fan-out, fan-in, parallel branches. |
-| You need arbitrary signal handlers, durable timers, child workflows, or version gates inside the run. | The run is activity orchestration — including a **single signal/approval gate** between nodes, which a [signal gate](#signal--approval-gates) handles declaratively without dropping to a workflow. |
+| You need arbitrary signal handlers, durable timers, child workflows, or version gates inside the run. | The run is activity orchestration — including a **single signal/approval gate** between nodes, which a [signal gate](#signal-approval-gates) handles declaratively without dropping to a workflow. |
 | Failure handling is per-step compensation (saga). | Failure handling is per-task trigger rules (AllDone, OneFailed). |
 | You want to query state mid-run. | The graph is fixed and you want the dashboard's graph view. |
 

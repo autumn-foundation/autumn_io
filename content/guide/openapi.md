@@ -14,7 +14,7 @@ the spec in the same compile — provided the route macro sits outermost, since 
 guard that expands first erases the type the generator would have read
 ([§3](#attribute-ordering-rules)). What a signature *cannot* express —
 summaries, the success status code, custom tags — you add with
-[`#[api_doc(...)]`](#3-enriching-operations-with-api_doc).
+[`#[api_doc(...)]`](#3-enriching-operations-with-api-doc).
 
 You add one builder call. Autumn mounts `GET /openapi.json` and a Swagger UI at
 `/swagger-ui`, and regenerates the document on every request so
@@ -324,7 +324,7 @@ async fn get_user(Path(id): Path<i64>) -> AutumnResult<Json<User>> { /* … */ }
   route-attribute recognizer); put it below.
 
 The full attribute-expansion story lives in
-[macro transparency](./macro-transparency.md#api_doc).
+[macro transparency](./macro-transparency.md#api-doc).
 
 ---
 
@@ -726,7 +726,7 @@ contract the OpenAPI operation is. See
 - [Authentication](./authentication.md) and
   [authorization](./authorization.md) — what `#[secured]` documents in the spec
   actually enforces.
-- [Macro transparency](./macro-transparency.md#api_doc) — the exact expansion,
+- [Macro transparency](./macro-transparency.md#api-doc) — the exact expansion,
   ordering rules, and generated `ApiDoc` literal.
 - [Repositories](./repositories.md) — `#[repository(api = "/api/…")]` generates
   documented CRUD endpoints; see `examples/bookmarks` for a runnable app that

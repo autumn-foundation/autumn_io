@@ -235,7 +235,7 @@ fleet hosts are all combined-role). Sessions and rate limiting get no warning at
 all. Work the table above yourself rather than waiting to be told.
 
 Full backend comparison, delivery semantics and the migration note are in the
-[jobs guide](jobs.md#backend-selection-autumntoml); don't duplicate them, read
+[jobs guide](jobs.md#backend-selection-autumn-toml); don't duplicate them, read
 them there.
 
 ---
@@ -250,7 +250,7 @@ Each new host needs exactly what the first one needed
 ([Preconditions](deployment.md#preconditions)): key-based SSH access for
 `[deploy] user`. Nothing else — the reverse-proxy binary, release layout, units
 and directories are all created for you, per host, on its own turn in the rollout
-(see [Host preparation](deployment.md#host-preparation-install_proxy)).
+(see [Host preparation](deployment.md#host-preparation-install-proxy)).
 
 ### 2. Move the shared state off the app host
 
@@ -733,7 +733,7 @@ Stated plainly so you can plan around it:
   lifecycle, blue/green at the platform level, and canary primitives.
 - **[Multi-replica setup](deployment.md#multi-replica-setup)** — the shared
   session, rate-limit and secret configuration every fleet needs.
-- **[Background jobs](jobs.md#backend-selection-autumntoml)** and
+- **[Background jobs](jobs.md#backend-selection-autumn-toml)** and
   **[Multi-replica scheduled tasks](scheduled-multi-replica.md)** — the durable
   queue and the advisory-lock scheduler a fleet needs instead of the per-process
   defaults.

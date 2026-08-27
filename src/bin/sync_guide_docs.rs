@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use autumn_io::docs::slugify_heading;
 
 const DEFAULT_AUTUMN_REPO: &str = "../autumn";
 const DEFAULT_DESTINATION: &str = "content/guide";
@@ -208,11 +211,22 @@ const HARVEST_GUIDE_FILES: &[(&str, &str, u32)] = &[
     ("13-broker-connectors.md", "harvest-broker-connectors", 1140),
 ];
 
+/// A guide read from upstream and massaged for the site, held before writing so
+/// the whole set's headings are known — [`normalize_fragments`] needs the target
+/// page's headings to resolve a cross-page fragment.
+struct PreparedGuide {
+    slug: String,
+    title: String,
+    description: String,
+    order: u32,
+    body: String,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse(env::args_os().skip(1))?;
     let source = guide_source_dir(&args.source)?;
 
-    fs::create_dir_all(&args.destination)?;
+    let mut guides = Vec::new();
     for (file_name, order) in GUIDE_FILES {
         let source_file = source.join(file_name);
         let raw = fs::read_to_string(&source_file)
@@ -225,12 +239,35 @@ fn main() -> Result<(), Box<dyn Error>> {
             )
         })?;
         let description = first_description(&raw).unwrap_or_else(|| title.clone());
-        let slug = guide_slug(file_name);
 
-        write_guide(&args.destination, slug, &title, &description, order, &raw)?;
+        guides.push(PreparedGuide {
+            slug: guide_slug(file_name).to_owned(),
+            title,
+            description,
+            order: *order,
+            body: raw,
+        });
     }
 
-    sync_harvest_guide(&args.harvest_source, &args.destination)?;
+    guides.extend(prepare_harvest_guide(&args.harvest_source)?);
+
+    let headings: HashMap<&str, Vec<String>> = guides
+        .iter()
+        .map(|guide| (guide.slug.as_str(), headings(&guide.body)))
+        .collect();
+
+    fs::create_dir_all(&args.destination)?;
+    for guide in &guides {
+        let body = normalize_fragments(&guide.body, &guide.slug, &headings);
+        write_guide(
+            &args.destination,
+            &guide.slug,
+            &guide.title,
+            &guide.description,
+            &guide.order,
+            &body,
+        )?;
+    }
 
     Ok(())
 }
@@ -242,8 +279,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 /// every relative link is resolved — sibling chapters to their `/docs/harvest-*`
 /// route, the guide index to the Harvest section intro, and everything else to
 /// an absolute `autumn-harvest` source URL.
-fn sync_harvest_guide(harvest_source: &Path, destination: &Path) -> Result<(), Box<dyn Error>> {
+fn prepare_harvest_guide(harvest_source: &Path) -> Result<Vec<PreparedGuide>, Box<dyn Error>> {
     let source = harvest_guide_source_dir(harvest_source)?;
+    let mut guides = Vec::new();
 
     for (file_name, slug, order) in HARVEST_GUIDE_FILES {
         let source_file = source.join(file_name);
@@ -262,10 +300,16 @@ fn sync_harvest_guide(harvest_source: &Path, destination: &Path) -> Result<(), B
         let body = prepare_harvest_body(&raw, &title);
         let description = first_description(&body).unwrap_or_else(|| title.clone());
 
-        write_guide(destination, slug, &title, &description, order, &body)?;
+        guides.push(PreparedGuide {
+            slug: (*slug).to_owned(),
+            title,
+            description,
+            order: *order,
+            body,
+        });
     }
 
-    Ok(())
+    Ok(guides)
 }
 
 fn write_guide(
@@ -581,6 +625,151 @@ fn guide_source_dir(source: &Path) -> Result<PathBuf, Box<dyn Error>> {
         source.display()
     )
     .into())
+}
+
+/// Collect every ATX heading in a guide body, outside fenced code blocks.
+fn headings(markdown: &str) -> Vec<String> {
+    let mut headings = Vec::new();
+    let mut in_fence = false;
+
+    for line in markdown.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix('#') {
+            let heading = rest.trim_start_matches('#');
+            if heading.starts_with(' ') {
+                headings.push(heading.trim().to_owned());
+            }
+        }
+    }
+
+    headings
+}
+
+/// GitHub's heading-anchor convention: lowercase, drop everything that is not a
+/// word character, space, or hyphen, then spaces to hyphens. Underscores survive
+/// and runs of punctuation collapse to nothing rather than to a separator, so
+/// `#[secured("role")]` anchors as `securedrole`.
+fn github_anchor(heading: &str) -> String {
+    let mut anchor = String::with_capacity(heading.len());
+
+    for char in heading.trim().chars().flat_map(char::to_lowercase) {
+        if char.is_alphanumeric() || char == '_' || char == '-' {
+            anchor.push(char);
+        } else if char.is_whitespace() {
+            anchor.push('-');
+        }
+    }
+
+    anchor
+}
+
+/// Rewrite link fragments authored against GitHub's anchor convention onto the
+/// IDs this site's renderer actually emits.
+///
+/// Upstream guides live on GitHub, so their in-page and cross-page fragments use
+/// GitHub's convention — `#securedrole`, `#api_doc`, `#lock_version`. The
+/// renderer slugifies headings differently (`secured-role`, `api-doc`), so those
+/// links land on the right page but never jump to the heading.
+///
+/// A fragment is rewritten only when it fails to match any heading ID on the
+/// target page *and* matches that page's GitHub anchor for a real heading. Every
+/// other fragment — already correct, hand-written, or pointing at something we
+/// cannot resolve — is left exactly as it was, so a fragment this cannot place
+/// is never made worse.
+fn normalize_fragments(
+    markdown: &str,
+    slug: &str,
+    headings: &HashMap<&str, Vec<String>>,
+) -> String {
+    let mut output = String::with_capacity(markdown.len());
+    let mut in_fence = false;
+
+    for line in markdown.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+        }
+        if in_fence {
+            output.push_str(line);
+            output.push('\n');
+            continue;
+        }
+
+        let mut rest = line;
+        while let Some(open) = rest.find("](") {
+            let after = &rest[open + 2..];
+            let Some(close) = after.find(')') else {
+                break;
+            };
+            output.push_str(&rest[..open + 2]);
+            output.push_str(&normalize_destination(&after[..close], slug, headings));
+            output.push(')');
+            rest = &after[close + 1..];
+        }
+        output.push_str(rest);
+        output.push('\n');
+    }
+
+    output
+}
+
+fn normalize_destination(
+    destination: &str,
+    slug: &str,
+    headings: &HashMap<&str, Vec<String>>,
+) -> String {
+    let Some((path, fragment)) = destination.split_once('#') else {
+        return destination.to_owned();
+    };
+    if fragment.is_empty() {
+        return destination.to_owned();
+    }
+
+    let Some(target) = fragment_target_slug(path, slug) else {
+        return destination.to_owned();
+    };
+    let Some(target_headings) = headings.get(target.as_str()) else {
+        return destination.to_owned();
+    };
+
+    // Already a real heading ID on the target page — nothing to do.
+    if target_headings
+        .iter()
+        .any(|heading| slugify_heading(heading) == fragment)
+    {
+        return destination.to_owned();
+    }
+
+    match target_headings
+        .iter()
+        .find(|heading| github_anchor(heading) == fragment)
+    {
+        Some(heading) => format!("{path}#{}", slugify_heading(heading)),
+        None => destination.to_owned(),
+    }
+}
+
+/// The vendored slug a link destination points at, for the link shapes that can
+/// reach a guide page: an empty path (same page), a sibling or `docs/guide/`
+/// Markdown path, or an already-resolved `/docs/{slug}` route.
+fn fragment_target_slug(path: &str, slug: &str) -> Option<String> {
+    if path.is_empty() {
+        return Some(slug.to_owned());
+    }
+    if let Some(route) = path.strip_prefix("/docs/") {
+        return (!route.is_empty() && !route.contains('/')).then(|| route.to_owned());
+    }
+
+    let relative = path.strip_prefix("./").unwrap_or(path);
+    let relative = relative.strip_prefix("docs/guide/").unwrap_or(relative);
+    let stem = relative.strip_suffix(".md")?;
+
+    (!stem.is_empty() && !stem.contains('/')).then(|| stem.to_owned())
 }
 
 /// The site slug a guide file is served at: its file stem. Entries in
