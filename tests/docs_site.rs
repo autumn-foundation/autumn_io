@@ -305,7 +305,7 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.5.0"));
+    assert!(html.contains("Autumn Harvest 0.6.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
@@ -327,6 +327,7 @@ fn bundled_docs_sidebar_groups_guides_by_workflow() {
         "Start here",
         "Harvest",
         "Request surface",
+        "Content and community",
         "Data and auth",
         "Realtime and jobs",
         "Extending and shipping",
@@ -404,7 +405,7 @@ fn bundled_docs_pagination_follows_grouped_sidebar_order() {
         .expect("deployment guide should be bundled");
     let deployment_html = render_docs_page(registry, deployment_page).into_string();
     assert!(deployment_html.contains(
-        r#"<a class="pagination-link previous" href="/docs/i18n"><span>Previous</span><strong>Internationalization (i18n)</strong></a>"#
+        r#"<a class="pagination-link previous" href="/docs/fleet-deploys"><span>Previous</span><strong>Fleet Deploys</strong></a>"#
     ));
     assert!(
         !deployment_html.contains(r#"<a class="pagination-link next""#),
@@ -444,6 +445,95 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
         registry.page("quickstart").is_none(),
         "old hand-written quickstart should not shadow the upstream guide snapshot"
     );
+}
+
+#[test]
+fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Every guide vendored in the 0.7.0 sync, plus Harvest's new chapter 13.
+    for slug in [
+        "seo",
+        "pdf-downloads",
+        "rich-text",
+        "commentable",
+        "votable",
+        "feeds",
+        "notifications",
+        "search",
+        "openapi",
+        "authentication",
+        "route-auth-coverage",
+        "aggregates",
+        "counter-cache",
+        "ledgered-entities",
+        "audit-logging",
+        "retention-sweeps",
+        "query-budgets",
+        "metrics",
+        "server-timing",
+        "failure-capsules",
+        "console",
+        "simulation-testing",
+        "clustering",
+        "upgrading",
+        "edge",
+        "fleet-deploys",
+        "harvest-broker-connectors",
+    ] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(!page.html.is_empty(), "{slug} should render a body");
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+    }
+
+    // `observability/server-timing.md` is nested upstream; the site's guide
+    // namespace is flat, so it is served at its file stem.
+    assert_eq!(
+        registry
+            .page("server-timing")
+            .expect("server-timing guide should be bundled")
+            .title,
+        "Server-Timing response header"
+    );
+
+    // The Harvest chapter keeps its cleaned nav title and resolves its sibling
+    // cross-links to on-site routes.
+    let broker_connectors = registry
+        .page("harvest-broker-connectors")
+        .expect("harvest broker-connectors chapter should be bundled");
+    assert_eq!(broker_connectors.title, "Broker connectors (Kafka, SQS)");
+    assert!(
+        broker_connectors
+            .html
+            .contains(r#"href="/docs/harvest-webhooks""#)
+    );
+}
+
+/// Whether a slug is reachable from the rendered docs sidebar, which only
+/// renders pages that a `DOCS_NAV_GROUPS` entry claims (anything else falls
+/// into the ungrouped "Reference" catch-all).
+fn is_grouped_docs_nav_slug(slug: &str) -> bool {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let page = registry
+        .page("transactions")
+        .expect("transactions guide should be bundled");
+    let html = render_docs_page(registry, page).into_string();
+    let sidebar = html
+        .split_once(r#"<aside id="docs-navigation" class="docs-sidebar""#)
+        .and_then(|(_, rest)| rest.split_once("</aside>"))
+        .map(|(sidebar, _)| sidebar)
+        .expect("docs sidebar should render");
+    let reference = sidebar
+        .find(r#"<p class="docs-nav-section-title">Reference</p>"#)
+        .unwrap_or(sidebar.len());
+
+    sidebar[..reference].contains(&format!(r#"href="/docs/{slug}""#))
 }
 
 #[test]
@@ -790,6 +880,21 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .assert_body_contains("Harvest")
         .assert_body_contains(r#"href="/docs/harvest-first-workflow""#);
 
+    // A guide vendored from a nested upstream path (`observability/…`) is
+    // served at its flat site slug, and Harvest's new chapter 13 closes the
+    // chapter sequence.
+    app.get("/docs/server-timing")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("Server-Timing response header");
+
+    app.get("/docs/harvest-broker-connectors")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("<h1 id=\"page-title\">Broker connectors (Kafka, SQS)</h1>");
+
     app.get("/docs/no-such-page")
         .send()
         .await
@@ -861,6 +966,9 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_body_contains("<loc>https://autumn-web.app/docs/autumn-harvest</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-project-skeleton</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/deployment</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/server-timing</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/fleet-deploys</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-broker-connectors</loc>")
         .text();
 
     assert!(

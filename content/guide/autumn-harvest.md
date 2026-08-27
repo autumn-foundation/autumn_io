@@ -1,12 +1,12 @@
 +++
 title = "Autumn Harvest"
-description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.5.0."
+description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.6.0."
 order = 1015
 +++
 
 # Autumn Harvest
 
-Autumn Harvest 0.5.0 is the durable workflow engine for Autumn apps. Use it
+Autumn Harvest 0.6.0 is the durable workflow engine for Autumn apps. Use it
 when a request should start work that must survive restarts, retries, timers,
 signals, child workflows, and scheduled dependency graphs.
 
@@ -25,10 +25,16 @@ history instead of a hopeful background task.
 - Durable timers, signals, queries, child workflows, cancellation, workflow
   reset, and continue-as-new support.
 - DAG schedules, manual triggers, offline linting, simulation, and profiling.
-- Inbound webhook triggers, worker routing by queue and capability, and a
-  single-writer SQLite backend for edge and single-server deployments.
-- A management API, dashboard, CLI, dead-letter inspection and replay, audit
-  trails, search attributes, and telemetry hooks.
+- Inbound webhook triggers, Kafka and SQS broker connectors, worker routing by
+  queue and capability, and a single-writer SQLite backend for edge and
+  single-server deployments.
+- Transactional workflow start, so a run is enqueued inside the caller's own
+  database transaction and never escapes a rolled-back write.
+- Durable per-execution workflow logs, business-day timers, cross-type
+  continue-as-new, and DAG-node compensation.
+- A management API, dashboard, CLI, dead-letter inspection and replay, queue and
+  per-activity pause/resume, execution lineage and parked-awaitable
+  diagnostics, audit trails, search attributes, and telemetry hooks.
 
 ## Autumn Integration
 
@@ -79,11 +85,11 @@ async fn main() {
 
 ## Guide and Reference
 
-The Harvest guide is folded into this site — the twelve chapters below the
+The Harvest guide is folded into this site — the thirteen chapters below the
 Harvest heading in the sidebar walk from a bare project skeleton through
 activities, durable timers, signals, child workflows, idempotency, reliability
-knobs, DAG schedules, worker routing, operations, testing, and inbound
-webhooks.
+knobs, DAG schedules, worker routing, operations, testing, inbound webhooks,
+and Kafka/SQS broker connectors.
 
 - [Start the Harvest guide](harvest-project-skeleton.md)
 - [Harvest repository](https://github.com/autumn-foundation/autumn-harvest)

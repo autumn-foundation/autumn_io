@@ -132,6 +132,37 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     // Two newer upstream guides folded in alongside the Harvest 0.5 sync.
     ("content-negotiation.md", 1000),
     ("nested-forms.md", 1010),
+    // New in Autumn 0.7.0. Weights continue the trailing tens block, grouped by
+    // the sidebar clusters they are wired into so registry sort tracks the
+    // navigation order. Entries may be nested under `docs/guide/`; the site slug
+    // is always the file stem, so `observability/server-timing.md` is served at
+    // `/docs/server-timing`.
+    ("seo.md", 1150),
+    ("pdf-downloads.md", 1160),
+    ("rich-text.md", 1170),
+    ("commentable.md", 1180),
+    ("votable.md", 1190),
+    ("feeds.md", 1200),
+    ("notifications.md", 1210),
+    ("search.md", 1220),
+    ("openapi.md", 1230),
+    ("authentication.md", 1240),
+    ("route-auth-coverage.md", 1250),
+    ("aggregates.md", 1260),
+    ("counter-cache.md", 1270),
+    ("ledgered-entities.md", 1280),
+    ("audit-logging.md", 1290),
+    ("retention-sweeps.md", 1300),
+    ("query-budgets.md", 1310),
+    ("metrics.md", 1320),
+    ("observability/server-timing.md", 1330),
+    ("failure-capsules.md", 1340),
+    ("console.md", 1350),
+    ("simulation-testing.md", 1360),
+    ("clustering.md", 1370),
+    ("upgrading.md", 1380),
+    ("edge.md", 1390),
+    ("fleet-deploys.md", 1400),
 ];
 
 const DEFAULT_HARVEST_REPO: &str = "../autumn-harvest";
@@ -173,6 +204,8 @@ const HARVEST_GUIDE_FILES: &[(&str, &str, u32)] = &[
     ("10-operations.md", "harvest-operations", 1110),
     ("11-testing.md", "harvest-testing", 1120),
     ("12-webhooks.md", "harvest-webhooks", 1130),
+    // New in Harvest 0.6.0.
+    ("13-broker-connectors.md", "harvest-broker-connectors", 1140),
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -192,7 +225,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             )
         })?;
         let description = first_description(&raw).unwrap_or_else(|| title.clone());
-        let slug = file_name.trim_end_matches(".md");
+        let slug = guide_slug(file_name);
 
         write_guide(&args.destination, slug, &title, &description, order, &raw)?;
     }
@@ -548,6 +581,14 @@ fn guide_source_dir(source: &Path) -> Result<PathBuf, Box<dyn Error>> {
         source.display()
     )
     .into())
+}
+
+/// The site slug a guide file is served at: its file stem. Entries in
+/// [`GUIDE_FILES`] may be nested under `docs/guide/` (`observability/`), and the
+/// site's guide namespace is flat, so the directory prefix is dropped.
+fn guide_slug(file_name: &str) -> &str {
+    let stem = file_name.trim_end_matches(".md");
+    stem.rsplit('/').next().unwrap_or(stem)
 }
 
 fn first_heading(markdown: &str) -> Option<String> {
