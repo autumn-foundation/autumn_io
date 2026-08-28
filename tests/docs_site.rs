@@ -1029,6 +1029,7 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
     home.assert_status(200);
     assert_eq!(home.header("cache-control"), None);
 
+    // Versioned URLs change whenever the bytes do, so they cache permanently.
     for path in [
         "/static/css/site.css?v=test",
         "/static/js/copy-code.js?v=test",
@@ -1040,6 +1041,23 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
             .await
             .assert_status(200)
             .assert_header("cache-control", "public, max-age=31536000, immutable");
+    }
+
+    // The framework serves its own assets under /static/ at stable, unversioned
+    // URLs, and the pages linking them — the framework-rendered /_stories
+    // gallery — cannot add a version query. Caching those immutably pinned a
+    // returning visitor to the previous release's copy for a year across an
+    // autumn-web upgrade, with no way to bust it.
+    for path in [
+        "/static/css/autumn-widgets.css",
+        "/static/js/autumn-widgets.js",
+        "/static/css/site.css",
+    ] {
+        app.get(path)
+            .send()
+            .await
+            .assert_status(200)
+            .assert_header("cache-control", "public, max-age=3600, must-revalidate");
     }
 }
 

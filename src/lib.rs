@@ -238,14 +238,53 @@ pub fn response_compression_layer() -> impl autumn_web::app::IntoAppLayer {
         .layer(autumn_web::etag::EtagLayer::new())
 }
 
+/// `Cache-Control` for a static asset whose URL carries the build's asset
+/// version: the URL changes whenever the bytes do, so the response can be
+/// cached permanently and never revalidated.
+const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
+
+/// `Cache-Control` for a static asset served at a stable, unversioned URL.
+///
+/// These cannot be cached immutably: the URL stays the same across deploys, so
+/// a year-long `immutable` entry would pin a visitor to a stale copy with no
+/// way to bust it. A short freshness window plus revalidation keeps them cheap
+/// — [`EtagLayer`] answers the revalidation with a `304`.
+///
+/// [`EtagLayer`]: autumn_web::etag::EtagLayer
+const REVALIDATED_CACHE_CONTROL: &str = "public, max-age=3600, must-revalidate";
+
+/// Whether a static-asset request carries this build's asset-version query
+/// (`?v=…`), which is what makes a URL safe to cache immutably.
+///
+/// Only `site::versioned_asset_path` adds it, and it covers just the assets
+/// this site authors. The framework serves its own assets under `/static/`
+/// too — `autumn-widgets.css`, `autumn-widgets.js`, `htmx.min.js` — and the
+/// pages that link them (the `/_stories` gallery is rendered by the framework,
+/// not by us) reference them at bare, unversioned URLs. Marking those
+/// `immutable` pinned every returning visitor to the previous release's copy
+/// for a year across an `autumn-web` upgrade.
+fn has_asset_version_query(query: Option<&str>) -> bool {
+    query.is_some_and(|query| {
+        query
+            .split('&')
+            .any(|pair| pair.split_once('=').is_some_and(|(key, _)| key == "v"))
+    })
+}
+
 async fn cache_static_assets(request: Request, next: Next) -> Response {
-    let cacheable = request.uri().path().starts_with("/static/");
+    let is_static = request.uri().path().starts_with("/static/");
+    let versioned = has_asset_version_query(request.uri().query());
     let mut response = next.run(request).await;
 
-    if cacheable && response.status().is_success() {
+    if is_static && response.status().is_success() {
+        let cache_control = if versioned {
+            IMMUTABLE_CACHE_CONTROL
+        } else {
+            REVALIDATED_CACHE_CONTROL
+        };
         response.headers_mut().insert(
             header::CACHE_CONTROL,
-            HeaderValue::from_static("public, max-age=31536000, immutable"),
+            HeaderValue::from_static(cache_control),
         );
     }
 
