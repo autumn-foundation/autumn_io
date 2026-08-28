@@ -2,6 +2,7 @@ use autumn_web::config::{AutumnConfig, MockEnv};
 
 const CARGO_TOML: &str = include_str!("../Cargo.toml");
 const DOCKERFILE: &str = include_str!("../Dockerfile");
+const FLY_TOML: &str = include_str!("../fly.toml");
 const EXPORT_RS: &str = include_str!("../src/export.rs");
 const SEO_RS: &str = include_str!("../src/seo.rs");
 const SITE_RS: &str = include_str!("../src/site.rs");
@@ -42,4 +43,40 @@ fn site_copy_targets_the_upcoming_autumn_docs_line() {
     assert!(SEO_RS.contains(r#"pub const AUTUMN_VERSION: &str = "0.7.0";"#));
     assert!(SITE_RS.contains(r#"const VERSION_LABEL: &str = "Autumn 0.7.0";"#));
     assert!(SEO_RS.contains(r#"pub const HARVEST_VERSION: &str = "0.6.0";"#));
+}
+
+/// `fly.toml` once set both `memory = '1gb'` and `memory_mb = 256` in the same
+/// `[[vm]]` block. flyctl resolves that in `computeToGuest`: it fills the
+/// guest's memory from `memory`, then copies the inlined `MachineGuest` — where
+/// `memory_mb` is parsed — over it with `IgnoreEmpty`, so a non-zero
+/// `memory_mb` silently wins. The file claimed 1 GB while the machine ran on
+/// 256 MB.
+///
+/// The Fly dashboard writes to this file (see the `flyio-scale-from-ui`
+/// commit), so the pair can come back. Keep exactly one memory key, and keep it
+/// the documented one — `memory_mb` is undocumented legacy.
+#[test]
+fn fly_vm_declares_exactly_one_memory_key() {
+    let memory_keys = FLY_TOML
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with('#'))
+        .filter(|line| {
+            line.starts_with("memory")
+                && line
+                    .split('=')
+                    .next()
+                    .is_some_and(|key| key.trim() == "memory" || key.trim() == "memory_mb")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        memory_keys.len(),
+        1,
+        "fly.toml must declare exactly one memory key, found: {memory_keys:?}"
+    );
+    assert!(
+        memory_keys[0].starts_with("memory ="),
+        "use the documented `memory` key, not legacy `memory_mb`: {memory_keys:?}"
+    );
 }
