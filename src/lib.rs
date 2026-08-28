@@ -18,6 +18,14 @@ use docs::{DocRegistry, DocSource, DocsError, SearchIndex};
 pub const DOCS_START_SLUG: &str = "getting-started";
 pub const DOCS_START_PATH: &str = "/docs/getting-started";
 
+/// Path of the docs-search UI.
+///
+/// Deliberately outside the `/docs/{slug}` namespace: an exact route there
+/// silently shadows the guide of the same slug, and guide slugs come from
+/// upstream file names we do not control — upstream 0.7.0 added `search.md`,
+/// which would have been unreachable behind a `/docs/search` endpoint.
+pub const DOCS_SEARCH_PATH: &str = "/search";
+
 /// Maximum number of guide results returned by the docs search handler.
 const DOCS_SEARCH_RESULT_LIMIT: usize = 20;
 
@@ -152,6 +160,35 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("harvest-operations"),
         guide_doc!("harvest-testing"),
         guide_doc!("harvest-webhooks"),
+        // New in Harvest 0.6.0.
+        guide_doc!("harvest-broker-connectors"),
+        // New in Autumn 0.7.0.
+        guide_doc!("seo"),
+        guide_doc!("pdf-downloads"),
+        guide_doc!("rich-text"),
+        guide_doc!("commentable"),
+        guide_doc!("votable"),
+        guide_doc!("feeds"),
+        guide_doc!("notifications"),
+        guide_doc!("search"),
+        guide_doc!("openapi"),
+        guide_doc!("authentication"),
+        guide_doc!("route-auth-coverage"),
+        guide_doc!("aggregates"),
+        guide_doc!("counter-cache"),
+        guide_doc!("ledgered-entities"),
+        guide_doc!("audit-logging"),
+        guide_doc!("retention-sweeps"),
+        guide_doc!("query-budgets"),
+        guide_doc!("metrics"),
+        guide_doc!("server-timing"),
+        guide_doc!("failure-capsules"),
+        guide_doc!("console"),
+        guide_doc!("simulation-testing"),
+        guide_doc!("clustering"),
+        guide_doc!("upgrading"),
+        guide_doc!("edge"),
+        guide_doc!("fleet-deploys"),
     ])
 });
 
@@ -253,7 +290,9 @@ pub struct DocsSearchQuery {
 
 /// Search the embedded guides and return an htmx results partial, or a full
 /// docs page when reached directly (e.g. the widget's `<noscript>` GET form).
-#[get("/docs/search")]
+///
+/// Served at [`DOCS_SEARCH_PATH`], outside the `/docs/{slug}` namespace.
+#[get("/search")]
 pub async fn docs_search(hx: HxRequest, Query(query): Query<DocsSearchQuery>) -> Response {
     let term = query.q.trim();
 

@@ -305,7 +305,7 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.5.0"));
+    assert!(html.contains("Autumn Harvest 0.6.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
@@ -327,6 +327,7 @@ fn bundled_docs_sidebar_groups_guides_by_workflow() {
         "Start here",
         "Harvest",
         "Request surface",
+        "Content and community",
         "Data and auth",
         "Realtime and jobs",
         "Extending and shipping",
@@ -404,7 +405,7 @@ fn bundled_docs_pagination_follows_grouped_sidebar_order() {
         .expect("deployment guide should be bundled");
     let deployment_html = render_docs_page(registry, deployment_page).into_string();
     assert!(deployment_html.contains(
-        r#"<a class="pagination-link previous" href="/docs/i18n"><span>Previous</span><strong>Internationalization (i18n)</strong></a>"#
+        r#"<a class="pagination-link previous" href="/docs/fleet-deploys"><span>Previous</span><strong>Fleet Deploys</strong></a>"#
     ));
     assert!(
         !deployment_html.contains(r#"<a class="pagination-link next""#),
@@ -444,6 +445,181 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
         registry.page("quickstart").is_none(),
         "old hand-written quickstart should not shadow the upstream guide snapshot"
     );
+}
+
+/// Upstream guides are authored for GitHub, so their in-page and cross-page
+/// link fragments use GitHub's anchor convention (`#securedrole`, `#api_doc`) —
+/// which is not what this site's renderer emits (`secured-role`, `api-doc`).
+/// The sync tool rewrites those onto real heading IDs; this asserts none is
+/// left dangling, so a reader who follows one actually lands on the heading.
+#[test]
+fn vendored_link_fragments_resolve_to_real_heading_ids() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Fragments that are broken upstream too: hand-written stubs matching no
+    // heading under either convention, so there is nothing to rewrite them to.
+    // The sync tool leaves an unresolvable fragment exactly as authored rather
+    // than guessing at a heading and sending the reader somewhere wrong.
+    let dangling_upstream = [
+        ("mail-compliance", "/docs/mail#deferred-delivery"),
+        ("authorization", "/docs/macro-transparency#authorize"),
+    ];
+
+    let mut unresolved = Vec::new();
+    for page in registry.pages() {
+        // Code spans can contain literal markup (`<a href="#panel-id">` is prose
+        // in the tabs guide, not a link), so scan only real anchors.
+        let prose = strip_code_spans(&page.html);
+        for href in html_hrefs(&prose) {
+            let Some((path, fragment)) = href.split_once('#') else {
+                continue;
+            };
+            if fragment.is_empty() {
+                continue;
+            }
+            let target_slug = if path.is_empty() {
+                page.slug.as_str()
+            } else {
+                match path.strip_prefix("/docs/") {
+                    Some(slug) if !slug.contains('/') => slug,
+                    _ => continue,
+                }
+            };
+            let Some(target) = registry.page(target_slug) else {
+                continue;
+            };
+            if target.toc.iter().any(|item| item.id == fragment) {
+                continue;
+            }
+            if dangling_upstream
+                .iter()
+                .any(|(slug, link)| *slug == page.slug && *link == href)
+            {
+                continue;
+            }
+            unresolved.push(format!("{} -> {href}", page.slug));
+        }
+    }
+
+    assert!(
+        unresolved.is_empty(),
+        "vendored links point at heading IDs that do not exist: {unresolved:#?}"
+    );
+}
+
+/// Guide slugs come from upstream file names, so an exact route under
+/// `/docs/…` silently shadows any guide that later takes that slug — Axum
+/// matches the literal path first and the guide becomes unreachable. Upstream
+/// 0.7.0 added `search.md`, which is why the docs-search UI lives at `/search`.
+#[test]
+fn no_exact_route_shadows_a_bundled_guide_slug() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    for route in autumn_io::app_routes() {
+        let Some(rest) = route.path.strip_prefix("/docs/") else {
+            continue;
+        };
+        assert!(
+            rest.starts_with('{'),
+            "route `{}` is an exact path under /docs/ and would shadow a guide slug; \
+             serve it outside the /docs/{{slug}} namespace",
+            route.path
+        );
+    }
+
+    // The specific collision that motivated this guard: the search guide is
+    // reachable, and the search UI has moved off the guide namespace.
+    assert!(registry.page("search").is_some());
+    assert_eq!(autumn_io::DOCS_SEARCH_PATH, "/search");
+}
+
+#[test]
+fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Every guide vendored in the 0.7.0 sync, plus Harvest's new chapter 13.
+    for slug in [
+        "seo",
+        "pdf-downloads",
+        "rich-text",
+        "commentable",
+        "votable",
+        "feeds",
+        "notifications",
+        "search",
+        "openapi",
+        "authentication",
+        "route-auth-coverage",
+        "aggregates",
+        "counter-cache",
+        "ledgered-entities",
+        "audit-logging",
+        "retention-sweeps",
+        "query-budgets",
+        "metrics",
+        "server-timing",
+        "failure-capsules",
+        "console",
+        "simulation-testing",
+        "clustering",
+        "upgrading",
+        "edge",
+        "fleet-deploys",
+        "harvest-broker-connectors",
+    ] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(!page.html.is_empty(), "{slug} should render a body");
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+    }
+
+    // `observability/server-timing.md` is nested upstream; the site's guide
+    // namespace is flat, so it is served at its file stem.
+    assert_eq!(
+        registry
+            .page("server-timing")
+            .expect("server-timing guide should be bundled")
+            .title,
+        "Server-Timing response header"
+    );
+
+    // The Harvest chapter keeps its cleaned nav title and resolves its sibling
+    // cross-links to on-site routes.
+    let broker_connectors = registry
+        .page("harvest-broker-connectors")
+        .expect("harvest broker-connectors chapter should be bundled");
+    assert_eq!(broker_connectors.title, "Broker connectors (Kafka, SQS)");
+    assert!(
+        broker_connectors
+            .html
+            .contains(r#"href="/docs/harvest-webhooks""#)
+    );
+}
+
+/// Whether a slug is reachable from the rendered docs sidebar, which only
+/// renders pages that a `DOCS_NAV_GROUPS` entry claims (anything else falls
+/// into the ungrouped "Reference" catch-all).
+fn is_grouped_docs_nav_slug(slug: &str) -> bool {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let page = registry
+        .page("transactions")
+        .expect("transactions guide should be bundled");
+    let html = render_docs_page(registry, page).into_string();
+    let sidebar = html
+        .split_once(r#"<aside id="docs-navigation" class="docs-sidebar""#)
+        .and_then(|(_, rest)| rest.split_once("</aside>"))
+        .map(|(sidebar, _)| sidebar)
+        .expect("docs sidebar should render");
+    let reference = sidebar
+        .find(r#"<p class="docs-nav-section-title">Reference</p>"#)
+        .unwrap_or(sidebar.len());
+
+    sidebar[..reference].contains(&format!(r#"href="/docs/{slug}""#))
 }
 
 #[test]
@@ -790,6 +966,36 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .assert_body_contains("Harvest")
         .assert_body_contains(r#"href="/docs/harvest-first-workflow""#);
 
+    // A guide vendored from a nested upstream path (`observability/…`) is
+    // served at its flat site slug, and Harvest's new chapter 13 closes the
+    // chapter sequence.
+    app.get("/docs/server-timing")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("Server-Timing response header");
+
+    app.get("/docs/harvest-broker-connectors")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("<h1 id=\"page-title\">Broker connectors (Kafka, SQS)</h1>");
+
+    // The search guide is served at its own slug; the docs-search UI lives
+    // outside the guide namespace and no longer shadows it.
+    app.get("/docs/search")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("Search: keyword and vector")
+        .assert_body_contains("autumn-search");
+
+    app.get("/search")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("Search the guides");
+
     app.get("/docs/no-such-page")
         .send()
         .await
@@ -861,6 +1067,9 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_body_contains("<loc>https://autumn-web.app/docs/autumn-harvest</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-project-skeleton</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/deployment</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/server-timing</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/fleet-deploys</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-broker-connectors</loc>")
         .text();
 
     assert!(
@@ -1011,6 +1220,25 @@ fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("temp dir should be created");
     dir
+}
+
+/// Drop the contents of `<code>` elements. Inline code keeps its quotes
+/// unescaped, so markup quoted as prose would otherwise read as real markup.
+fn strip_code_spans(html: &str) -> String {
+    let mut output = String::with_capacity(html.len());
+    let mut rest = html;
+
+    while let Some(open) = rest.find("<code") {
+        output.push_str(&rest[..open]);
+        let after = &rest[open..];
+        match after.find("</code>") {
+            Some(close) => rest = &after[close + "</code>".len()..],
+            None => return output,
+        }
+    }
+
+    output.push_str(rest);
+    output
 }
 
 fn html_hrefs(html: &str) -> impl Iterator<Item = &str> {

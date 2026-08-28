@@ -14,10 +14,10 @@ identity within the last N minutes?"**
 This guide covers:
 
 - [Why step-up exists](#why-step-up-exists) — the threat model.
-- [The `#[step_up]` attribute macro](#the-step_up-attribute-macro).
+- [The `#[step_up]` attribute macro](#the-step-up-attribute-macro).
 - [Configuration](#configuration) — global defaults and per-route overrides.
 - [The reauth flow](#the-reauth-flow) — what happens on a stale session.
-- [JSON / API clients](#json--api-clients) — `WWW-Authenticate: StepUp`.
+- [JSON / API clients](#json-api-clients) — `WWW-Authenticate: StepUp`.
 - [Audit events](#audit-events) — SOC 2 evidence collection.
 - [Admin plugin](#admin-plugin) — protecting mutating admin actions.
 - [Step-up vs. session rotation](#step-up-vs-session-rotation-819) —
@@ -217,3 +217,11 @@ re-proving identity.
 
 **Rule of thumb**: if the action is irreversible, changes credentials or
 security settings, or exposes sensitive data, add `#[step_up]`.
+
+## See also
+
+- [Authentication](./authentication.md) — the session, password, and
+  `#[secured]` layer that `#[step_up]` tightens, including the remember-me
+  chains that make a "logged in" request only weakly authenticated.
+- [Authorization](./authorization.md) — `#[authorize]` for "may this user touch
+  this record?", the question orthogonal to freshness.

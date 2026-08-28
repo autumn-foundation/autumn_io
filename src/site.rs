@@ -3,12 +3,12 @@ use autumn_web::widgets::{ActiveSearchConfig, active_search, active_search_empty
 use autumn_web::{Markup, PreEscaped, html};
 
 use crate::docs::{DocPage, DocRegistry, SearchHit, render_highlighted_code_block};
-use crate::{DOCS_START_PATH, seo};
+use crate::{DOCS_SEARCH_PATH, DOCS_START_PATH, seo};
 
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
-const VERSION_LABEL: &str = "Autumn 0.6.0";
+const VERSION_LABEL: &str = "Autumn 0.7.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const HARVEST_GUIDE_START_PATH: &str = "/docs/harvest-project-skeleton";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
@@ -56,6 +56,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "harvest-operations",
             "harvest-testing",
             "harvest-webhooks",
+            "harvest-broker-connectors",
         ],
     },
     DocsNavGroup {
@@ -76,6 +77,18 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "nested-forms",
             "flash",
             "tabs",
+            "seo",
+            "pdf-downloads",
+        ],
+    },
+    DocsNavGroup {
+        label: "Content and community",
+        slugs: &[
+            "rich-text",
+            "commentable",
+            "votable",
+            "feeds",
+            "notifications",
         ],
     },
     DocsNavGroup {
@@ -97,6 +110,9 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "state-machines",
             "version-history",
             "full-text-search",
+            "search",
+            "aggregates",
+            "counter-cache",
             "storage-variants",
             "attribute-encryption",
             "oauth",
@@ -109,6 +125,12 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "declarative-schema",
             "events",
             "lifecycle",
+            "authentication",
+            "route-auth-coverage",
+            "ledgered-entities",
+            "audit-logging",
+            "retention-sweeps",
+            "query-budgets",
         ],
     },
     DocsNavGroup {
@@ -131,6 +153,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "outbound-http",
             "outbound-webhooks",
             "mcp",
+            "openapi",
         ],
     },
     DocsNavGroup {
@@ -154,6 +177,9 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "security-posture-manifest",
             "tls",
             "daemon",
+            "metrics",
+            "server-timing",
+            "failure-capsules",
         ],
     },
     DocsNavGroup {
@@ -169,11 +195,18 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "wasm-islands",
             "stories",
             "time-zones",
+            "console",
+            "simulation-testing",
         ],
     },
     DocsNavGroup {
         label: "Scale and tenancy",
-        slugs: &["sharding", "tenant-cells", "sqlite-in-production"],
+        slugs: &[
+            "sharding",
+            "tenant-cells",
+            "sqlite-in-production",
+            "clustering",
+        ],
     },
     DocsNavGroup {
         label: "Desktop and mobile",
@@ -192,6 +225,9 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "media",
             "cloud-native",
             "i18n",
+            "upgrading",
+            "edge",
+            "fleet-deploys",
             "deployment",
         ],
     },
@@ -465,7 +501,7 @@ fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
 }
 
 fn docs_search_box() -> Markup {
-    let config = ActiveSearchConfig::new("/docs/search", DOCS_SEARCH_RESULTS_TARGET)
+    let config = ActiveSearchConfig::new(DOCS_SEARCH_PATH, DOCS_SEARCH_RESULTS_TARGET)
         .placeholder("Search the guides…")
         .min_length(2)
         // htmx toggles the `htmx-request` class on this element while the search
@@ -534,7 +570,7 @@ pub fn render_docs_search_page(registry: &DocRegistry, query: &str, results: Mar
             (document_head(&PageMeta::noindex(
                 "Search the docs | Autumn",
                 "Search the Autumn documentation guides.",
-                "/docs/search",
+                DOCS_SEARCH_PATH,
             )))
             body class="site-shell docs-shell" {
                 (skip_link())
@@ -779,7 +815,7 @@ fn site_header(active: &str) -> Markup {
                     a href=(DOCS_START_PATH) { "Docs" }
                 }
                 a href=(HARVEST_DOC_PATH) { "Harvest" }
-                a href=(DOCS_START_PATH) { "0.6.0" }
+                a href=(DOCS_START_PATH) { "0.7.0" }
                 a href=(seo::GITHUB_REPOSITORY_URL) { "GitHub" }
                 a href=(seo::CRATES_IO_URL) { "crates.io" }
                 a href="/docs/deployment" { "Deploy" }

@@ -229,14 +229,18 @@ tls = "starttls"
 ```
 
 For durable retries across replicas, register a durable
-[`MailDeliveryQueue`](mail.md#deferred-delivery-deliver_later) via
+[`MailDeliveryQueue`](mail.md#deferred-delivery-deliver-later) via
 `AppBuilder::with_mail_delivery_queue` before `.run()` (see the Mail Guide
-for the trait definition and an outbox example). Without one, `prod` startup
-fails unless you explicitly set
+for the trait definition and an outbox example). Without one,
+`try_deliver_later`/`try_deliver_later_eager` return
+`MailError::NoDurableQueueInProduction` in `prod` unless you explicitly set
 `mail.allow_in_process_deliver_later_in_production = true`, which
-acknowledges the in-process Tokio fallback. The fallback is fine for local
-development and small single-process deployments but is not durable across
-restarts or replicas.
+acknowledges the in-process Tokio fallback (the plain `deliver_later`/
+`deliver_later_eager` methods only log that error, so a caller using them
+can't observe it). The fallback is fine for local development and small
+single-process deployments but is not durable across restarts or replicas.
+Apps that only call `mailer.send(...)` never reach this guard and need
+neither a queue nor the flag.
 
 When email dispatch is coordinated with DB writes, use
 [`Db::tx`](transactions.md) for the database side so the write set commits or
@@ -245,7 +249,7 @@ Autumn will automatically defer the mail spawn until after commit, so no emails
 will be sent for rolled-back writes. That deferral is still process-local; use a
 durable outbox or queue row written inside the transaction when the handoff must
 survive restarts. See
-[Transactions -> after_commit](transactions.md#after_commit--post-commit-process-local-callbacks)
+[Transactions -> after_commit](transactions.md#after-commit-post-commit-process-local-callbacks)
 for the complete pattern including jobs.
 
 ## Background Work
@@ -617,7 +621,7 @@ autumn_web::app()
 ```toml
 # Cargo.toml
 [dependencies]
-autumn-cache-redis = "0.4"
+autumn-cache-redis = "0.7"
 ```
 
 `CacheResponseLayer::from_app(&state)` returns `Some(layer)` wired to the
@@ -643,6 +647,14 @@ the first. No error is raised, no conflict is detected, data is lost.
 ### Optimistic concurrency via `#[lock_version]`
 
 Add the attribute to any model field named `lock_version`:
+
+> **Generated apps get this for free.** Declaring a `lock_version` column
+> in `autumn generate model` / `autumn generate scaffold` emits the
+> attribute (and the column's `DEFAULT 0`) for you, and a scaffold
+> additionally wires the whole conflict-aware HTML edit flow — hidden
+> version field, guarded `UPDATE`, and a 409 re-render instead of a lost
+> update. See
+> [Concurrent edits: `lock_version`](./generators.md#concurrent-edits-lock-version-optimistic-locking).
 
 ```rust
 #[autumn_web::model]
