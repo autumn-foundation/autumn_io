@@ -47,19 +47,18 @@ configuration.
 |---|---|
 | `list_autumn_docs` | Lists the guides — slug, title, abridged description, sidebar group, Markdown size. Takes an optional `group` to list one sidebar section at a time; every response carries the group names. |
 | `search_autumn_docs` | Ranked search over the guides. Every term must match, so a few distinctive words beat a sentence. Returns slugs and snippets. |
-| `get_autumn_doc` | Returns a guide's Markdown by slug, with its section headings. Takes an optional `section`. |
+| `get_autumn_doc` | Returns a guide's Markdown by slug, with its section headings. Takes an optional `section`; see the size gate below. |
 
 All three are `GET`s and carry `readOnlyHint`, so an agent can call them without
 asking permission.
 
-### Large guides
+### The size gate
 
-`get_autumn_doc` returns a guide whole only while it is under
-`api::MAX_INLINE_DOC_BYTES` (60 KB). Three guides are larger —
-`deployment` at ~150 KB is roughly forty thousand tokens, which would swamp the
-context of whatever asked for it. Those come back with `markdown: null`, a
-`notice` explaining the situation, and the full `sections` list, so the caller
-recovers in one more call:
+`get_autumn_doc` returns Markdown only while it is under
+`api::MAX_INLINE_DOC_BYTES` (60 KB). Three guides are larger — `deployment` at
+~150 KB is roughly forty thousand tokens, which would swamp the context of
+whatever asked for it. Those come back with `markdown: null`, a `notice`, and
+the `sections` list, so the caller recovers in one more call:
 
 ```jsonc
 // get_autumn_doc { "slug": "deployment" }
@@ -70,6 +69,18 @@ recovers in one more call:
 // get_autumn_doc { "slug": "deployment", "query": { "section": "prerequisites" } }
 { "section": "prerequisites", "markdown": "## Prerequisites\n\n…" }
 ```
+
+**The gate applies to a requested section too.** Two sections are over the cap
+on their own (`deployment#push-button-deploy-to-your-own-server-autumn-deploy`
+at 76 KB, `generators#autumn-generate-scaffold` at 73 KB), so exempting the
+section path would reopen the hole on the very call the notice tells an agent to
+make. When a section is withheld, `sections` lists the headings nested *inside*
+it rather than the whole guide's, so the listed ids are the requests that
+actually narrow things down. Each step is strictly smaller than the last, and
+the recursion bottoms out on a heading with nothing nested inside it: that case
+returns a truncated prefix cut at a line break, with a notice and the URL, so a
+caller is never left with no body and no next step. No guide reaches that floor
+today — it exists because guide content is synced from upstream and can grow.
 
 Section ids are the anchors the rendered page already uses, so
 `https://autumn-web.app/docs/deployment#prerequisites` is a working deep link to

@@ -133,6 +133,30 @@ impl DocPage {
             markdown,
         })
     }
+
+    /// The headings nested inside the heading with this id, in document order,
+    /// or an empty slice when it has none (or does not exist).
+    ///
+    /// Applies the same boundary rule [`DocPage::section`] slices by — every
+    /// heading up to the next one at the same or a shallower level — so the
+    /// headings listed here are exactly the ones whose text lies within that
+    /// section. That is what makes them the narrower requests a caller can
+    /// make when a section is itself too large to return.
+    #[must_use]
+    pub fn subsections(&self, id: &str) -> &[TocItem] {
+        let Some(start) = self.toc.iter().position(|item| item.id == id) else {
+            return &[];
+        };
+
+        let level = self.toc[start].level;
+        let nested = &self.toc[start + 1..];
+        let end = nested
+            .iter()
+            .position(|item| item.level <= level)
+            .unwrap_or(nested.len());
+
+        &nested[..end]
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

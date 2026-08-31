@@ -20,11 +20,16 @@
 //! The guides are not uniformly sized. Most are a few kilobytes, but
 //! `deployment.md` is over 150 KB — roughly forty thousand tokens, more than an
 //! agent should ever receive from one tool call. So [`get_autumn_doc`] returns
-//! a whole guide only while it fits [`MAX_INLINE_DOC_BYTES`]; past that it
-//! withholds the body and returns the guide's section list instead, letting the
-//! agent ask again for the one section it wants. Section ids are the anchors
-//! the rendered page already uses, so a section reference is also a working
-//! deep link a human can open.
+//! Markdown only while it fits [`MAX_INLINE_DOC_BYTES`]; past that it withholds
+//! the body and returns the headings nested inside what was asked for, letting
+//! the agent narrow and ask again. Section ids are the anchors the rendered
+//! page already uses, so a section reference is also a working deep link a
+//! human can open.
+//!
+//! The gate applies to a requested *section* just as it does to a whole guide.
+//! A `##` section of the deployment guide is 76 KB on its own, so exempting the
+//! section path would have reopened the hole on the very call the notice tells
+//! an agent to make. See [`gate_by_size`].
 
 use autumn_web::openapi::OpenApiSchema;
 use autumn_web::prelude::*;
@@ -32,16 +37,17 @@ use autumn_web::reexports::axum::response::{IntoResponse, Response};
 use autumn_web::reexports::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use crate::docs::{DocPage, DocRegistry, DocsError};
+use crate::docs::{DocPage, DocRegistry, DocsError, TocItem};
 use crate::{seo, site};
 
 /// Largest guide, in bytes of Markdown, that [`get_autumn_doc`] will return in
 /// one piece.
 ///
-/// Three of the guides sit above this line. For those, an unrequested full body
-/// would dominate an agent's context window, so the response carries the
-/// section list and a [`GuideDocument::notice`] instead — a cheap extra
-/// round-trip in exchange for never blowing up the caller.
+/// Three whole guides and two individual sections sit above this line. For
+/// those, returning the full body would dominate an agent's context window, so
+/// the response carries the headings to narrow to and a
+/// [`GuideDocument::notice`] instead — a cheap extra round-trip in exchange for
+/// never blowing up the caller.
 pub const MAX_INLINE_DOC_BYTES: usize = 60_000;
 
 /// Default and maximum number of hits [`search_autumn_docs`] returns.
@@ -142,14 +148,18 @@ pub struct GuideDocument {
     pub group: String,
     pub url: String,
     pub autumn_version: String,
-    /// Every heading in the guide, in document order.
+    /// The headings the caller can narrow to from here, in document order:
+    /// every heading in the guide, or — when a `section` was requested — the
+    /// headings nested inside that section.
     pub sections: Vec<GuideSectionRef>,
     /// The requested section's id, when the response is one section rather
     /// than the whole guide.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub section: Option<String>,
-    /// The Markdown itself, or `null` when the guide was too large to inline
-    /// and no section was requested — see [`notice`](GuideDocument::notice).
+    /// The Markdown itself, `null` when it was too large to inline and there
+    /// are `sections` to narrow to instead, or a truncated prefix when it was
+    /// too large with nothing nested inside it. Whenever it is not the
+    /// complete text, [`notice`](GuideDocument::notice) says so.
     pub markdown: Option<String>,
     /// Present only when something about the response needs explaining, so an
     /// agent that gets a `null` body is told what to do next.
@@ -327,12 +337,14 @@ pub async fn search_autumn_docs(
     operation_id = "get_autumn_doc",
     tag = "docs",
     summary = "Read one Autumn guide as Markdown",
-    description = "Return a guide's Markdown source by slug, along with its list \
-                   of section headings. Guides over 60 KB are not returned whole: \
-                   for those, `markdown` is null and you should pick an id from \
+    description = "Return a guide's Markdown source by slug, along with its \
+                   section headings. Anything over 60 KB is not returned whole: \
+                   `markdown` comes back null, and you should pick an id from \
                    `sections` and call again with the `section` argument to read \
-                   that part. Slugs come from list_autumn_docs or \
-                   search_autumn_docs."
+                   that part. A requested section is subject to the same limit, \
+                   and `sections` then lists the headings inside it, so keep \
+                   narrowing until you get a body. Slugs come from \
+                   list_autumn_docs or search_autumn_docs."
 )]
 pub async fn get_autumn_doc(
     Path(slug): Path<String>,
@@ -343,62 +355,112 @@ pub async fn get_autumn_doc(
         .page(&slug)
         .ok_or_else(|| DocsApiError::UnknownGuide(slug.clone()))?;
 
-    let sections = page
-        .toc
-        .iter()
-        .map(|item| GuideSectionRef {
-            id: item.id.clone(),
-            title: item.title.clone(),
-            level: item.level,
-        })
-        .collect();
+    let requested = query
+        .section
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
 
-    let document = |section, markdown, notice| GuideDocument {
+    // Resolve what was asked for — the whole guide, or one section of it —
+    // and the headings the caller can narrow to from there. Both go through
+    // the same size gate below: a `##` section of a 150 KB guide can itself be
+    // 75 KB, which is the result the gate exists to prevent, so exempting the
+    // section path would reopen the hole on the very call the notice tells an
+    // agent to make.
+    let (markdown, sections) = match requested {
+        Some(id) => {
+            let section = page
+                .section(id)
+                .ok_or_else(|| DocsApiError::UnknownSection {
+                    slug: page.slug.clone(),
+                    section: id.to_owned(),
+                })?;
+
+            (section.markdown, page.subsections(id))
+        }
+        None => (page.markdown.clone(), page.toc.as_slice()),
+    };
+
+    let url = seo::absolute_url(&seo::docs_path(&page.slug));
+    let (markdown, notice) = gate_by_size(markdown, sections, requested, &url);
+
+    Ok(Json(GuideDocument {
         slug: page.slug.clone(),
         title: page.title.clone(),
         description: page.description.clone(),
         group: site::doc_group_label(&page.slug).to_owned(),
-        url: seo::absolute_url(&seo::docs_path(&page.slug)),
+        url,
         autumn_version: seo::AUTUMN_VERSION.to_owned(),
-        sections,
-        section,
+        sections: sections
+            .iter()
+            .map(|item| GuideSectionRef {
+                id: item.id.clone(),
+                title: item.title.clone(),
+                level: item.level,
+            })
+            .collect(),
+        section: requested.map(str::to_owned),
         markdown,
         notice,
+    }))
+}
+
+/// Decide whether `markdown` can be returned whole, and what to say if not.
+///
+/// Three outcomes, in the order a caller can act on them:
+///
+/// 1. **It fits.** Return it.
+/// 2. **Too large, but `sections` offers somewhere narrower.** Withhold the
+///    body and point at those headings. This is the common case, and it
+///    recurses safely: each narrowing is strictly smaller than the last.
+/// 3. **Too large with nothing nested inside it.** There is no narrower request
+///    left to make, so returning nothing would strand the caller — truncate
+///    instead and say so. No guide hits this today; it is the floor that keeps
+///    the recursion in (2) from ever bottoming out at a dead end, since guide
+///    content is synced from upstream and can grow a large leaf section at any
+///    time.
+fn gate_by_size(
+    markdown: String,
+    sections: &[TocItem],
+    requested: Option<&str>,
+    url: &str,
+) -> (Option<String>, Option<String>) {
+    if markdown.len() <= MAX_INLINE_DOC_BYTES {
+        return (Some(markdown), None);
+    }
+
+    let subject = match requested {
+        Some(id) => format!("Section {id:?}"),
+        None => "This guide".to_owned(),
     };
+    let kilobytes = markdown.len() / 1024;
 
-    if let Some(id) = query
-        .section
-        .as_deref()
-        .map(str::trim)
-        .filter(|id| !id.is_empty())
-    {
-        let section = page
-            .section(id)
-            .ok_or_else(|| DocsApiError::UnknownSection {
-                slug: page.slug.clone(),
-                section: id.to_owned(),
-            })?;
+    if sections.is_empty() {
+        let cut = crate::docs::floor_char_boundary(&markdown, MAX_INLINE_DOC_BYTES);
+        // Cut at a line break so the result is not a half-line of Markdown.
+        let cut = markdown[..cut].rfind('\n').map_or(cut, |line| line + 1);
+        let mut truncated = markdown;
+        truncated.truncate(cut);
 
-        return Ok(Json(document(
-            Some(section.id),
-            Some(section.markdown),
-            None,
-        )));
-    }
-
-    if page.markdown.len() > MAX_INLINE_DOC_BYTES {
-        let notice = format!(
-            "This guide is {} KB of Markdown, too large to return in one tool result. \
-             Pick an id from `sections` and call get_autumn_doc again with the \
-             `section` argument to read that part, or read the whole guide at {}.",
-            page.markdown.len() / 1024,
-            seo::absolute_url(&seo::docs_path(&page.slug)),
+        return (
+            Some(truncated),
+            Some(format!(
+                "{subject} is {kilobytes} KB of Markdown and has no headings inside \
+                 it to narrow to, so this is the first {} KB only. Read the rest at \
+                 {url}.",
+                cut / 1024,
+            )),
         );
-
-        return Ok(Json(document(None, None, Some(notice))));
     }
 
-    Ok(Json(document(None, Some(page.markdown.clone()), None)))
+    (
+        None,
+        Some(format!(
+            "{subject} is {kilobytes} KB of Markdown, too large to return in one tool \
+             result. Pick an id from `sections` and call get_autumn_doc again with the \
+             `section` argument to read that part, or read it at {url}."
+        )),
+    )
 }
 
 #[must_use]
@@ -515,4 +577,104 @@ fn abridge(text: &str, budget: usize) -> String {
         "{}…",
         head.trim_end_matches([',', ';', ':', '—', '-']).trim_end()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn heading(id: &str, level: u8) -> TocItem {
+        TocItem {
+            level,
+            id: id.to_owned(),
+            title: id.to_owned(),
+        }
+    }
+
+    fn oversized(lines: usize) -> String {
+        // Each line is 100 bytes, so `lines` controls the size directly.
+        "x".repeat(99)
+            .lines()
+            .cycle()
+            .take(lines)
+            .map(|line| format!("{line}\n"))
+            .collect()
+    }
+
+    #[test]
+    fn a_body_within_the_cap_is_returned_untouched() {
+        let body = "## Small\n\nJust a little text.".to_owned();
+
+        let (markdown, notice) = gate_by_size(body.clone(), &[], None, "https://example.test");
+
+        assert_eq!(markdown, Some(body));
+        assert_eq!(notice, None);
+    }
+
+    #[test]
+    fn an_oversized_body_with_headings_is_withheld_in_favour_of_narrowing() {
+        let sections = [heading("first", 3), heading("second", 3)];
+
+        let (markdown, notice) = gate_by_size(
+            oversized(1_000),
+            &sections,
+            Some("outer"),
+            "https://example.test/docs/guide",
+        );
+
+        assert_eq!(markdown, None, "the body should be withheld");
+        let notice = notice.expect("a notice explaining why");
+        assert!(
+            notice.contains("\"outer\""),
+            "name what was too large: {notice}"
+        );
+        assert!(
+            notice.contains("`sections`"),
+            "point at the way out: {notice}"
+        );
+    }
+
+    /// The floor under the narrowing recursion: a heading with nothing nested
+    /// inside it has no narrower request left, so returning nothing would
+    /// strand the caller. No guide hits this today — upstream content can grow
+    /// into it at any time.
+    #[test]
+    fn an_oversized_body_with_no_headings_is_truncated_rather_than_withheld() {
+        let (markdown, notice) = gate_by_size(
+            oversized(1_000),
+            &[],
+            Some("leaf"),
+            "https://example.test/docs/guide",
+        );
+
+        let markdown = markdown.expect("a truncated body, not nothing");
+        assert!(markdown.len() <= MAX_INLINE_DOC_BYTES);
+        assert!(
+            markdown.ends_with('\n'),
+            "the cut should land on a line break, not mid-line"
+        );
+
+        let notice = notice.expect("a notice saying it was cut");
+        assert!(notice.contains("https://example.test/docs/guide"));
+    }
+
+    #[test]
+    fn abridging_cuts_at_a_word_break_without_splitting_a_character() {
+        // Every one of these is a real guide description shape: an em dash, a
+        // multibyte character straddling the budget, and a run with no spaces.
+        assert_eq!(abridge("short enough", 64), "short enough");
+        assert_eq!(abridge("one two three four", 11), "one two…");
+        assert_eq!(abridge("alpha — beta gamma", 9), "alpha…");
+
+        let multibyte = "café☕ ".repeat(40);
+        for budget in 1..40 {
+            // The only requirement is that it does not panic on a byte index
+            // that falls inside a character.
+            let _ = abridge(&multibyte, budget);
+        }
+
+        // With no word break to cut at, keep the byte-cut prefix: a clipped
+        // word still tells the reader more than a bare ellipsis.
+        assert_eq!(abridge("supercalifragilistic", 8), "supercal…");
+    }
 }

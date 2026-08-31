@@ -447,6 +447,121 @@ async fn get_tool_withholds_an_oversized_guide_and_says_how_to_read_it() {
     );
 }
 
+/// A section of a large guide can itself blow the budget — `deployment`'s
+/// push-button-deploy section is 76 KB on its own. Exempting the section path
+/// from the cap would reopen the hole on the very call the oversized-guide
+/// notice tells an agent to make, so the gate applies there too.
+#[tokio::test]
+async fn get_tool_gates_an_oversized_section_the_same_way() {
+    let app = app();
+
+    let part = call_tool(
+        &app,
+        "get_autumn_doc",
+        json!({
+            "slug": "deployment",
+            "query": { "section": "push-button-deploy-to-your-own-server-autumn-deploy" },
+        }),
+    )
+    .await;
+
+    assert!(
+        part["markdown"].is_null(),
+        "an oversized section must not be returned whole either"
+    );
+    assert!(
+        part["notice"]
+            .as_str()
+            .is_some_and(|n| n.contains("section"))
+    );
+
+    // `sections` narrows to what is inside the section, not the whole guide,
+    // so the listed ids are the requests that actually make progress.
+    let nested = part["sections"].as_array().expect("nested sections");
+    assert!(!nested.is_empty(), "there must be somewhere narrower to go");
+
+    let inner = nested[0]["id"].as_str().unwrap().to_owned();
+    let leaf = call_tool(
+        &app,
+        "get_autumn_doc",
+        json!({ "slug": "deployment", "query": { "section": inner } }),
+    )
+    .await;
+
+    let markdown = leaf["markdown"].as_str().expect("the narrowed body");
+    assert!(markdown.len() <= MAX_INLINE_DOC_BYTES);
+    assert!(!markdown.is_empty());
+}
+
+/// The invariant behind the gate: whatever `get_autumn_doc` hands back, it is
+/// never over the cap. Checked across every guide and every section rather than
+/// on the two that happen to be large today, since guide content is synced from
+/// upstream and can grow at any time.
+#[tokio::test]
+async fn no_response_ever_exceeds_the_size_cap() {
+    let app = app();
+    let registry = autumn_io::site_docs().expect("the bundled docs should load");
+
+    let mut checked = 0;
+    for page in registry.pages() {
+        let doc = call_tool(
+            &app,
+            "get_autumn_doc",
+            json!({ "slug": page.slug.as_str() }),
+        )
+        .await;
+        assert_body_within_cap(&doc, &page.slug, "");
+        checked += 1;
+
+        for item in &page.toc {
+            let section = call_tool(
+                &app,
+                "get_autumn_doc",
+                json!({ "slug": page.slug.as_str(), "query": { "section": item.id.as_str() } }),
+            )
+            .await;
+            assert_body_within_cap(&section, &page.slug, &item.id);
+            checked += 1;
+        }
+    }
+
+    // Guard against the sweep silently going vacuous — an empty registry, or a
+    // toc that stopped being populated, would otherwise pass this test.
+    assert!(
+        checked > 1_000,
+        "expected to sweep the whole corpus, only checked {checked} responses"
+    );
+}
+
+/// A withheld body must always come with somewhere to go: either headings to
+/// narrow to, or — for a large section with nothing nested inside it — a
+/// truncated prefix, so a caller is never left with nothing and no next step.
+fn assert_body_within_cap(doc: &Value, slug: &str, section: &str) {
+    let target = if section.is_empty() {
+        slug.to_owned()
+    } else {
+        format!("{slug}#{section}")
+    };
+
+    match doc["markdown"].as_str() {
+        Some(markdown) => assert!(
+            markdown.len() <= MAX_INLINE_DOC_BYTES,
+            "{target} returned {} bytes, over the cap",
+            markdown.len()
+        ),
+        None => {
+            assert!(
+                !doc["sections"].as_array().expect("sections").is_empty(),
+                "{target} withheld its body with no headings to narrow to"
+            );
+            assert!(
+                doc["notice"].as_str().is_some(),
+                "{target} withheld its body without saying why"
+            );
+        }
+    }
+}
+
 /// Section ids are the anchors the rendered page uses, so an id from the API is
 /// also a working deep link. If these two drifted apart, every citation an agent
 /// produced would land on the wrong part of the page.
