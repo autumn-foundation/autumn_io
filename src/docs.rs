@@ -41,6 +41,20 @@ pub struct DocPage {
     pub order: u32,
     pub html: String,
     pub toc: Vec<TocItem>,
+    /// The page's Markdown source, as the renderer and [`DocPage::toc`] saw it:
+    /// frontmatter stripped by the framework registry, then the redundant
+    /// leading `# Title` removed by [`strip_redundant_title_heading`].
+    ///
+    /// Kept alongside the rendered `html` so the JSON docs API — and through it
+    /// the MCP server — can hand an agent the Markdown an LLM actually wants to
+    /// read, rather than syntax-highlighted HTML. Retaining it costs roughly the
+    /// size of `content/guide` in resident memory; the rendered HTML already
+    /// costs several times that, so this is the cheaper half of the pair.
+    ///
+    /// Because it is the *same* string [`add_heading_ids`] walks, the section
+    /// ids [`DocPage::section`] derives from it match the `#anchor` fragments
+    /// the site puts on the rendered page.
+    pub markdown: String,
 }
 
 /// In-page table of contents item generated from Markdown headings.
@@ -49,6 +63,76 @@ pub struct TocItem {
     pub level: u8,
     pub id: String,
     pub title: String,
+}
+
+/// One heading's slice of a guide: the heading line itself plus everything
+/// beneath it, up to the next heading at the same or a shallower level.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DocSection {
+    pub id: String,
+    pub level: u8,
+    pub title: String,
+    pub markdown: String,
+}
+
+impl DocPage {
+    /// Extract the subtree of the heading whose anchor id is `id`, or [`None`]
+    /// when the page has no such heading.
+    ///
+    /// The ids are exactly those in [`DocPage::toc`] — the anchors the rendered
+    /// page carries — because both walks run over the same
+    /// [`markdown`](DocPage::markdown) with the same fence tracking and
+    /// duplicate-id numbering.
+    ///
+    /// This is what keeps the largest guides usable over MCP: `deployment.md`
+    /// is 150 KB of Markdown, far more than an agent wants in one tool result,
+    /// but a single section of it is a few kilobytes.
+    #[must_use]
+    pub fn section(&self, id: &str) -> Option<DocSection> {
+        let mut used_ids = HashMap::<String, usize>::new();
+        let mut in_fence = false;
+        let mut open: Option<(u8, String)> = None;
+        let mut markdown = String::new();
+
+        for line in self.markdown.lines() {
+            let is_fence = line.trim_start().starts_with("```");
+            if is_fence {
+                in_fence = !in_fence;
+            }
+
+            // A `#` only opens a heading outside a fenced block — otherwise a
+            // shell comment in a code sample would split the section.
+            if !in_fence
+                && !is_fence
+                && let Some((level, title)) = parse_heading_line(line)
+            {
+                // Consume an id for every heading in document order, so the
+                // duplicate-suffix counters match the ones `add_heading_ids`
+                // assigned when it built the toc.
+                let heading_id = unique_heading_id(&title, &mut used_ids);
+                match &open {
+                    Some((open_level, _)) if level <= *open_level => break,
+                    None if heading_id == id => open = Some((level, title)),
+                    _ => {}
+                }
+            }
+
+            if open.is_some() {
+                markdown.push_str(line);
+                markdown.push('\n');
+            }
+        }
+
+        let (level, title) = open?;
+        markdown.truncate(markdown.trim_end().len());
+
+        Some(DocSection {
+            id: id.to_owned(),
+            level,
+            title,
+            markdown,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -319,7 +403,7 @@ fn decode_html_entities(text: &str) -> String {
 /// Rounds `index` down to the nearest UTF-8 char boundary, clamped to
 /// `[0, s.len()]`. Mirrors the unstable `str::floor_char_boundary` using only
 /// stable APIs so the crate compiles on stable Rust.
-fn floor_char_boundary(s: &str, index: usize) -> usize {
+pub(crate) fn floor_char_boundary(s: &str, index: usize) -> usize {
     let mut i = index.min(s.len());
     while i > 0 && !s.is_char_boundary(i) {
         i -= 1;
@@ -416,6 +500,7 @@ fn render_doc_page(page: &MarkdownPage) -> DocPage {
         order: page.frontmatter.order,
         html: rendered.html,
         toc: rendered.toc,
+        markdown,
     }
 }
 

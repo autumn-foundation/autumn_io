@@ -351,7 +351,8 @@ pre {
   margin-top: 3rem;
 }
 
-.home-harvest {
+.home-harvest,
+.home-mcp {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 1.25rem;
@@ -364,7 +365,8 @@ pre {
   box-shadow: 0 14px 32px rgba(53, 35, 22, 0.08);
 }
 
-.home-harvest-copy h2 {
+.home-harvest-copy h2,
+.home-mcp-copy h2 {
   margin: 0;
   color: var(--rust-dark);
   font-size: 1.7rem;
@@ -372,17 +374,37 @@ pre {
   letter-spacing: 0;
 }
 
-.home-harvest-copy p:not(.eyebrow) {
+.home-harvest-copy p:not(.eyebrow),
+.home-mcp-copy p:not(.eyebrow) {
   max-width: 52rem;
   margin: 0.55rem 0 0;
   color: var(--muted);
 }
 
-.home-harvest-actions {
+.home-harvest-actions,
+.home-mcp-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.6rem;
+}
+
+.home-mcp {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+  align-items: start;
+}
+
+.home-mcp-copy code {
+  white-space: nowrap;
+}
+
+.home-mcp-example pre {
+  margin: 0;
+}
+
+.home-mcp-actions {
+  margin: 0.75rem 0 0;
+  justify-content: flex-end;
 }
 
 .home-section-header {
@@ -716,11 +738,13 @@ pre {
 @media (max-width: 1080px) {
   .home-hero,
   .home-harvest,
+  .home-mcp,
   .docs-layout {
     grid-template-columns: 1fr;
   }
 
-  .home-harvest-actions {
+  .home-harvest-actions,
+  .home-mcp-actions {
     justify-content: flex-start;
   }
 

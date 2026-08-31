@@ -29,6 +29,9 @@ struct DocsNavGroup {
     slugs: &'static [&'static str],
 }
 
+/// Sidebar heading for guides no [`DOCS_NAV_GROUPS`] entry claims.
+const UNGROUPED_DOCS_LABEL: &str = "Reference";
+
 const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
     DocsNavGroup {
         label: "Start here",
@@ -299,6 +302,7 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                             }
                         }
                     }
+                    (home_mcp_endpoint())
                 }
                 (site_footer())
             }
@@ -324,6 +328,58 @@ fn home_harvest_release() -> Markup {
             }
         }
     }
+}
+
+/// Home-page band advertising the site's own MCP server.
+///
+/// The endpoint is useless if nobody knows it exists, and the people who would
+/// point an agent at it are reading this page, not a changelog. The snippet is
+/// the whole setup — one command, no key, no account.
+fn home_mcp_endpoint() -> Markup {
+    html! {
+        section class="home-mcp" aria-labelledby="mcp-endpoint-title" {
+            div class="home-mcp-copy" {
+                p class="eyebrow" { "For coding agents" }
+                h2 id="mcp-endpoint-title" { "Point your agent at these docs" }
+                p {
+                    "This site serves its own guides over the Model Context Protocol at "
+                    code { (seo::absolute_url(crate::MCP_MOUNT_PATH)) }
+                    ". Any MCP-capable coding agent can search the guides and read them as Markdown, "
+                    "so it answers from the "
+                    (VERSION_LABEL)
+                    " docs that are deployed rather than from whatever it remembers. "
+                    "No key, no account — it is a public read-only endpoint."
+                }
+            }
+            div class="home-mcp-example" {
+                (PreEscaped(render_highlighted_code_block(Some("bash"), &home_mcp_example())))
+                p class="home-mcp-actions" {
+                    a class="button button-secondary" href=(seo::docs_path("mcp")) {
+                        "How Autumn builds MCP servers"
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Setup for the site's own MCP server, in the two forms an agent is wired up:
+/// a Claude Code command, and the `mcpServers` entry every other client takes.
+///
+/// Built from [`crate::MCP_MOUNT_PATH`] rather than written out, so the snippet
+/// a visitor copies cannot drift from the path the app actually mounts.
+fn home_mcp_example() -> String {
+    const TEMPLATE: &str = r#"claude mcp add --transport http autumn-docs \
+  {endpoint}
+
+# or, in an MCP client's config file:
+{ "mcpServers": {
+    "autumn-docs": {
+      "type": "http",
+      "url": "{endpoint}"
+    } } }"#;
+
+    TEMPLATE.replace("{endpoint}", &seo::absolute_url(crate::MCP_MOUNT_PATH))
 }
 
 fn home_feature_card(page: &DocPage) -> Markup {
@@ -487,7 +543,7 @@ fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
                 }
                 @if registry.pages().iter().any(|page| !is_grouped_doc_slug(&page.slug)) {
                     section class="docs-nav-section" {
-                        p class="docs-nav-section-title" { "Reference" }
+                        p class="docs-nav-section-title" { (UNGROUPED_DOCS_LABEL) }
                         @for page in registry.pages() {
                             @if !is_grouped_doc_slug(&page.slug) {
                                 (docs_nav_link(page, active_slug))
@@ -634,6 +690,19 @@ fn is_grouped_doc_slug(slug: &str) -> bool {
     DOCS_NAV_GROUPS
         .iter()
         .any(|group| group.slugs.contains(&slug))
+}
+
+/// Label of the sidebar section a guide belongs to, or `"Reference"` for a
+/// guide no group claims — the same fallback heading the sidebar renders.
+///
+/// Exposed so the JSON docs API can ship the site's own grouping to agents,
+/// which is otherwise the only navigational structure the guides have.
+#[must_use]
+pub fn doc_group_label(slug: &str) -> &'static str {
+    DOCS_NAV_GROUPS
+        .iter()
+        .find(|group| group.slugs.contains(&slug))
+        .map_or(UNGROUPED_DOCS_LABEL, |group| group.label)
 }
 
 pub fn render_missing_docs_page(registry: &DocRegistry, slug: &str) -> Markup {

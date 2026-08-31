@@ -6,6 +6,7 @@ use autumn_web::reexports::axum::middleware::{self, Next};
 use autumn_web::reexports::axum::response::{IntoResponse, Redirect, Response};
 use autumn_web::reexports::http::{HeaderValue, StatusCode, header};
 
+pub mod api;
 pub mod docs;
 pub mod export;
 pub mod seo;
@@ -25,6 +26,12 @@ pub const DOCS_START_PATH: &str = "/docs/getting-started";
 /// upstream file names we do not control — upstream 0.7.0 added `search.md`,
 /// which would have been unreachable behind a `/docs/search` endpoint.
 pub const DOCS_SEARCH_PATH: &str = "/search";
+
+/// Where the MCP server is mounted.
+///
+/// `/mcp` is the convention every MCP client defaults to, and Autumn panics at
+/// startup if the mount path collides with a real route — no site route uses it.
+pub const MCP_MOUNT_PATH: &str = "/mcp";
 
 /// Maximum number of guide results returned by the docs search handler.
 const DOCS_SEARCH_RESULT_LIMIT: usize = 20;
@@ -387,14 +394,19 @@ pub async fn sitemap_xml() -> Response {
 
 #[must_use]
 pub fn app_routes() -> Vec<autumn_web::Route> {
-    routes![
+    let mut routes = routes![
         index,
         docs_index,
         docs_search,
         docs_page,
         robots_txt,
         sitemap_xml
-    ]
+    ];
+    // The JSON docs API, which `main` projects into the `/mcp` MCP server.
+    // Registered here rather than only in `main` so the test harness exercises
+    // the same route set the deployed app serves.
+    routes.extend(api::api_routes());
+    routes
 }
 
 fn docs_load_error_response(error: &DocsError) -> Response {
