@@ -890,6 +890,8 @@ fn css_makes_code_samples_visually_distinct() {
 fn css_supports_featured_home_cards_and_grouped_docs_nav() {
     assert!(SITE_CSS.contains(".home-harvest"));
     assert!(SITE_CSS.contains(".home-harvest-actions"));
+    assert!(SITE_CSS.contains(".home-mcp"));
+    assert!(SITE_CSS.contains(".home-mcp-example"));
     assert!(SITE_CSS.contains(".home-featured-grid"));
     assert!(SITE_CSS.contains(".home-feature-card"));
     assert!(SITE_CSS.contains(".home-secondary-grid"));
@@ -1072,6 +1074,10 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_header_contains("content-type", "text/plain")
         .assert_body_contains("User-agent: *")
         .assert_body_contains("Allow: /")
+        // The JSON docs API and its MCP envelope serve the same guides as the
+        // HTML pages; indexing them would compete with the pages that rank.
+        .assert_body_contains("Disallow: /api/")
+        .assert_body_contains("Disallow: /mcp")
         .assert_body_contains("Sitemap: https://autumn-web.app/sitemap.xml");
 
     let sitemap = app
@@ -1263,4 +1269,34 @@ fn html_hrefs(html: &str) -> impl Iterator<Item = &str> {
     html.split("href=\"")
         .skip(1)
         .filter_map(|segment| segment.split('"').next())
+}
+
+/// The MCP endpoint is only useful to someone who knows it exists, and the
+/// people who would point an agent at it are reading the home page. The snippet
+/// is generated from the mount path, so this also catches the two drifting.
+#[test]
+fn home_page_advertises_the_docs_mcp_endpoint() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let html = render_home_page(registry).into_string();
+    let endpoint = format!("https://autumn-web.app{}", autumn_io::MCP_MOUNT_PATH);
+
+    assert!(html.contains("Point your agent at these docs"));
+    assert!(
+        html.matches(&endpoint).count() >= 2,
+        "the prose and the copyable snippet should both name {endpoint}"
+    );
+    // Code blocks are syntax-highlighted, so the command is split across
+    // `<span>`s; compare against the text a visitor would actually copy.
+    let code_text = html.replace("</span>", "");
+    let code_text = code_text
+        .split("<span")
+        .map(|chunk| chunk.split_once('>').map_or(chunk, |(_, rest)| rest))
+        .collect::<String>();
+    assert!(code_text.contains("claude mcp add --transport http autumn-docs"));
+    // Quotes survive as `&quot;` entities, so match the bare key name.
+    assert!(code_text.contains("mcpServers"));
+    assert!(
+        html.contains(r#"href="/docs/mcp""#),
+        "the band should link to the guide explaining the mechanism"
+    );
 }
