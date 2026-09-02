@@ -547,6 +547,13 @@ fn render_markdown(markdown: &str) -> RenderedMarkdown {
     let mut rendered = String::new();
     html::push_html(&mut rendered, render_markdown_events(parser).into_iter());
 
+    // `.article-body table` scrolls horizontally (`overflow-x: auto`) on wide
+    // tables but pulldown-cmark's `<table>` has no focusable content, so
+    // without tabindex="0" a keyboard-only reader can never reach or scroll it
+    // (axe: scrollable-region-focusable). pulldown-cmark always writes the
+    // bare literal `<table>` for `Tag::Table`, so this replace is exact.
+    let rendered = rendered.replace("<table>", r#"<table tabindex="0">"#);
+
     RenderedMarkdown {
         html: rendered,
         toc: headings.toc,
@@ -840,7 +847,10 @@ pub(crate) fn render_highlighted_code_block(language: Option<&str>, code: &str) 
     let mut output = String::with_capacity(code.len() + 256);
 
     push_code_block_header(&mut output, &language_label);
-    output.push_str("<pre><code");
+    // Code samples scroll horizontally (`.code-block pre { overflow-x: auto }`)
+    // but have no focusable content of their own, so without tabindex="0" a
+    // keyboard-only reader can never reach or scroll them (axe: scrollable-region-focusable).
+    output.push_str(r#"<pre tabindex="0"><code"#);
     if let Some(language) = language {
         output.push_str(r#" class="language-"#);
         push_html_attr_escaped(&mut output, language);

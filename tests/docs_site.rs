@@ -68,8 +68,10 @@ fn parses_frontmatter_and_generates_article_metadata() {
         "heading IDs should be generated from Markdown headings"
     );
     assert!(
-        page.html.contains("<pre><code class=\"language-rust\">"),
-        "Rust code blocks should keep language metadata for copy controls"
+        page.html
+            .contains("<pre tabindex=\"0\"><code class=\"language-rust\">"),
+        "Rust code blocks should keep language metadata for copy controls, \
+         and stay keyboard-focusable so their horizontal scroll is reachable"
     );
     assert!(
         page.html.contains("<span style=\"color:"),
