@@ -52,6 +52,7 @@ a {
 
 a:focus-visible,
 button:focus-visible,
+.article-body table:focus-visible,
 #main-content:focus {
   outline: 3px solid var(--focus);
   outline-offset: 3px;
@@ -293,6 +294,16 @@ pre {
   font-size: 0.9rem;
   line-height: 1.7;
   tab-size: 2;
+}
+
+/* --focus (#214f9a) is only 2.2:1 against --code-bg, short of the 3:1 WCAG
+   1.4.11 floor for UI-component contrast, so the scrollable code panel gets
+   its own focus ring in --copper (5.8:1) instead of the site-wide default.
+   Drawn inset (-3px) because the parent .code-block clips with overflow:
+   hidden, which would cut off an outward-facing outline. */
+.code-block pre:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: -3px;
 }
 
 .copy-code-button {
