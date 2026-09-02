@@ -1,3 +1,10 @@
+//! Deployment-configuration guards.
+//!
+//! `tests/syntax_highlighting_backend.rs` holds the rest of them: the syntect
+//! regex backend, the lockfile shape its C build depends on, and the builder
+//! stage's C toolchain. If you are editing the `Dockerfile`, both files have
+//! an opinion.
+
 use autumn_web::config::{AutumnConfig, MockEnv};
 
 const CARGO_TOML: &str = include_str!("../Cargo.toml");

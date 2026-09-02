@@ -1,3 +1,9 @@
+# `syntect` runs on the Oniguruma regex backend (`default-onig`, see Cargo.toml
+# and issue #19). `onig_sys` compiles the bundled Oniguruma C sources with the
+# `cc` crate in this stage, which the previous pure-Rust backend did not need.
+# This base is buildpack-deps-derived and already ships gcc, so nothing extra is
+# installed for it — but a `-slim` or `-alpine` builder has no C compiler, and
+# that failure appears only in Docker, never in a local `cargo build`.
 FROM rust:1.88-bookworm AS builder
 
 WORKDIR /app
@@ -47,6 +53,29 @@ COPY migrations ./migrations
 # The lever that works is builder RAM. Size it to 8 GB, not 4: autumn-web needs
 # more than the crate that actually failed, and this tree's requirement has
 # grown fast.
+#
+# Moving syntect onto the Oniguruma backend did not move this budget, and the
+# mechanism is why: the ceiling is rustc on autumn-web/autumn-macros, which that
+# change does not touch, and `onig` replaces `fancy-regex` + `bit-set` +
+# `bit-vec` in the graph rather than adding to it. Measured over matched
+# `--no-cache` builds of this Dockerfile on one host, `CARGO_BUILD_JOBS=1` —
+# peak rustc 4409 MB before / 4408 MB after, peak across all build processes
+# 5312 MB before / 5350 MB after, wall clock 15m27s before / 15m20s after; a
+# repeat of the "after" build landed within 0.5 s and 4 MB of itself.
+#
+# The C compile is not close to mattering. Sampling `cc1` peaks by source file
+# across those builds, the largest is sqlite3.c at 353 MB — present on both
+# sides, nothing to do with this change. Oniguruma's own largest translation
+# unit is regparse.c at 73-78 MB, roughly a sixtieth of the rustc ceiling.
+
+# Link the Oniguruma that `onig_sys` compiles from its bundled sources, rather
+# than a system copy. Without this, `onig_sys`'s build script asks pkg-config
+# for a system libonig and links it dynamically if it finds one — so installing
+# `libonig-dev` in this stage, for any reason, would produce a binary the slim
+# runtime stage cannot start. There is no such package here today; this pins
+# the behaviour instead of relying on its absence.
+ENV RUSTONIG_STATIC_LIBONIG=1
+
 ENV CARGO_BUILD_JOBS=1
 
 RUN cargo build --locked --release --bin autumn_io

@@ -9,7 +9,13 @@ maud = "0.27.0"
 pulldown-cmark = "0.13.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
-syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
+# Oniguruma (`default-onig`) is syntect's own upstream default and the engine
+# TextMate grammars are written against. Under the pure-Rust `default-fancy`
+# alternative, the regex bucket was 76.81% of the cold-start docs render and
+# `fancy_regex`'s backtracking VM alone was 42.24% of it (issue #19); switching
+# cut the whole render from 13.75B instructions to 3.61B. `onig_sys` compiles
+# bundled C, so the builder image needs a C toolchain — see the Dockerfile.
+syntect = { version = "5.3.0", default-features = false, features = ["default-onig"] }
 tower = "0.5"
 tower-http = { version = "0.6.10", features = ["compression-gzip", "map-response-body"] }
 
