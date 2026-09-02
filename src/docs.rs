@@ -693,6 +693,22 @@ fn render_markdown_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Ve
                 let code = collect_code_block_text(&mut events);
                 rendered.push(Event::Html(render_code_block(&kind, &code).into()));
             }
+            // Wide tables scroll horizontally (`.article-body table` in the
+            // stylesheet); wrap them in a focusable region for the same
+            // reason code blocks are: without a focusable element inside it,
+            // a keyboard-only reader cannot scroll a table that overflows the
+            // article column (axe-core: scrollable-region-focusable).
+            Event::Start(table_tag @ Tag::Table(_)) => {
+                rendered.push(Event::Html(
+                    r#"<div class="table-scroll" tabindex="0" aria-label="Table, horizontally scrollable">"#
+                        .into(),
+                ));
+                rendered.push(Event::Start(table_tag));
+            }
+            Event::End(TagEnd::Table) => {
+                rendered.push(Event::End(TagEnd::Table));
+                rendered.push(Event::Html("</div>".into()));
+            }
             Event::Start(Tag::Link {
                 link_type,
                 dest_url,
@@ -840,7 +856,14 @@ pub(crate) fn render_highlighted_code_block(language: Option<&str>, code: &str) 
     let mut output = String::with_capacity(code.len() + 256);
 
     push_code_block_header(&mut output, &language_label);
-    output.push_str("<pre><code");
+    // `tabindex="0"` plus an accessible name make the block itself the
+    // keyboard-reachable scroll container: wide code samples overflow this
+    // `<pre>` horizontally, and without a focusable element inside it a
+    // keyboard-only reader has no way to scroll to see the rest of the line
+    // (axe-core: scrollable-region-focusable, WCAG 2.1.1 Keyboard).
+    output.push_str(r#"<pre tabindex="0" aria-label=""#);
+    push_html_attr_escaped(&mut output, &language_label);
+    output.push_str(r#" code sample, horizontally scrollable"><code"#);
     if let Some(language) = language {
         output.push_str(r#" class="language-"#);
         push_html_attr_escaped(&mut output, language);
@@ -999,6 +1022,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tables_are_wrapped_in_a_keyboard_focusable_scroll_region() {
+        // Same rationale as code blocks: `.article-body table` scrolls
+        // horizontally, so it needs a focusable wrapper or a keyboard-only
+        // reader cannot reach the columns past the article's edge
+        // (axe-core: scrollable-region-focusable).
+        let rendered = render_markdown("| A | B |\n| --- | --- |\n| 1 | 2 |\n");
+
+        assert!(rendered.html.contains(
+            r#"<div class="table-scroll" tabindex="0" aria-label="Table, horizontally scrollable"><table>"#
+        ));
+        let table_end = rendered.html.find("</table>").expect("table should close");
+        assert_eq!(
+            rendered.html[table_end + "</table>".len()..].trim_start(),
+            "</div>",
+            "the scroll wrapper should close immediately after the table"
+        );
+    }
+
+    #[test]
     fn duplicate_heading_ids_get_stable_suffixes() {
         let rendered = render_markdown("# Install\n\n## Install\n");
 
@@ -1025,6 +1067,25 @@ mod tests {
         assert!(!rendered.html.contains("language-rust,no_run"));
         assert!(!rendered.html.contains("Rust,ignore"));
         assert!(!rendered.html.contains("Rust,no Run"));
+    }
+
+    #[test]
+    fn code_blocks_are_keyboard_focusable_scroll_regions() {
+        // Code blocks overflow horizontally and are the only meaningfully
+        // sized scrollable regions on a docs page; without a focusable
+        // element inside them a keyboard-only reader has no way to scroll a
+        // wide line into view (axe-core: scrollable-region-focusable).
+        let rendered = render_highlighted_code_block(Some("rust"), "fn main() {}");
+
+        assert!(rendered.contains(r#"<pre tabindex="0" aria-label="Rust code sample, horizontally scrollable">"#));
+    }
+
+    #[test]
+    fn code_block_scroll_region_label_is_html_escaped() {
+        let rendered = render_highlighted_code_block(Some("evil<script>"), "hello");
+
+        assert!(rendered.contains(r#"aria-label="Evil&lt;script&gt; code sample, horizontally scrollable""#));
+        assert!(!rendered.contains(r#"aria-label="Evil<script>"#));
     }
 
     #[test]

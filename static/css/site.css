@@ -295,6 +295,17 @@ pre {
   tab-size: 2;
 }
 
+/* The site's default focus ring (--focus, a blue tuned for the warm off-white
+   page background) is only 2.2:1 against --code-bg — below the 3:1 the ring
+   itself needs on this dark panel. --copper is already part of the code-block
+   chrome (the top accent stripe, the window dots) and clears 5.8:1 here.
+   A negative offset keeps the ring inside `.code-block`'s `overflow: hidden`
+   instead of being clipped at the edges. */
+.code-block pre:focus-visible {
+  outline: 3px solid var(--copper);
+  outline-offset: -3px;
+}
+
 .copy-code-button {
   flex: 0 0 auto;
   min-height: 2rem;
@@ -623,10 +634,18 @@ pre {
   margin: 1rem 0;
 }
 
-.article-body table {
-  display: block;
+.article-body .table-scroll {
   max-width: 100%;
   overflow-x: auto;
+}
+
+.article-body .table-scroll:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.article-body table {
+  min-width: 100%;
   border-collapse: collapse;
 }
 

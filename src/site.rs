@@ -464,7 +464,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                     }
                     aside class="docs-toc" aria-label="On this page" {
                         p class="toc-label" { "On this page" }
-                        nav {
+                        nav aria-label="Table of contents" {
                             @for item in &page.toc {
                                 a class=(format!("toc-link depth-{}", item.level)) href=(format!("#{}", item.id)) {
                                     (&item.title)
@@ -527,7 +527,7 @@ fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
     html! {
         aside id="docs-navigation" class="docs-sidebar" aria-label="Docs navigation" {
             (docs_search_box())
-            nav {
+            nav aria-label="Docs sections" {
                 p class="sidebar-label" { "Docs" }
                 @for group in DOCS_NAV_GROUPS {
                     @if docs_nav_group_has_pages(registry, group) {
