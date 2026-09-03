@@ -73,6 +73,16 @@ pub struct DocSection {
     pub level: u8,
     pub title: String,
     pub markdown: String,
+    /// The heading line plus whatever prose follows it, up to (not including)
+    /// the first heading nested inside this section. Equal to `markdown` when
+    /// this section has no nested headings.
+    ///
+    /// This is what a size-gated API response falls back to instead of
+    /// withholding the section outright: narrowing to a nested heading only
+    /// ever returns *that* heading onward, so without this, the section's own
+    /// introduction — between its heading and the first subheading — could
+    /// never be retrieved by any request.
+    pub preamble: String,
 }
 
 impl DocPage {
@@ -93,6 +103,7 @@ impl DocPage {
         let mut in_fence = false;
         let mut open: Option<(u8, String)> = None;
         let mut markdown = String::new();
+        let mut preamble_len: Option<usize> = None;
 
         for line in self.markdown.lines() {
             let is_fence = line.trim_start().starts_with("```");
@@ -112,6 +123,9 @@ impl DocPage {
                 let heading_id = unique_heading_id(&title, &mut used_ids);
                 match &open {
                     Some((open_level, _)) if level <= *open_level => break,
+                    // The first heading nested inside the open section: mark
+                    // where its preamble ends, before this line is appended.
+                    Some(_) if preamble_len.is_none() => preamble_len = Some(markdown.len()),
                     None if heading_id == id => open = Some((level, title)),
                     _ => {}
                 }
@@ -125,12 +139,15 @@ impl DocPage {
 
         let (level, title) = open?;
         markdown.truncate(markdown.trim_end().len());
+        let preamble_len = preamble_len.unwrap_or(markdown.len()).min(markdown.len());
+        let preamble = markdown[..preamble_len].trim_end().to_owned();
 
         Some(DocSection {
             id: id.to_owned(),
             level,
             title,
             markdown,
+            preamble,
         })
     }
 
@@ -156,6 +173,31 @@ impl DocPage {
             .unwrap_or(nested.len());
 
         &nested[..end]
+    }
+
+    /// The page's Markdown up to (not including) its first heading — the
+    /// framing prose above `## First Heading` that [`DocPage::toc`] does not
+    /// cover. Empty when the page has no such prose, or no headings at all.
+    ///
+    /// Mirrors [`DocSection::preamble`] one level up: narrowing to a top-level
+    /// heading never returns what precedes it, so an oversized guide's own
+    /// introduction needs the same fallback the size gate gives a section.
+    #[must_use]
+    pub fn preamble(&self) -> &str {
+        let mut in_fence = false;
+
+        for line in self.markdown.lines() {
+            let is_fence = line.trim_start().starts_with("```");
+            if !in_fence && !is_fence && parse_heading_line(line).is_some() {
+                let offset = line.as_ptr() as usize - self.markdown.as_ptr() as usize;
+                return self.markdown[..offset].trim_end();
+            }
+            if is_fence {
+                in_fence = !in_fence;
+            }
+        }
+
+        self.markdown.trim_end()
     }
 }
 

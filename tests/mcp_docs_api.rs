@@ -397,18 +397,34 @@ async fn get_tool_returns_markdown_and_the_section_list() {
 }
 
 /// The largest guides are withheld rather than dumped: `deployment.md` alone is
-/// ~150 KB, which would swamp the context of whatever asked for it.
+/// ~150 KB, which would swamp the context of whatever asked for it. Its own
+/// introduction is small enough to return on its own, though
+/// (autumn-foundation/autumn_io#18) — narrowing to a heading in `sections` can
+/// never return the prose that precedes the first one, so that prose comes
+/// back as `markdown` instead of being dropped.
 #[tokio::test]
-async fn get_tool_withholds_an_oversized_guide_and_says_how_to_read_it() {
+async fn get_tool_returns_the_introduction_of_an_oversized_guide_and_says_how_to_read_the_rest() {
     let app = app();
 
     let doc = call_tool(&app, "get_autumn_doc", json!({ "slug": "deployment" })).await;
 
+    let markdown = doc["markdown"]
+        .as_str()
+        .expect("the guide's introduction, not null");
+    assert!(!markdown.is_empty());
     assert!(
-        doc["markdown"].is_null(),
-        "an oversized guide must not be returned whole"
+        markdown.len() < MAX_INLINE_DOC_BYTES,
+        "the introduction alone should be far smaller than the whole guide"
+    );
+    assert!(
+        !markdown.contains("## "),
+        "the introduction ends before the first heading: {markdown}"
     );
     let notice = doc["notice"].as_str().expect("a notice explaining why");
+    assert!(
+        notice.contains("introduction"),
+        "the notice must say the body is only the intro: {notice}"
+    );
     assert!(
         notice.contains("section"),
         "the notice must name the way out"
@@ -450,7 +466,10 @@ async fn get_tool_withholds_an_oversized_guide_and_says_how_to_read_it() {
 /// A section of a large guide can itself blow the budget — `deployment`'s
 /// push-button-deploy section is 76 KB on its own. Exempting the section path
 /// from the cap would reopen the hole on the very call the oversized-guide
-/// notice tells an agent to make, so the gate applies there too.
+/// notice tells an agent to make, so the gate applies there too — including
+/// the same introduction fallback (autumn-foundation/autumn_io#18): this
+/// section's own preamble, before its first nested heading, fits the budget
+/// and comes back instead of `null`.
 #[tokio::test]
 async fn get_tool_gates_an_oversized_section_the_same_way() {
     let app = app();
@@ -465,15 +484,24 @@ async fn get_tool_gates_an_oversized_section_the_same_way() {
     )
     .await;
 
+    let markdown = part["markdown"]
+        .as_str()
+        .expect("the section's introduction, not null");
+    assert!(!markdown.is_empty());
     assert!(
-        part["markdown"].is_null(),
-        "an oversized section must not be returned whole either"
+        markdown.len() < MAX_INLINE_DOC_BYTES,
+        "the introduction alone should be far smaller than the whole section"
     );
     assert!(
-        part["notice"]
-            .as_str()
-            .is_some_and(|n| n.contains("section"))
+        markdown.starts_with("## Push-button deploy"),
+        "the introduction starts at the section's own heading: {markdown}"
     );
+    let notice = part["notice"].as_str().expect("a notice explaining why");
+    assert!(
+        notice.contains("introduction"),
+        "the notice must say the body is only the intro: {notice}"
+    );
+    assert!(notice.contains("section"));
 
     // `sections` narrows to what is inside the section, not the whole guide,
     // so the listed ids are the requests that actually make progress.
