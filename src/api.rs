@@ -21,10 +21,11 @@
 //! `deployment.md` is over 150 KB — roughly forty thousand tokens, more than an
 //! agent should ever receive from one tool call. So [`get_autumn_doc`] returns
 //! Markdown only while it fits [`MAX_INLINE_DOC_BYTES`]; past that it withholds
-//! the body and returns the headings nested inside what was asked for, letting
-//! the agent narrow and ask again. Section ids are the anchors the rendered
-//! page already uses, so a section reference is also a working deep link a
-//! human can open.
+//! the body — save for its introduction, if one fits, since narrowing to a
+//! heading in `sections` can never return what precedes it — and returns the
+//! headings nested inside what was asked for, letting the agent narrow and ask
+//! again. Section ids are the anchors the rendered page already uses, so a
+//! section reference is also a working deep link a human can open.
 //!
 //! The gate applies to a requested *section* just as it does to a whole guide.
 //! A `##` section of the deployment guide is 76 KB on its own, so exempting the
@@ -156,10 +157,11 @@ pub struct GuideDocument {
     /// than the whole guide.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub section: Option<String>,
-    /// The Markdown itself, `null` when it was too large to inline and there
-    /// are `sections` to narrow to instead, or a truncated prefix when it was
-    /// too large with nothing nested inside it. Whenever it is not the
-    /// complete text, [`notice`](GuideDocument::notice) says so.
+    /// The Markdown itself, `null` when it was too large to inline and had no
+    /// introduction worth returning on its own, its introduction alone when
+    /// that was too large to inline whole but fits by itself, or a truncated
+    /// prefix when it was too large with nothing nested inside it. Whenever it
+    /// is not the complete text, [`notice`](GuideDocument::notice) says so.
     pub markdown: Option<String>,
     /// Present only when something about the response needs explaining, so an
     /// agent that gets a `null` body is told what to do next.
@@ -339,11 +341,12 @@ pub async fn search_autumn_docs(
     summary = "Read one Autumn guide as Markdown",
     description = "Return a guide's Markdown source by slug, along with its \
                    section headings. Anything over 60 KB is not returned whole: \
-                   `markdown` comes back null, and you should pick an id from \
+                   `markdown` comes back as just its introduction (or null, if \
+                   even that does not fit), and you should pick an id from \
                    `sections` and call again with the `section` argument to read \
                    that part. A requested section is subject to the same limit, \
                    and `sections` then lists the headings inside it, so keep \
-                   narrowing until you get a body. Slugs come from \
+                   narrowing until you get a full body. Slugs come from \
                    list_autumn_docs or search_autumn_docs."
 )]
 pub async fn get_autumn_doc(
@@ -367,7 +370,7 @@ pub async fn get_autumn_doc(
     // 75 KB, which is the result the gate exists to prevent, so exempting the
     // section path would reopen the hole on the very call the notice tells an
     // agent to make.
-    let (markdown, sections) = match requested {
+    let (markdown, sections, preamble) = match requested {
         Some(id) => {
             let section = page
                 .section(id)
@@ -376,13 +379,17 @@ pub async fn get_autumn_doc(
                     section: id.to_owned(),
                 })?;
 
-            (section.markdown, page.subsections(id))
+            (section.markdown, page.subsections(id), section.preamble)
         }
-        None => (page.markdown.clone(), page.toc.as_slice()),
+        None => (
+            page.markdown.clone(),
+            page.toc.as_slice(),
+            page.preamble().to_owned(),
+        ),
     };
 
     let url = seo::absolute_url(&seo::docs_path(&page.slug));
-    let (markdown, notice) = gate_by_size(markdown, sections, requested, &url);
+    let (markdown, notice) = gate_by_size(markdown, sections, requested, &url, &preamble);
 
     Ok(Json(GuideDocument {
         slug: page.slug.clone(),
@@ -407,16 +414,23 @@ pub async fn get_autumn_doc(
 
 /// Decide whether `markdown` can be returned whole, and what to say if not.
 ///
-/// Three outcomes, in the order a caller can act on them:
+/// Four outcomes, in the order a caller can act on them:
 ///
 /// 1. **It fits.** Return it.
-/// 2. **Too large, but `sections` offers somewhere narrower.** Withhold the
-///    body and point at those headings. This is the common case, and it
+/// 2. **Too large, but `preamble` — the prose above the first nested
+///    heading — fits on its own.** Return that instead of nothing: narrowing
+///    to a heading in `sections` only ever returns that heading onward, so
+///    without this fallback, an oversized guide's or section's own
+///    introduction could never be retrieved by any request. `deployment` and
+///    `generators` hit this both as whole guides and inside an oversized
+///    section of their own (autumn-foundation/autumn_io#18).
+/// 3. **Too large, `preamble` doesn't help, but `sections` offers somewhere
+///    narrower.** Withhold the body and point at those headings. This
 ///    recurses safely: each narrowing is strictly smaller than the last.
-/// 3. **Too large with nothing nested inside it.** There is no narrower request
+/// 4. **Too large with nothing nested inside it.** There is no narrower request
 ///    left to make, so returning nothing would strand the caller — truncate
 ///    instead and say so. No guide hits this today; it is the floor that keeps
-///    the recursion in (2) from ever bottoming out at a dead end, since guide
+///    the recursion in (3) from ever bottoming out at a dead end, since guide
 ///    content is synced from upstream and can grow a large leaf section at any
 ///    time.
 fn gate_by_size(
@@ -424,6 +438,7 @@ fn gate_by_size(
     sections: &[TocItem],
     requested: Option<&str>,
     url: &str,
+    preamble: &str,
 ) -> (Option<String>, Option<String>) {
     if markdown.len() <= MAX_INLINE_DOC_BYTES {
         return (Some(markdown), None);
@@ -449,6 +464,20 @@ fn gate_by_size(
                  it to narrow to, so this is the first {} KB only. Read the rest at \
                  {url}.",
                 cut / 1024,
+            )),
+        );
+    }
+
+    let preamble = preamble.trim_end();
+    if !preamble.is_empty() && preamble.len() <= MAX_INLINE_DOC_BYTES {
+        return (
+            Some(preamble.to_owned()),
+            Some(format!(
+                "{subject} is {kilobytes} KB of Markdown, too large to return in one \
+                 tool result, so `markdown` holds only its introduction, up to the \
+                 first nested heading. Pick an id from `sections` and call \
+                 get_autumn_doc again with the `section` argument to read the rest, \
+                 or read it at {url}."
             )),
         );
     }
@@ -605,14 +634,14 @@ mod tests {
     fn a_body_within_the_cap_is_returned_untouched() {
         let body = "## Small\n\nJust a little text.".to_owned();
 
-        let (markdown, notice) = gate_by_size(body.clone(), &[], None, "https://example.test");
+        let (markdown, notice) = gate_by_size(body.clone(), &[], None, "https://example.test", "");
 
         assert_eq!(markdown, Some(body));
         assert_eq!(notice, None);
     }
 
     #[test]
-    fn an_oversized_body_with_headings_is_withheld_in_favour_of_narrowing() {
+    fn an_oversized_body_with_headings_and_no_preamble_is_withheld_in_favour_of_narrowing() {
         let sections = [heading("first", 3), heading("second", 3)];
 
         let (markdown, notice) = gate_by_size(
@@ -620,6 +649,7 @@ mod tests {
             &sections,
             Some("outer"),
             "https://example.test/docs/guide",
+            "",
         );
 
         assert_eq!(markdown, None, "the body should be withheld");
@@ -634,6 +664,63 @@ mod tests {
         );
     }
 
+    /// autumn-foundation/autumn_io#18: narrowing to a nested heading only ever
+    /// returns that heading onward, so the prose above the first one — the
+    /// section's own introduction — has no narrower request that could reach
+    /// it. When it fits the budget on its own, it must come back instead of
+    /// `null`.
+    #[test]
+    fn an_oversized_body_with_a_small_preamble_returns_the_preamble() {
+        let sections = [heading("first", 3), heading("second", 3)];
+
+        let (markdown, notice) = gate_by_size(
+            oversized(1_000),
+            &sections,
+            Some("outer"),
+            "https://example.test/docs/guide",
+            "## Outer\n\nA short introduction.",
+        );
+
+        assert_eq!(
+            markdown,
+            Some("## Outer\n\nA short introduction.".to_owned())
+        );
+        let notice = notice.expect("a notice explaining the body was cut down");
+        assert!(
+            notice.contains("\"outer\""),
+            "name what was too large: {notice}"
+        );
+        assert!(
+            notice.contains("introduction"),
+            "say the body is just the intro: {notice}"
+        );
+        assert!(
+            notice.contains("`sections`"),
+            "point at the way out: {notice}"
+        );
+    }
+
+    /// A preamble that is itself oversized cannot substitute for the withheld
+    /// body either — falls back to the withhold-and-narrow behaviour.
+    #[test]
+    fn an_oversized_preamble_does_not_prevent_withholding() {
+        let sections = [heading("first", 3)];
+
+        let (markdown, notice) = gate_by_size(
+            oversized(1_000),
+            &sections,
+            Some("outer"),
+            "https://example.test/docs/guide",
+            &oversized(1_000),
+        );
+
+        assert_eq!(
+            markdown, None,
+            "an oversized preamble is no better than none"
+        );
+        assert!(notice.is_some());
+    }
+
     /// The floor under the narrowing recursion: a heading with nothing nested
     /// inside it has no narrower request left, so returning nothing would
     /// strand the caller. No guide hits this today — upstream content can grow
@@ -645,6 +732,7 @@ mod tests {
             &[],
             Some("leaf"),
             "https://example.test/docs/guide",
+            "",
         );
 
         let markdown = markdown.expect("a truncated body, not nothing");
