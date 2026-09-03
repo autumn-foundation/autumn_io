@@ -983,12 +983,31 @@ fn docs_nav_disclosure_script_defaults_open_state_from_the_1080px_breakpoint() {
     assert!(DOCS_NAV_DISCLOSURE_JS.contains(".docs-nav-disclosure"));
     assert!(DOCS_NAV_DISCLOSURE_JS.contains("(max-width: 1080px)"));
     assert!(DOCS_NAV_DISCLOSURE_JS.contains("matchMedia"));
-    // Desktop must stay pixel-identical to today: a user (or assistive tech)
-    // toggling the <summary> at desktop widths must not be able to hide the
-    // nav, since nothing today lets that happen.
-    assert!(DOCS_NAV_DISCLOSURE_JS.contains("toggle"));
-    // The in-article "Browse docs" jump link must still reveal the nav.
+    // Pin the actual boolean direction (open when NOT narrow) rather than
+    // just checking the words exist: a sign-flip regression here would
+    // silently invert every default-open/closed state this issue is about.
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("disclosure.open = !narrow;"));
+    // Desktop must stay pixel-identical to today: the summary is taken out
+    // of the tab order there (so keyboard users can't reach a toggle that
+    // did nothing before), and a stray mouse click that closes it anyway is
+    // reverted immediately.
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("summary.tabIndex = narrow ? 0 : -1;"));
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains(
+        "disclosure.addEventListener(\"toggle\", () => {\n    if (!narrowViewport.matches) {\n      disclosure.open = true;"
+    ));
+    // The in-article "Browse docs" jump link must still reveal the nav, on
+    // first load and on repeat same-page clicks.
     assert!(DOCS_NAV_DISCLOSURE_JS.contains("docs-mobile-nav-link"));
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("hashchange"));
+}
+
+#[test]
+fn docs_nav_disclosure_breakpoint_matches_the_css_layout_switch() {
+    // The JS default-open breakpoint and the CSS layout-reflow breakpoint
+    // are two independently hardcoded 1080px literals; nothing else ties
+    // them together, so pin both here rather than let them drift apart.
+    assert!(SITE_CSS.contains("@media (max-width: 1080px) {"));
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("\"(max-width: 1080px)\""));
 }
 
 #[test]
@@ -1081,7 +1100,10 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .send()
         .await
         .assert_status(200)
-        .assert_body_contains("Search the guides");
+        .assert_body_contains("Search the guides")
+        // render_docs_search_page shares docs_sidebar() with render_docs_page;
+        // confirm the mobile nav disclosure renders there too.
+        .assert_body_contains(r#"<details class="docs-nav-disclosure" open>"#);
 
     app.get("/docs/no-such-page")
         .send()
