@@ -2,9 +2,12 @@
 //!
 //! Builds the real search index once — `autumn_io::site_docs()` feeding
 //! `SearchIndex::from_registry`, exactly what `site_search_index()` does at
-//! startup — then issues 10,000 searches through `SearchIndex::search`, the
-//! same public entry point `/api/search`, `/search` and the MCP
-//! `search_autumn_docs` tool call on every request.
+//! startup — then issues 500 searches per query through `SearchIndex::search`,
+//! the same public entry point `/api/search`, `/search` and the MCP
+//! `search_autumn_docs` tool call on every request. That is 10,000 requests
+//! for the default query set and 5,000 for the others, so subtract and divide
+//! against a build-only run of the *same* set, never a different one. Every
+//! run prints the set it used and its request count.
 //!
 //! The queries are drawn from real guide topics and filenames, plus a common
 //! stop word (`the`) and one query chosen to match nothing, so the mix covers
@@ -14,10 +17,15 @@
 //! query, which isolates the one-time index build from the per-request
 //! marginal cost: subtract the two runs and divide by the request delta.
 //!
-//! `SEARCH_QUERY_SET=multi` swaps the mix for one of 3-5 token queries. Token
-//! count is the axis a multi-pattern matcher is sensitive to, and the default
-//! mix — like a real search box — is mostly one and two token queries, so it
-//! cannot on its own say what happens to longer ones.
+//! `SEARCH_QUERY_SET` swaps the mix. `multi` is 3-5 token queries: token count
+//! is the axis a multi-pattern matcher is sensitive to, and the default mix is
+//! mostly one and two token queries. `typeahead` is the prefixes a
+//! search-as-you-type box actually sends — the widget fires from two
+//! characters (`min_length(2)` in `site.rs`) — which is the axis *token
+//! length* sits on, and where the default mix is silent: its shortest queries
+//! are three characters. An unrecognised value is an error rather than a
+//! silent fall-through to the default, because default-versus-default is an
+//! easy and invisible way to measure nothing.
 //!
 //! ```bash
 //! cargo build --release --bin profile_docs_search
@@ -89,7 +97,16 @@ const MULTI_TOKEN_QUERIES: &[&str] = &[
 /// the one-time index build (`=1`) from the per-request marginal cost.
 const REQUESTS_PER_QUERY: usize = 500;
 
-/// Result page size, matching what `/api/search` asks for.
+/// One keystroke sequence, as the docs-search box would send it: `min_length(2)`
+/// means the first request goes out at two characters. Selected with
+/// `SEARCH_QUERY_SET=typeahead`.
+const TYPEAHEAD_QUERIES: &[&str] = &[
+    "de", "dep", "depl", "deplo", "deploy", "au", "aut", "auth", "authe", "authen", "da", "dat",
+    "data", "datab", "cl", "cli", "clu", "clus", "ro", "rou",
+];
+
+/// Result page size. `/api/search` asks for 10; the HTML box at `/search` asks
+/// for 20, so snippet building costs it about twice this.
 const LIMIT: usize = 10;
 
 fn main() {
@@ -98,9 +115,12 @@ fn main() {
         .and_then(|value| value.parse().ok())
         .unwrap_or(REQUESTS_PER_QUERY);
 
-    let queries = match std::env::var("SEARCH_QUERY_SET").as_deref() {
-        Ok("multi") => MULTI_TOKEN_QUERIES,
-        _ => QUERIES,
+    let set = std::env::var("SEARCH_QUERY_SET").unwrap_or_else(|_| "default".to_string());
+    let queries = match set.as_str() {
+        "default" => QUERIES,
+        "multi" => MULTI_TOKEN_QUERIES,
+        "typeahead" => TYPEAHEAD_QUERIES,
+        other => panic!("unknown SEARCH_QUERY_SET {other:?} (default, multi, typeahead)"),
     };
 
     let registry = autumn_io::site_docs().expect("embedded guides render");
@@ -117,7 +137,7 @@ fn main() {
     }
 
     println!(
-        "requests={} total_hits={total_hits} total_snippet_bytes={total_snippet_bytes}",
+        "set={set} requests={} total_hits={total_hits} total_snippet_bytes={total_snippet_bytes}",
         queries.len() * requests_per_query
     );
 }

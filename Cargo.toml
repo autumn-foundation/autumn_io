@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 aho-corasick = "1.1.4"
-memchr = "2"
 autumn-web = { version = "0.7.0", features = ["markdown", "mcp"] }
 maud = "0.27.0"
 pulldown-cmark = "0.13.3"

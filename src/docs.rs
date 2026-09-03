@@ -385,6 +385,25 @@ struct QueryMatcher<'a> {
     searchers: Vec<OnceCell<Option<AhoCorasick>>>,
 }
 
+/// Token length below which a token is scanned for rather than compiled.
+///
+/// Building the automaton costs ~12.7 µs whatever the pattern is, and on a
+/// token this short the scan it saves is worth less than that: `str::contains`
+/// on one to three bytes is already close to a `memchr`. The site's search box
+/// fires at two characters (`min_length(2)` in `site.rs`), so these are the
+/// first queries of every search interaction, and they must not get slower.
+/// Measured per search over the real corpus, `str::contains` against a
+/// compiled searcher:
+///
+/// | token | scan | compile |
+/// |---|---:|---:|
+/// | `a` | 13.6 µs | 30.9 µs |
+/// | `au` | 16.9 µs | 33.6 µs |
+/// | `the` | 18.6 µs | 34.4 µs |
+/// | `auth` | 117.1 µs | 77.6 µs |
+/// | `authentication` | 444.5 µs | 126.5 µs |
+const MIN_SEARCHER_PATTERN_BYTES: usize = 4;
+
 /// Token length above which a token is scanned for rather than compiled.
 ///
 /// An automaton costs roughly 7 KB fixed plus 30 bytes per pattern byte
@@ -423,7 +442,11 @@ impl<'a> QueryMatcher<'a> {
             }
         }
 
-        let searchers = patterns.iter().map(|_| OnceCell::new()).collect();
+        // Only the first `MAX_SEARCHERS` patterns can ever get one, so an
+        // enormous query does not get an enormous vector of empty cells.
+        let searchers = (0..patterns.len().min(MAX_SEARCHERS))
+            .map(|_| OnceCell::new())
+            .collect();
         Self {
             patterns,
             occurrences,
@@ -467,7 +490,10 @@ impl<'a> QueryMatcher<'a> {
     /// The searcher for one token, or [`None`] when it does not get one and
     /// the caller should scan for the token directly.
     fn searcher(&self, index: usize) -> Option<&AhoCorasick> {
-        if index >= MAX_SEARCHERS || self.patterns[index].len() > MAX_SEARCHER_PATTERN_BYTES {
+        let pattern = self.patterns[index];
+        if index >= MAX_SEARCHERS
+            || !(MIN_SEARCHER_PATTERN_BYTES..=MAX_SEARCHER_PATTERN_BYTES).contains(&pattern.len())
+        {
             return None;
         }
 
@@ -478,7 +504,7 @@ impl<'a> QueryMatcher<'a> {
                     // with one pattern the search is `memmem`'s, and the
                     // automaton behind it is barely entered.
                     .kind(Some(AhoCorasickKind::NoncontiguousNFA))
-                    .build([self.patterns[index]])
+                    .build([pattern])
                     .ok()
             })
             .as_ref()
@@ -588,10 +614,12 @@ impl SearchEntry {
 /// `lowered` are offsets into `text` itself.
 ///
 /// Run once per page when the index is built. All-ASCII text is settled in one
-/// pass, because ASCII always folds one byte to one; otherwise a length change
-/// settles it, and only the remaining case — same length, non-ASCII present —
-/// has to look at characters, since one character growing and another
-/// shrinking could cancel out.
+/// pass, because ASCII always folds one byte to one — though only four of the
+/// 140 guides qualify, since smart punctuation (`—`, `’`, `…`) is enough to
+/// disqualify a page. The rest need the character walk, because a length
+/// change is conclusive only in one direction: one character growing and
+/// another shrinking would cancel out in the total. Measured at 1.0-1.4 ms
+/// over the whole corpus, against 33 ms for the index build it sits in.
 fn lowercasing_preserves_offsets(text: &str, lowered: &str) -> bool {
     text.is_ascii()
         || (text.len() == lowered.len()
@@ -1341,10 +1369,11 @@ mod tests {
     /// rather than fixtures: for every query, every page must score exactly
     /// what the scan it replaced scored — including which pages score at all.
     ///
-    /// The query list deliberately spans both engines (one and two tokens take
-    /// the per-token path, three or more the multi-pattern one), tokens that
-    /// overlap each other, repeated tokens, tokens that match nothing, and
-    /// substrings that only ever appear inside longer words.
+    /// The query list deliberately spans both sides of every bound the matcher
+    /// has — tokens too short to compile a searcher for and tokens long enough,
+    /// and a query with more distinct tokens than get searchers at all — plus
+    /// tokens that overlap each other, repeated tokens, tokens that match
+    /// nothing, and substrings that only ever appear inside longer words.
     #[test]
     fn matcher_scores_every_page_exactly_as_the_naive_scan_did() {
         let registry = crate::site_docs().expect("embedded guides render");
@@ -1366,9 +1395,35 @@ mod tests {
             "a b c d e f",
             "AUTHENTICATION Database",
             "café",
+            // Short enough that they are scanned for rather than compiled.
+            "a",
+            "the ap",
         ];
 
-        for query in queries {
+        // More distinct tokens than get searchers, each long enough that it
+        // would get one, so the head of the query is matched by searcher and
+        // the tail by the fallback scan. Cut from a real page so every token
+        // matches somewhere and the score does not bail before the tail.
+        let mut long_tokens: Vec<&str> = index.entries[0]
+            .text_lower
+            .split_whitespace()
+            .filter(|word| word.len() >= MIN_SEARCHER_PATTERN_BYTES && word.is_ascii())
+            .collect();
+        long_tokens.sort_unstable();
+        long_tokens.dedup();
+        long_tokens.truncate(MAX_SEARCHERS + 8);
+        assert!(
+            long_tokens.len() > MAX_SEARCHERS,
+            "the first guide should have enough distinct words to cross the cap"
+        );
+        let long_query = long_tokens.join(" ");
+        let queries = queries
+            .iter()
+            .map(|query| (*query).to_string())
+            .chain([long_query, "the ".repeat(40)])
+            .collect::<Vec<_>>();
+
+        for query in &queries {
             let tokens: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
             let matcher = QueryMatcher::new(&tokens);
             for entry in &index.entries {
