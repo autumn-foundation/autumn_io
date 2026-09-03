@@ -1,8 +1,10 @@
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::LazyLock;
 
+use aho_corasick::{AhoCorasick, AhoCorasickKind};
 use autumn_web::markdown::{MarkdownError, MarkdownPage, MarkdownRegistry, MarkdownSource};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use syntect::easy::HighlightLines;
@@ -329,10 +331,12 @@ impl SearchIndex {
             return Vec::new();
         }
 
+        // One matcher per query, reused across every page (issue #23).
+        let matcher = QueryMatcher::new(&tokens);
         let mut scored: Vec<(u32, &SearchEntry)> = self
             .entries
             .iter()
-            .filter_map(|entry| entry.score(&tokens).map(|score| (score, entry)))
+            .filter_map(|entry| matcher.score(entry).map(|score| (score, entry)))
             .collect();
 
         // Highest score first; ties broken by title so ordering stays stable.
@@ -345,8 +349,122 @@ impl SearchIndex {
         scored
             .into_iter()
             .take(limit)
-            .map(|(_, entry)| entry.to_hit(&tokens))
+            .map(|(_, entry)| entry.to_hit(&matcher))
             .collect()
+    }
+}
+
+/// The tokens of one query, prepared for matching against every page.
+///
+/// Issue #23 profiled `str::contains` at ~96% of the marginal cost of a search
+/// request: called once per query token, per field, per page, over the whole
+/// embedded corpus. This is that call site, hoisted out of the page loop so
+/// the searchers are built once for the query rather than implicitly rebuilt
+/// on every page — and built by `aho-corasick`, which hands a single pattern
+/// to `memchr::memmem` and searches it about twice as cheaply as
+/// `str::contains` does.
+///
+/// It deliberately does *not* fold the per-token passes into one
+/// multi-pattern pass, which is what issue #23 proposed. That was implemented
+/// and measured three ways, and every one of them was slower — see
+/// `docs/plans/2026-09-03-aho-corasick-docs-search.md`. The reason is
+/// [`QueryMatcher::score`] below: a page is dropped as soon as one token is
+/// missing, so later tokens are only ever scanned on pages the earlier ones
+/// matched, and there is much less repeated scanning to fold than the shape of
+/// the code suggests.
+struct QueryMatcher<'a> {
+    /// Distinct tokens, in first-seen order; searchers are addressed by index
+    /// into this.
+    patterns: Vec<&'a str>,
+    /// How many times each pattern was typed. Scoring counts a repeated token
+    /// once per occurrence, so patterns are deduplicated for *searching* only.
+    occurrences: Vec<u32>,
+    /// One searcher per distinct token, built on first use: a page usually
+    /// bails long before the last token, and a pathologically long query
+    /// should not pay to build searchers nothing will consult.
+    searchers: Vec<OnceCell<Option<AhoCorasick>>>,
+}
+
+impl<'a> QueryMatcher<'a> {
+    fn new(tokens: &'a [String]) -> Self {
+        let mut patterns: Vec<&'a str> = Vec::new();
+        let mut occurrences: Vec<u32> = Vec::new();
+        for token in tokens {
+            match patterns
+                .iter()
+                .position(|pattern| *pattern == token.as_str())
+            {
+                Some(index) => occurrences[index] += 1,
+                None => {
+                    patterns.push(token.as_str());
+                    occurrences.push(1);
+                }
+            }
+        }
+
+        let searchers = patterns.iter().map(|_| OnceCell::new()).collect();
+        Self {
+            patterns,
+            occurrences,
+            searchers,
+        }
+    }
+
+    /// Sum the match weights for every token of the query, or [`None`] when any
+    /// token is missing from the page — all tokens must match for a page to
+    /// appear at all.
+    fn score(&self, entry: &SearchEntry) -> Option<u32> {
+        let mut total = 0;
+        for index in 0..self.patterns.len() {
+            let weight = self.token_weight(index, entry);
+            if weight == 0 {
+                return None;
+            }
+            total += weight * self.occurrences[index];
+        }
+        Some(total)
+    }
+
+    /// The weight one token earns on one page: the fields it appears in, added
+    /// up. Zero means the token is absent from the page entirely.
+    fn token_weight(&self, index: usize, entry: &SearchEntry) -> u32 {
+        u32::from(self.token_matches(index, &entry.title_lower)) * TITLE_MATCH_WEIGHT
+            + u32::from(self.token_matches(index, &entry.headings_lower)) * HEADING_MATCH_WEIGHT
+            + u32::from(self.token_matches(index, &entry.text_lower)) * BODY_MATCH_WEIGHT
+    }
+
+    fn token_matches(&self, index: usize, haystack: &str) -> bool {
+        match self.searcher(index) {
+            Some(searcher) => searcher.is_match(haystack),
+            // No searcher could be built for this token; the substring scan it
+            // replaced is still exactly right, just slower.
+            None => haystack.contains(self.patterns[index]),
+        }
+    }
+
+    fn searcher(&self, index: usize) -> Option<&AhoCorasick> {
+        self.searchers[index]
+            .get_or_init(|| {
+                AhoCorasick::builder()
+                    // The cheapest automaton to build, and no slower to run:
+                    // with one pattern the search is `memmem`'s, and the
+                    // automaton behind it is barely entered.
+                    .kind(Some(AhoCorasickKind::NoncontiguousNFA))
+                    .build([self.patterns[index]])
+                    .ok()
+            })
+            .as_ref()
+    }
+
+    /// Byte offset of the earliest match of any token in `haystack`, which is
+    /// where the result snippet is cut from.
+    fn earliest_match(&self, haystack: &str) -> Option<usize> {
+        (0..self.patterns.len())
+            .filter_map(|index| match self.searcher(index) {
+                Some(searcher) => searcher.find(haystack).map(|found| found.start()),
+                None => haystack.find(self.patterns[index]),
+            })
+            .min()
     }
 }
 
@@ -359,6 +477,9 @@ struct SearchEntry {
     headings_lower: String,
     text: String,
     text_lower: String,
+    /// Whether a byte offset in `text_lower` is the same offset in `text`.
+    /// See [`SearchEntry::original_offset`].
+    lower_offsets_match: bool,
 }
 
 impl SearchEntry {
@@ -370,6 +491,8 @@ impl SearchEntry {
             .collect::<Vec<_>>()
             .join(" ");
         let text = html_to_plain_text(&page.html);
+        let text_lower = text.to_lowercase();
+        let lower_offsets_match = lowercasing_preserves_offsets(&text, &text_lower);
 
         Self {
             slug: page.slug.clone(),
@@ -377,54 +500,80 @@ impl SearchEntry {
             description: page.description.clone(),
             title_lower: page.title.to_lowercase(),
             headings_lower: headings.to_lowercase(),
-            text_lower: text.to_lowercase(),
             text,
+            text_lower,
+            lower_offsets_match,
         }
     }
 
-    /// Sum the match weights for every token, or return [`None`] when any token
-    /// is missing from the page (all tokens must match for a page to appear).
-    fn score(&self, tokens: &[String]) -> Option<u32> {
-        let mut total = 0;
-        for token in tokens {
-            let mut token_score = 0;
-            if self.title_lower.contains(token) {
-                token_score += TITLE_MATCH_WEIGHT;
-            }
-            if self.headings_lower.contains(token) {
-                token_score += HEADING_MATCH_WEIGHT;
-            }
-            if self.text_lower.contains(token) {
-                token_score += BODY_MATCH_WEIGHT;
-            }
-            if token_score == 0 {
-                return None;
-            }
-            total += token_score;
-        }
-        Some(total)
-    }
-
-    fn to_hit(&self, tokens: &[String]) -> SearchHit {
+    fn to_hit(&self, matcher: &QueryMatcher) -> SearchHit {
         SearchHit {
             slug: self.slug.clone(),
             title: self.title.clone(),
-            snippet: self.snippet(tokens),
+            snippet: self.snippet(matcher),
         }
     }
 
     /// Build a context snippet around the earliest body match, falling back to
     /// the page description when the query only matched the title or headings.
-    fn snippet(&self, tokens: &[String]) -> String {
-        match tokens
-            .iter()
-            .filter_map(|token| self.text_lower.find(token))
-            .min()
-        {
-            Some(index) => build_snippet(&self.text, index, SNIPPET_RADIUS),
+    fn snippet(&self, matcher: &QueryMatcher) -> String {
+        match matcher.earliest_match(&self.text_lower) {
+            Some(index) => build_snippet(&self.text, self.original_offset(index), SNIPPET_RADIUS),
             None => self.description.clone(),
         }
     }
+
+    /// Translate a byte offset in `text_lower` into the same position in
+    /// `text`, which is what the snippet is cut from.
+    ///
+    /// `str::to_lowercase` is not length-preserving: `İ` (U+0130) is two bytes
+    /// and folds to `i` plus a combining dot, three. Every such character
+    /// earlier in the page shifts every later offset, so on those pages a
+    /// snippet taken at the raw offset points past the match it is meant to
+    /// show. Pages where nothing changes length — every guide today — skip the
+    /// walk entirely, and the walk itself only runs for the handful of pages a
+    /// request actually builds snippets for.
+    fn original_offset(&self, lower_index: usize) -> usize {
+        if self.lower_offsets_match {
+            return lower_index;
+        }
+
+        let (mut lower, mut original) = (0, 0);
+        for character in self.text.chars() {
+            if lower >= lower_index {
+                break;
+            }
+            lower += lowercase_len(character);
+            original += character.len_utf8();
+        }
+        original
+    }
+}
+
+/// Whether `str::to_lowercase` maps `text` byte-for-byte, so that offsets into
+/// `lowered` are offsets into `text` itself.
+///
+/// Run once per page when the index is built. All-ASCII text is settled in one
+/// pass, because ASCII always folds one byte to one; otherwise a length change
+/// settles it, and only the remaining case — same length, non-ASCII present —
+/// has to look at characters, since one character growing and another
+/// shrinking could cancel out.
+fn lowercasing_preserves_offsets(text: &str, lowered: &str) -> bool {
+    text.is_ascii()
+        || (text.len() == lowered.len()
+            && text
+                .chars()
+                .filter(|character| !character.is_ascii())
+                .all(|character| lowercase_len(character) == character.len_utf8()))
+}
+
+/// Byte length of `character` once lowercased.
+///
+/// `str::to_lowercase` differs from `char::to_lowercase` in exactly one place —
+/// a Greek capital sigma at the end of a word folds to `ς` rather than `σ` —
+/// and both of those are two bytes, so the two agree on length everywhere.
+fn lowercase_len(character: char) -> usize {
+    character.to_lowercase().map(char::len_utf8).sum()
 }
 
 /// Strip HTML tags and decode the handful of entities the renderer emits,
@@ -1129,6 +1278,84 @@ mod tests {
 
         assert!(index.search("zebra giraffes", 20).is_empty());
         assert_eq!(index.search("zebra handling", 20).len(), 1);
+    }
+
+    /// The scan `QueryMatcher` replaced, kept as an oracle: the plain
+    /// per-token, per-field `str::contains` loop from before issue #23.
+    fn naive_score(entry: &SearchEntry, tokens: &[String]) -> Option<u32> {
+        let mut total = 0;
+        for token in tokens {
+            let mut token_score = 0;
+            if entry.title_lower.contains(token) {
+                token_score += TITLE_MATCH_WEIGHT;
+            }
+            if entry.headings_lower.contains(token) {
+                token_score += HEADING_MATCH_WEIGHT;
+            }
+            if entry.text_lower.contains(token) {
+                token_score += BODY_MATCH_WEIGHT;
+            }
+            if token_score == 0 {
+                return None;
+            }
+            total += token_score;
+        }
+        Some(total)
+    }
+
+    /// The equivalence claim of issue #23, checked against the real corpus
+    /// rather than fixtures: for every query, every page must score exactly
+    /// what the scan it replaced scored — including which pages score at all.
+    ///
+    /// The query list deliberately spans both engines (one and two tokens take
+    /// the per-token path, three or more the multi-pattern one), tokens that
+    /// overlap each other, repeated tokens, tokens that match nothing, and
+    /// substrings that only ever appear inside longer words.
+    #[test]
+    fn matcher_scores_every_page_exactly_as_the_naive_scan_did() {
+        let registry = crate::site_docs().expect("embedded guides render");
+        let index = SearchIndex::from_registry(registry);
+
+        let queries = [
+            "authentication",
+            "database",
+            "the",
+            "zzzznonexistentzzzz",
+            "routing middleware",
+            "attribute encryption",
+            "routing middleware authentication",
+            "content negotiation conditional get",
+            "deploy clustering edge fleet rollback",
+            "the the the",
+            "cat categor ego",
+            "ent enti entit",
+            "a b c d e f",
+            "AUTHENTICATION Database",
+            "café",
+        ];
+
+        for query in queries {
+            let tokens: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+            let matcher = QueryMatcher::new(&tokens);
+            for entry in &index.entries {
+                assert_eq!(
+                    matcher.score(entry),
+                    naive_score(entry, &tokens),
+                    "score for {:?} on page {:?}",
+                    query,
+                    entry.slug
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_repeated_token_is_searched_once_and_scored_once_per_occurrence() {
+        let tokens: Vec<String> = "zebra zebra".split_whitespace().map(String::from).collect();
+        let matcher = QueryMatcher::new(&tokens);
+
+        assert_eq!(matcher.patterns, vec!["zebra"]);
+        assert_eq!(matcher.occurrences, vec![2]);
     }
 
     #[test]
