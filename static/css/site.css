@@ -52,6 +52,7 @@ a {
 
 a:focus-visible,
 button:focus-visible,
+.docs-nav-summary:focus-visible,
 .article-body table:focus-visible,
 #main-content:focus {
   outline: 3px solid var(--focus);
@@ -177,7 +178,7 @@ pre {
 }
 
 .eyebrow,
-.sidebar-label,
+.docs-nav-summary,
 .toc-label {
   margin: 0 0 0.75rem;
   color: var(--moss-dark);
@@ -519,6 +520,25 @@ pre {
   overflow-y: auto;
 }
 
+.docs-nav-disclosure {
+  border: none;
+}
+
+.docs-nav-summary {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  cursor: default;
+}
+
+.docs-nav-summary::-webkit-details-marker {
+  display: none;
+}
+
+.docs-nav-summary::after {
+  content: "";
+}
+
 .docs-nav-link,
 .toc-link {
   display: block;
@@ -776,6 +796,24 @@ pre {
     border-top: 1px solid var(--line);
   }
 
+  .docs-nav-summary {
+    justify-content: space-between;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .docs-nav-summary::after {
+    content: "▾";
+    transition: transform 0.15s ease;
+  }
+
+  .docs-nav-disclosure[open] .docs-nav-summary::after {
+    transform: rotate(180deg);
+  }
+
   .docs-toc {
     display: none;
   }
@@ -972,5 +1010,9 @@ pre {
   /* Fall back to the static "Searching…" label with a non-spinning ring. */
   .docs-search-spinner {
     animation: none;
+  }
+
+  .docs-nav-summary::after {
+    transition: none;
   }
 }
