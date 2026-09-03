@@ -389,13 +389,17 @@ impl<'a> QueryMatcher<'a> {
     fn new(tokens: &'a [String]) -> Self {
         let mut patterns: Vec<&'a str> = Vec::new();
         let mut occurrences: Vec<u32> = Vec::new();
+        // Deduplicating through a map rather than a scan of `patterns` keeps
+        // construction linear in the token count. Nothing caps the length of a
+        // `?q=` query, and construction happens before any page is scanned, so
+        // a quadratic pass here would be work an oversized query could ask for
+        // even when its first token matches nothing.
+        let mut seen: HashMap<&'a str, usize> = HashMap::new();
         for token in tokens {
-            match patterns
-                .iter()
-                .position(|pattern| *pattern == token.as_str())
-            {
-                Some(index) => occurrences[index] += 1,
+            match seen.get(token.as_str()) {
+                Some(&index) => occurrences[index] += 1,
                 None => {
+                    seen.insert(token.as_str(), patterns.len());
                     patterns.push(token.as_str());
                     occurrences.push(1);
                 }
