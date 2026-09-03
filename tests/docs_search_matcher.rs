@@ -263,9 +263,10 @@ fn search_folds_case_beyond_ascii() {
     assert!(index.search("STRASSE", 10).is_empty());
 }
 
-/// A query far longer than a search box would ever send — one searcher per
-/// distinct token, seventy of them — still filters and ranks rather than
-/// truncating, dropping tokens, or panicking.
+/// A query far longer than a search box would ever send — seventy distinct
+/// tokens, past the point where the matcher stops building searchers and goes
+/// back to scanning — still filters and ranks rather than truncating, dropping
+/// tokens, or panicking.
 #[test]
 fn search_handles_far_more_tokens_than_a_search_box_sends() {
     let words: Vec<String> = (0..70).map(|n| format!("token{n}")).collect();
@@ -281,6 +282,29 @@ fn search_handles_far_more_tokens_than_a_search_box_sends() {
     // One token that is absent still filters the page out, 70 tokens deep.
     let missing = format!("{query} absentium");
     assert!(index.search(&missing, 10).is_empty());
+
+    // And a token past the cap is what decides the result, so the tokens that
+    // got no searcher are really being matched rather than waved through.
+    let mut altered = words.clone();
+    altered[69] = "token69x".to_string();
+    assert!(index.search(&altered.join(" "), 10).is_empty());
+}
+
+/// A single enormous token gets no searcher either — an automaton costs about
+/// thirty bytes per pattern byte, and this runs on a 256 MB machine against an
+/// uncapped query string. It still has to match exactly.
+#[test]
+fn search_matches_a_token_too_long_to_compile() {
+    let long: &'static str = "z".repeat(4096).leak();
+    let body: &'static str = format!("A page containing {long} and nothing else.").leak();
+    let index = index_of(&[("long", "Long", body), ("short", "Short", "No z run here.")]);
+
+    assert_eq!(slugs(&index.search(long, 10)), ["long"]);
+    assert!(index.search(&format!("{long}z"), 10).is_empty());
+
+    // Mixed with ordinary tokens, both sides of the cap still have to agree.
+    assert_eq!(slugs(&index.search(&format!("page {long}"), 10)), ["long"]);
+    assert!(index.search(&format!("absent {long}"), 10).is_empty());
 }
 
 /// An empty or whitespace-only query matches nothing rather than everything.

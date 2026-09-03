@@ -379,11 +379,28 @@ struct QueryMatcher<'a> {
     /// How many times each pattern was typed. Scoring counts a repeated token
     /// once per occurrence, so patterns are deduplicated for *searching* only.
     occurrences: Vec<u32>,
-    /// One searcher per distinct token, built on first use: a page usually
-    /// bails long before the last token, and a pathologically long query
-    /// should not pay to build searchers nothing will consult.
+    /// A searcher per distinct token, built on first use and only within the
+    /// bounds below: a page usually bails long before the last token, and a
+    /// query is not allowed to make the matcher allocate without limit.
     searchers: Vec<OnceCell<Option<AhoCorasick>>>,
 }
+
+/// Token length above which a token is scanned for rather than compiled.
+///
+/// An automaton costs roughly 7 KB fixed plus 30 bytes per pattern byte
+/// (measured on `NoncontiguousNFA`), where the `str::contains` it replaces
+/// allocates nothing at all. Search-box tokens are words; anything past this
+/// is not a word, and paying 30x for it on a 256 MB machine is a worse trade
+/// than scanning for it the old way.
+const MAX_SEARCHER_PATTERN_BYTES: usize = 256;
+
+/// How many of a query's tokens get a searcher.
+///
+/// With the length cap above, this bounds one in-flight query's matcher at a
+/// few hundred kilobytes however long the query is. Queries reaching the cap
+/// are already far past what the search box sends, and the tokens past it are
+/// scanned for exactly as they were before this change.
+const MAX_SEARCHERS: usize = 32;
 
 impl<'a> QueryMatcher<'a> {
     fn new(tokens: &'a [String]) -> Self {
@@ -440,13 +457,20 @@ impl<'a> QueryMatcher<'a> {
     fn token_matches(&self, index: usize, haystack: &str) -> bool {
         match self.searcher(index) {
             Some(searcher) => searcher.is_match(haystack),
-            // No searcher could be built for this token; the substring scan it
-            // replaced is still exactly right, just slower.
+            // This token gets no searcher — too long, too far into the query,
+            // or the automaton would not build. The substring scan it replaced
+            // is still exactly right, just slower.
             None => haystack.contains(self.patterns[index]),
         }
     }
 
+    /// The searcher for one token, or [`None`] when it does not get one and
+    /// the caller should scan for the token directly.
     fn searcher(&self, index: usize) -> Option<&AhoCorasick> {
+        if index >= MAX_SEARCHERS || self.patterns[index].len() > MAX_SEARCHER_PATTERN_BYTES {
+            return None;
+        }
+
         self.searchers[index]
             .get_or_init(|| {
                 AhoCorasick::builder()
@@ -542,12 +566,18 @@ impl SearchEntry {
             return lower_index;
         }
 
+        // Walk both lengths in step and stop at the character whose lowercase
+        // form covers `lower_index`. A match can start inside that form rather
+        // than at its start — a query for a bare combining dot against a page
+        // containing `İ` — and the start of the character it came from is the
+        // closest thing the original text has to that position.
         let (mut lower, mut original) = (0, 0);
         for character in self.text.chars() {
-            if lower >= lower_index {
+            let next = lower + lowercase_len(character);
+            if next > lower_index {
                 break;
             }
-            lower += lowercase_len(character);
+            lower = next;
             original += character.len_utf8();
         }
         original
