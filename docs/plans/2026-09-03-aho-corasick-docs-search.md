@@ -242,7 +242,10 @@ Measured on the long-query mix, A/B on otherwise identical shipped code:
 |---|---:|---:|
 | Baseline (`str::contains` per token) | 2,824,408 | — |
 | Per-token searchers **plus** the multi-pattern pass | 2,466,700 | −12.7% |
-| Per-token searchers alone (shipped) | 1,422,423 | **−49.6%** |
+| Per-token searchers alone | 1,422,423 | **−49.6%** |
+
+(Both matcher rows are that A/B's own build, before the two bounds and the
+short-token floor of step 5; the shipped figure for this mix is 1,455,458.)
 
 The multi-pattern pass is **73% more expensive** than not having it, on the
 query shape it exists for. The mechanism is in the code it was meant to
@@ -258,54 +261,110 @@ shipped as a slower path nobody would want taken.
 
 ### Step 4 — what shipped
 
-One `aho-corasick` searcher per distinct query token, built once for the query
-and consulted token by token, keeping the existing bail. Marginal cost per
-request, against the same baseline:
+One `aho-corasick` searcher per distinct query token of four bytes or more,
+built once for the query and consulted token by token, keeping the existing
+bail. Shorter tokens keep the `str::contains` scan, for the reason step 5
+gives. Marginal cost per request — the full run minus a build-only run of the
+*same* query set, over the request delta:
 
-| Query mix | Baseline | Shipped | Change |
-|---|---:|---:|---:|
-| Default (1-2 tokens, the issue's own mix) | 1,874,089 | 916,101 | **−51.1%** |
-| Long (3-5 tokens) | 2,824,408 | 1,422,423 | **−49.6%** |
+| Query mix | Baseline Ir | Shipped Ir | Change | Baseline wall | Shipped wall | Change |
+|---|---:|---:|---:|---:|---:|---:|
+| Default (1-2 tokens, the issue's own mix) | 1,874,089 | 959,544 | **−48.8%** | 275.5 µs | 123.1 µs | **−55.3%** |
+| Long (3-5 tokens) | 2,824,408 | 1,455,458 | **−48.5%** | 454.0 µs | 193.0 µs | **−57.5%** |
+| Typeahead (2-6 character prefixes) | 785,206 | 546,111 | **−30.5%** | 79.3 µs | 59.1 µs | **−25.5%** |
 
-Against issue #23's impact floor of 5%, both clear it by an order of
-magnitude.
+Against issue #23's impact floor of 5%, all three clear it by between six and
+ten times. Wall clock is median of five runs with the index build subtracted;
+it falls further than instructions on the two longer mixes, because what
+replaced the old instructions are AVX2 substring-search instructions that
+retire more work each.
 
-Wall clock says the same thing, and slightly more of it. Median of five runs
-of the whole harness process, with the index build (0.556 s before, 0.542 s
-after — noise) subtracted to leave the request time:
-
-| Query mix | Baseline | Shipped | Change |
-|---|---:|---:|---:|
-| Default | 292 µs/request | 130 µs/request | **−55.3%** |
-| Long | 474 µs/request | 206 µs/request | **−56.5%** |
-
-Time falls a little further than instructions do, which is the opposite of
-what #19 found for Oniguruma and for the same reason inverted: the
-instructions that replaced the old ones are AVX2 substring-search
-instructions, which retire more work each.
+The typeahead mix improves least, and that is the design working rather than a
+disappointment: half its queries are below the four-byte floor and are left on
+exactly the scan they had, which is what stops them regressing.
 
 The shape of the profile changes accordingly. `str::contains` and its two-way
-searcher are gone; the top frame is now `memchr`'s AVX2 `packedpair::Finder`
-at 50.27% of the run. Substring search is still the dominant per-request cost
-— it is a linear scan, and this change makes the scan cheaper rather than
-removing it — but it is 79.1% of a marginal cost that is half what it was,
-against 96.4% before.
+searcher drop from 79.69% of the run to 2.70%; the top frame becomes
+`memchr`'s AVX2 `packedpair::Finder` at 46.32%. Substring search is still the
+dominant per-request cost — it is a linear scan, and this change makes the
+scan cheaper rather than removing it — but the whole marginal cost is half
+what it was.
 
 One line item is worth naming because it is the price of this particular
-crate: `NFA::init_full_state`, the per-query automaton construction, is
-345.8 M instructions across the run, ~34.6 K per request, or 3.8% of the new
-marginal cost. `memchr::memmem` builds its finder for a fraction of that (see
-"Not taken" below).
+crate: per-query automaton construction. Summed over all 20 `aho-corasick`
+construction frames it is 848 M instructions across the run — **8.84% of the
+marginal cost**, ~85 K instructions per request — before the allocator traffic
+it drives. `memchr::memmem` builds its equivalent for about a thousandth of
+that (11-37 ns against ~12.7 µs), which is the whole of what "Not taken"
+prices below, and it is also why short tokens need a floor at all.
+
+### Step 5 — what the reviews found, and the two bounds they added
+
+Four review passes ran against the first three commits. Two found real
+defects that the measurements above could not have caught, because both are
+properties of inputs the harness does not send.
+
+**Short queries were 1.7-2.3x slower.** Building the automaton costs ~12.7 µs
+whatever the token is, and on a one-to-three character token that buys nothing:
+`str::contains` on a short needle is already close to a `memchr`. The site's
+search box fires from two characters (`min_length(2)`, `src/site.rs`), so these
+are the first queries of every search interaction — and the harness's own mix
+contains nothing shorter than three. Measured per search over the real corpus:
+
+| token | scan (before) | compile (after, no floor) | shipped |
+|---|---:|---:|---:|
+| `a` | 13.6 µs | 30.9 µs | 14.9 µs |
+| `au` | 16.9 µs | 33.6 µs | 18.2 µs |
+| `the` | 18.6 µs | 34.4 µs | 21.3 µs |
+| `auth` | 117.1 µs | 77.6 µs | 83.2 µs |
+| `authentication` | 444.5 µs | 126.5 µs | 138.3 µs |
+
+`MIN_SEARCHER_PATTERN_BYTES = 4` is where those two columns cross. Below it a
+token is scanned for exactly as it was before; at and above it, it gets a
+searcher. A third query set, `SEARCH_QUERY_SET=typeahead`, now measures that
+axis so it cannot regress silently again.
+
+**A query could make the matcher allocate without bound.** A single-pattern
+`NoncontiguousNFA` costs ~7 KB fixed plus ~30 bytes per pattern byte, where
+`str::contains` allocated nothing, and `?q=` has no length cap. A 65 KB query
+of ~11,900 distinct tokens all drawn from one guide — so the all-tokens bail
+never fires and every searcher gets built — measured **+95 MB of RSS**, and
+eight concurrent copies peaked at 914 MB on a machine with 256 MB. That is an
+unauthenticated remote OOM, reachable from `/api/search`, `/search` and the
+MCP tool alike.
+
+`MAX_SEARCHER_PATTERN_BYTES = 256` and `MAX_SEARCHERS = 32` bound it: past
+either, a token is scanned for rather than compiled, which is exact and
+allocates nothing. The same query now costs +0.6 MB, and eight concurrent
+copies peak at 49 MB. A 2 MB single token goes from 151.7 ms and +83 MB to
+5.6 ms and nothing.
+
+Two smaller things the reviews also settled, worth recording because they were
+assumptions rather than measurements when this document was first written:
+
+- Deduplicating query tokens by scanning the pattern list was quadratic, and
+  it runs *before* any page is scanned, so the all-tokens bail did not cover
+  it: 50,000 distinct tokens took 2.7 s. Now a `HashMap`, at 10.5 ms.
+- `lowercasing_preserves_offsets`'s ASCII fast path almost never fires — only
+  four of the 140 guides are pure ASCII, because one smart quote is enough to
+  disqualify a page. The character walk is what actually runs, and it is
+  1.0-1.4 ms over the whole corpus against 33 ms for the index build it sits
+  in, so the conclusion is unchanged even though the reasoning was wrong.
 
 ### Results, unchanged
 
 Equivalence was checked three ways rather than asserted:
 
-- The harness reports identical totals on both query mixes before and after —
-  78,500 hits and 13,958,500 bytes of snippet on the default mix, 20,000 and
-  3,512,000 on the long one. Snippet bytes matching to the byte is a stronger
-  statement than hit counts matching: it says the same pages came back in the
-  same order with the same text cut from the same offsets.
+- The harness reports identical totals on all three query mixes before and
+  after — 78,500 hits and 13,958,500 bytes of snippet on the default mix,
+  20,000 and 3,512,000 on the long one, 100,000 and 16,790,500 on the
+  typeahead one. Snippet bytes matching to the byte is a stronger statement
+  than hit counts matching: it says the same pages came back in the same order
+  with the same text cut from the same offsets.
+- Two of the reviews checked it independently and end-to-end, comparing the
+  full `SearchHit` output of the old and new code over the real corpus:
+  7,619 queries in one, 6,000 randomised ones in the other, byte-identical
+  in both.
 - `matcher_scores_every_page_exactly_as_the_naive_scan_did` scores all 140
   real pages against the replaced `str::contains` loop, kept in the test
   module as an oracle, over fifteen queries chosen to cover both engines,
@@ -318,9 +377,9 @@ Equivalence was checked three ways rather than asserted:
 | Metric | Before | After | Change |
 |---|---:|---:|---:|
 | Crates in the build graph | 367 | 368 | +1 |
-| Release binary | 37,144,616 B | 37,494,424 B | +349,808 B (+0.94%) |
-| Index build (`site_docs()` + `from_registry`), Ir | 3,923,378,303 | 3,944,466,740 | +0.54% |
-| Index build, wall clock (median of 5) | 0.556 s | 0.542 s | noise |
+| Release binary | 37,144,616 B | 37,494,224 B | +349,608 B (+0.94%) |
+| Index build (`site_docs()` + `from_registry`), Ir | 3,923,378,303 | 3,941,620,000 | +0.47% |
+| Index build, wall clock (median of 5) | 0.536 s | 0.547 s | noise |
 | Harness peak RSS | 30,456 KB | 30,672 KB | +216 KB |
 
 `memchr` was already in the graph five times over (`regex-automata`, `syntect`
@@ -389,12 +448,18 @@ code is worse than the small extra diff.
   difference reported but not smaller than the index-build difference, which
   is why that one is called noise rather than an improvement.
 - The query mixes are constructed, not sampled from traffic — there is no
-  traffic instrumentation on `/api/search` to sample. They are drawn from real
-  guide topics, and the long mix exists precisely because the default one
-  cannot speak for token counts a search box rarely produces. A real query
-  distribution could shift the size of the win; it would have to be very
-  strange indeed to shift its sign, since the change makes every individual
-  scan cheaper rather than trading one shape of query for another.
+  traffic instrumentation on `/api/search` to sample. An earlier draft of this
+  document argued from that mix that a real query distribution "would have to
+  be very strange indeed to shift the sign" of the result. That was wrong, and
+  the review that measured token length found it: below four characters the
+  change was a straight loss, and the default mix contains no query short
+  enough to show it. Three mixes are now measured rather than one, and the
+  floor at four bytes is what makes the claim hold rather than the mix.
+- The default mix's win is unevenly distributed: `zzzznonexistentzzzz`, one
+  query in twenty, supplies about a third of the total saving, because a query
+  that matches nothing is exactly where a faster scan pays most. The typeahead
+  and long mixes are reported separately for that reason, and the per-query
+  spread matters more than any of the three means.
 - `SearchEntry::original_offset`'s walk is exercised by tests, not by the
   corpus: every guide today is offset-stable, so the fast path is what
   production takes. That is the point of the tests, and of the harness
