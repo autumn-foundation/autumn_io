@@ -94,20 +94,21 @@ the Guard column updated to say what actually protects us now.
 | A non-overlapping multi-pattern search hides one token inside another token's match | `categor ego` silently stops matching a page containing `category` — a wrong result, not a slow one | Standing test `search_counts_tokens_that_overlap_another_tokens_match`. The shipped matcher searches one token at a time and cannot hit this at all; the test stays because the next person to reach for a multi-pattern pass will |
 | The matcher deduplicates patterns and the score inherits the dedup | Repeated query tokens quietly stop double-counting, changing ranking | Standing test `search_scores_a_repeated_token_once_per_occurrence`, built so dedup flips the result order |
 | Case folding narrows to ASCII (`ascii_case_insensitive` is the obvious knob) | `café` stops finding `CAFÉ` | Standing test `search_folds_case_beyond_ascii` |
-| A long query overflows a fixed-width pattern set | Tokens silently dropped, or a panic on a user-supplied query | Standing test with 70 distinct tokens. The shipped matcher has one searcher per token and no fixed width, and builds them lazily so a pathological query cannot pay for searchers nothing consults |
+| A long query overflows a fixed-width pattern set | Tokens silently dropped, or a panic on a user-supplied query | Standing test with 70 distinct tokens, and unit tests either side of the searcher cap. Tokens past the cap are matched by the scan they always were, so the cap bounds allocation without dropping anything |
 | A searcher cannot be built at runtime | An `expect` on a user-supplied query, or a fallback that changes results | `token_matches` falls back to the `str::contains` it replaced, which is exactly right and merely slower; no `unwrap` on the query path |
 | Ranking or limit changes as a side effect | Result order drifts across a release | Standing tests on weights, tie-break and limit; differential test against a naive reference over the real corpus |
+| A token gets slower rather than faster at some size | The change is a win on the mix measured and a loss on the queries users type | Standing tests pinning the searcher bounds by value with their reasoning, and a third harness mix on the token-length axis |
 | It is slower, not faster | The whole point of the change is lost | Instruction counts on the committed harness, before and after, on two query mixes |
-| It is faster on the harness only because the harness is unrepresentative | We optimise a benchmark, not the product | Two query mixes (1-2 token and 3-5 token) measured separately, and the change made every individual scan cheaper rather than trading one query shape for another |
+| It is faster on the harness only because the harness is unrepresentative | We optimise a benchmark, not the product | Three query mixes, measured separately. This row first claimed the change made every individual scan cheaper; step 5 is the correction — below four bytes it did not, and it took a third mix to see it |
 | A new dependency inflates the build | This repo has been bitten twice by builder OOM (#9, #16) | `aho-corasick` is pure Rust with one dependency (`memchr`) and no build script; standing lockfile test pins that, and build cost measured below |
 | Snippet offsets drift from match offsets | The snippet shows the wrong part of the page | Standing tests on case folding that changes byte length (this was a live bug — see below) |
 
 ## Six thinking hats
 
 **White (facts).** Substring search is ~96% of the marginal per-request cost.
-The corpus is 140 guides, ~2.3 MB of Markdown, ~2.8 MB of extracted body text,
+The corpus is 140 guides, ~2.3 MB of Markdown, 2.13 MB of extracted body text,
 rebuilt only on deploy. Queries come from a search-as-you-type box, so they are
-short: the issue's own harness is 13 single-token and 7 two-token queries out
+short: the issue's own harness is 12 single-token and 8 two-token queries out
 of 20. `aho-corasick` is already resolved in `Cargo.lock` (via `regex`, an
 optional path not currently compiled) and depends only on `memchr`.
 
@@ -145,9 +146,10 @@ both query mixes in the PR.
 
 ## TDD plan
 
-**Red.** `tests/docs_search_matcher.rs` (dependency pins and semantics) and
-one differential test in `src/docs.rs` (private internals). Three tests fail
-before the change:
+**Red.** (Written before the work and left as written; the file has since
+grown the tests step 5's review asked for.) `tests/docs_search_matcher.rs`
+(dependency pins and semantics) and one differential test in `src/docs.rs`
+(private internals). Three tests fail before the change:
 
 1. `docs_search_declares_the_aho_corasick_matcher`.
 2. `snippets_survive_case_folding_that_changes_byte_offsets`.
@@ -236,7 +238,8 @@ re-check pass is needed and the single non-overlapping pass is exact — and
 only from three distinct tokens up, where the microbenchmark said one pass
 beats three.
 
-Measured on the long-query mix, A/B on otherwise identical shipped code:
+Measured on the long-query mix (`SEARCH_QUERY_SET=multi`), A/B on otherwise
+identical shipped code:
 
 | Variant (3-5 token queries) | Ir per request | vs baseline |
 |---|---:|---:|
@@ -270,8 +273,8 @@ gives. Marginal cost per request — the full run minus a build-only run of the
 | Query mix | Baseline Ir | Shipped Ir | Change | Baseline wall | Shipped wall | Change |
 |---|---:|---:|---:|---:|---:|---:|
 | Default (1-2 tokens, the issue's own mix) | 1,874,089 | 959,544 | **−48.8%** | 275.5 µs | 123.1 µs | **−55.3%** |
-| Long (3-5 tokens) | 2,824,408 | 1,455,458 | **−48.5%** | 454.0 µs | 193.0 µs | **−57.5%** |
-| Typeahead (2-6 character prefixes) | 785,206 | 546,111 | **−30.5%** | 79.3 µs | 59.1 µs | **−25.5%** |
+| Long (3-5 tokens, `SEARCH_QUERY_SET=multi`) | 2,824,408 | 1,455,458 | **−48.5%** | 454.0 µs | 193.0 µs | **−57.5%** |
+| Typeahead (2-6 character prefixes, `SEARCH_QUERY_SET=typeahead`) | 785,206 | 546,111 | **−30.5%** | 79.3 µs | 59.1 µs | **−25.5%** |
 
 Against issue #23's impact floor of 5%, all three clear it by between six and
 ten times. Wall clock is median of five runs with the index build subtracted;
@@ -281,7 +284,9 @@ retire more work each.
 
 The typeahead mix improves least, and that is the design working rather than a
 disappointment: half its queries are below the four-byte floor and are left on
-exactly the scan they had, which is what stops them regressing.
+the scan they had — plus the ~1 µs of matcher construction every query now
+pays, which is why the shipped short-token column in step 5 sits a few percent
+above the old scan rather than level with it.
 
 The shape of the profile changes accordingly. `str::contains` and its two-way
 searcher drop from 79.69% of the run to 2.70%; the top frame becomes
@@ -294,8 +299,8 @@ One line item is worth naming because it is the price of this particular
 crate: per-query automaton construction. Summed over all 20 `aho-corasick`
 construction frames it is 848 M instructions across the run — **8.84% of the
 marginal cost**, ~85 K instructions per request — before the allocator traffic
-it drives. `memchr::memmem` builds its equivalent for about a thousandth of
-that (11-37 ns against ~12.7 µs), which is the whole of what "Not taken"
+it drives. `memchr::memmem` builds its equivalent for between a thousandth and a
+three-hundredth of that (11-37 ns against ~12.7 µs), which is the whole of what "Not taken"
 prices below, and it is also why short tokens need a floor at all.
 
 ### Step 5 — what the reviews found, and the two bounds they added
@@ -320,8 +325,8 @@ contains nothing shorter than three. Measured per search over the real corpus:
 | `authentication` | 444.5 µs | 126.5 µs | 138.3 µs |
 
 `MIN_SEARCHER_PATTERN_BYTES = 4` is where those two columns cross. Below it a
-token is scanned for exactly as it was before; at and above it, it gets a
-searcher. A third query set, `SEARCH_QUERY_SET=typeahead`, now measures that
+token takes the same scan as before, plus the matcher construction every query
+pays; at and above it, it gets a searcher. A third query set, `SEARCH_QUERY_SET=typeahead`, now measures that
 axis so it cannot regress silently again.
 
 **A query could make the matcher allocate without bound.** A single-pattern
@@ -336,8 +341,8 @@ MCP tool alike.
 `MAX_SEARCHER_PATTERN_BYTES = 256` and `MAX_SEARCHERS = 32` bound it: past
 either, a token is scanned for rather than compiled, which is exact and
 allocates nothing. The same query now costs +0.6 MB, and eight concurrent
-copies peak at 49 MB. A 2 MB single token goes from 151.7 ms and +83 MB to
-5.6 ms and nothing.
+copies peak at 49 MB. A 2 MB single token goes from 151.7 ms and +83 MB to 5.6 ms and +6 MB — and
+that 6 MB is the query string and its lowercased copies, not the matcher.
 
 Two smaller things the reviews also settled, worth recording because they were
 assumptions rather than measurements when this document was first written:
@@ -367,10 +372,14 @@ Equivalence was checked three ways rather than asserted:
   in both.
 - `matcher_scores_every_page_exactly_as_the_naive_scan_did` scores all 140
   real pages against the replaced `str::contains` loop, kept in the test
-  module as an oracle, over fifteen queries chosen to cover both engines,
-  overlapping tokens, repeated tokens, empty results and non-ASCII input.
-- Fourteen behavioural tests in `tests/docs_search_matcher.rs` pin the
-  semantics themselves, and passed before the change as well as after.
+  module as an oracle, over nineteen queries chosen to cover both sides of
+  every bound the matcher has, overlapping tokens, repeated tokens, empty
+  results and non-ASCII input.
+- Fifteen behavioural tests in `tests/docs_search_matcher.rs` pin the
+  semantics themselves. Eleven of them passed before the change as well as
+  after — that is the equivalence claim. Two were red before it and are the
+  snippet-offset fix; two more arrived with the allocation bounds and the
+  short-token floor.
 
 ### Build and runtime cost
 
@@ -382,13 +391,14 @@ Equivalence was checked three ways rather than asserted:
 | Index build, wall clock (median of 5) | 0.536 s | 0.547 s | noise |
 | Harness peak RSS | 30,456 KB | 30,672 KB | +216 KB |
 
-`memchr` was already in the graph five times over (`regex-automata`, `syntect`
-and others), so `aho-corasick` adds exactly one crate, with no build script
+`memchr` was already in the graph a dozen times over (`regex-automata`,
+`serde_json`, `tower-http` and others), so `aho-corasick` adds exactly one
+crate, with no build script
 and no C toolchain — which is what makes it a different proposition from #19's
 `onig_sys`, and why the builder-OOM history (#9, #16) does not apply here.
 
-The index build pays 21 M more instructions for the new per-page check of
-whether lowercasing preserves byte offsets. That is 0.54% of a one-time cost
+The index build pays 18 M more instructions for the new per-page check of
+whether lowercasing preserves byte offsets. That is 0.47% of a one-time cost
 this repo has already spent a release optimising, in exchange for a snippet
 bug that was previously live.
 
@@ -399,13 +409,14 @@ adopt the multi-pattern pass issue #23 proposed.**
 
 The dependency question the issue raised is answered yes: it is a pure-Rust
 leaf, it adds one crate and ~350 KB of binary, no build script, and it halves
-the per-request cost of the workload the issue profiled — 2.05x on its own
-query mix and 1.99x on a longer one, with results identical to the byte.
+the per-request cost of the workload the issue profiled — 1.95x on its own
+query mix, 1.94x on a longer one and 1.44x on the typeahead prefixes a search
+box really sends, with results identical to the byte.
 
 The mechanism question is answered no, and that is the more interesting half.
 Multi-pattern matching was implemented three ways and measured on both query
 mixes, and each was slower than the per-token scan it was meant to replace —
-between 12.7% and 5.6x, worst where the automaton had to fall back on
+between 73% and 5.6x, worst where the automaton had to fall back on
 `aho-corasick`'s byte-frequency prefilter heuristics. The reason is a property
 of *this* search, not of the crate: a page is dropped as soon as one token is
 missing, so most pages are only ever scanned for the first token, and there is

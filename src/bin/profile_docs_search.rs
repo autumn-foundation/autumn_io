@@ -5,7 +5,7 @@
 //! startup — then issues 500 searches per query through `SearchIndex::search`,
 //! the same public entry point `/api/search`, `/search` and the MCP
 //! `search_autumn_docs` tool call on every request. That is 10,000 requests
-//! for the default query set and 5,000 for the others, so subtract and divide
+//! for `default` and `typeahead`, 5,000 for `multi` — so subtract and divide
 //! against a build-only run of the *same* set, never a different one. Every
 //! run prints the set it used and its request count.
 //!

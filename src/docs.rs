@@ -1438,6 +1438,102 @@ mod tests {
         }
     }
 
+    /// The bounds that decide which tokens are worth compiling a searcher for
+    /// are measured decisions, not preferences: below the floor a searcher
+    /// costs more to build than the scan it saves, and above the ceilings a
+    /// query can make the matcher allocate without limit. Pinned by value with
+    /// the reasoning in the failure message — the way
+    /// `syntect_uses_the_oniguruma_regex_backend` pins this repo's other
+    /// measured dependency choice — so that retuning one is deliberate and
+    /// arrives with its own numbers.
+    #[test]
+    fn the_searcher_bounds_stay_where_they_were_measured() {
+        assert_eq!(
+            MIN_SEARCHER_PATTERN_BYTES, 4,
+            "below four bytes, building a searcher (~12.7 us) costs more than \
+             the scan it saves, and the docs search box fires from two \
+             characters — issue #23"
+        );
+        assert_eq!(
+            MAX_SEARCHER_PATTERN_BYTES, 256,
+            "an automaton costs ~7 KB plus ~30 bytes per pattern byte where the \
+             scan allocates nothing, and `?q=` has no length cap"
+        );
+        assert_eq!(
+            MAX_SEARCHERS, 32,
+            "with the length ceiling this bounds one query's matcher at a few \
+             hundred kilobytes, on a 256 MB machine"
+        );
+    }
+
+    /// The bounds as the matcher applies them: literals rather than the
+    /// constants, so that moving a constant moves this test's meaning too.
+    #[test]
+    fn a_token_gets_a_searcher_only_within_those_bounds() {
+        let tokens: Vec<String> = vec![
+            "abc".to_owned(),
+            "abcd".to_owned(),
+            "c".repeat(256),
+            "d".repeat(257),
+        ];
+        let matcher = QueryMatcher::new(&tokens);
+
+        assert!(matcher.searcher(0).is_none(), "three bytes: not worth it");
+        assert!(matcher.searcher(1).is_some(), "four bytes: worth it");
+        assert!(matcher.searcher(2).is_some(), "256 bytes: still worth it");
+        assert!(
+            matcher.searcher(3).is_none(),
+            "257 bytes: too much automaton"
+        );
+    }
+
+    #[test]
+    fn only_the_first_tokens_get_searchers_however_long_the_query() {
+        let tokens: Vec<String> = (0..40).map(|index| format!("token{index}")).collect();
+        let matcher = QueryMatcher::new(&tokens);
+
+        assert!(matcher.searcher(31).is_some());
+        assert!(matcher.searcher(32).is_none());
+        assert!(matcher.searcher(39).is_none());
+    }
+
+    /// `İ` (U+0130, two bytes) folds to `i` plus a combining dot, three, so a
+    /// query can match at an offset inside that expansion — an offset with no
+    /// character of its own in the original text. The snippet is cut from the
+    /// character the match came from, not the one after it.
+    #[test]
+    fn an_offset_inside_a_folded_character_maps_back_to_that_character() {
+        let index = SearchIndex::from_registry(
+            &DocRegistry::from_sources([DocSource::new(
+                "cities",
+                "+++\ntitle = \"Cities\"\ndescription = \"Cities.\"\norder = 1\n+++\n\nDeploying to İstanbul.\n",
+            )])
+            .expect("fixture builds"),
+        );
+        let entry = &index.entries[0];
+        assert!(
+            !entry.lower_offsets_match,
+            "the fixture should be a page lowercasing does not map byte-for-byte"
+        );
+
+        let original = entry.text.find('İ').expect("the fixture contains it");
+        // Found via the combining dot, since the fixture has earlier plain `i`s.
+        let lowered = entry
+            .text_lower
+            .find('\u{307}')
+            .expect("İ folds to i plus a combining dot")
+            - 'i'.len_utf8();
+
+        assert_eq!(entry.original_offset(lowered), original);
+        // One byte in: the combining dot, mid-expansion.
+        assert_eq!(entry.original_offset(lowered + 1), original);
+        // Past the whole expansion: the next character, and no drift after it.
+        assert_eq!(
+            entry.original_offset(lowered + 3),
+            original + 'İ'.len_utf8()
+        );
+    }
+
     #[test]
     fn a_repeated_token_is_searched_once_and_scored_once_per_occurrence() {
         let tokens: Vec<String> = "zebra zebra".split_whitespace().map(String::from).collect();

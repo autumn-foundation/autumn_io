@@ -44,7 +44,7 @@ fn locked_dependencies_of(crate_name: &str) -> Vec<&'static str> {
                 .expect("a dependencies block should be closed")
                 .0
                 .lines()
-                .filter_map(|line| line.trim().trim_end_matches(',').trim_matches('"').into())
+                .map(|line| line.trim().trim_end_matches(',').trim_matches('"'))
                 .filter(|line: &&str| !line.is_empty())
                 .collect()
         })
@@ -85,8 +85,11 @@ fn slugs(hits: &[autumn_io::docs::SearchHit]) -> Vec<&str> {
 /// `str::contains` was ~96% of the marginal cost of a request. `aho-corasick`
 /// answers the same question — does this token appear in this text? — for
 /// about half the instructions, because a single pattern goes to
-/// `memchr::memmem` rather than the standard library's two-way searcher. If
-/// this fails, someone has put `str::contains` back on the per-request path.
+/// `memchr::memmem` rather than the standard library's two-way searcher.
+///
+/// This pins the manifest only: it fails if someone removes the dependency,
+/// not if someone stops using it. The unit tests in `src/docs.rs` are what
+/// hold the matcher itself to actually building searchers.
 #[test]
 fn docs_search_declares_the_aho_corasick_matcher() {
     let declared = CARGO_TOML
@@ -255,12 +258,52 @@ fn search_scores_a_repeated_token_once_per_occurrence() {
 /// *would* alter it fails loudly rather than silently.
 #[test]
 fn search_folds_case_beyond_ascii() {
-    let index = index_of(&[("cafe", "Café Guide", "Straße service is CAFÉ-side.")]);
+    // The only occurrence is the uppercase one in the body, so an ASCII-only
+    // fold on the page side leaves it as `CAFÉ` and the lowercase query stops
+    // matching. A fixture with `Café` in the title would pass either way.
+    let index = index_of(&[("cafe", "Beverage Guide", "Straße service is CAFÉ-side.")]);
 
-    assert_eq!(slugs(&index.search("CAFÉ", 10)), ["cafe"]);
     assert_eq!(slugs(&index.search("café", 10)), ["cafe"]);
+    assert_eq!(slugs(&index.search("CAFÉ", 10)), ["cafe"]);
     assert_eq!(slugs(&index.search("STRAßE", 10)), ["cafe"]);
     assert!(index.search("STRASSE", 10).is_empty());
+}
+
+/// A token too short to compile a searcher for takes the plain scan, on the
+/// snippet path as well as the scoring one — and the search box sends nothing
+/// else for its first two keystrokes. Without that fallback the page still
+/// matches, but every typeahead result silently shows the page description
+/// instead of the text that matched.
+#[test]
+fn short_tokens_still_cut_the_snippet_around_the_match() {
+    let index = index_of(&[(
+        "zed",
+        "Zed",
+        "A preamble long enough to push the match well clear of the start of \
+         the page, so the snippet has to be cut around it rather than merely \
+         starting at the beginning: a zebra grazes beyond the fence.",
+    )]);
+
+    let hits = index.search("br", 10);
+
+    assert_eq!(slugs(&hits), ["zed"]);
+    assert!(
+        hits[0].snippet.contains("zebra"),
+        "got: {}",
+        hits[0].snippet
+    );
+}
+
+/// A query that only matched the title or a heading has no body offset to cut
+/// around, so the snippet falls back to the page description.
+#[test]
+fn a_match_outside_the_body_falls_back_to_the_description() {
+    let index = index_of(&[("widgets", "Zebra Handbook", "Nothing relevant here.")]);
+
+    let hits = index.search("handbook", 10);
+
+    assert_eq!(slugs(&hits), ["widgets"]);
+    assert_eq!(hits[0].snippet, "Fixture description for widgets.");
 }
 
 /// A query far longer than a search box would ever send — seventy distinct
