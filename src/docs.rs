@@ -366,11 +366,19 @@ impl SearchIndex {
 /// #28), because `aho-corasick`'s single-pattern automaton hands the pattern
 /// straight to `memmem` internally. That wrapper cost ~12.7 µs to build
 /// against `memmem::Finder::new`'s ~11-266 ns — 500-1000x — which is why that
-/// version needed a floor below which a token was scanned for rather than
-/// compiled, and ceilings bounding the pattern length and token count a query
-/// could make it allocate for. A `Finder` is cheap enough to build for every
-/// token unconditionally, so none of the three bounds apply here — see
-/// `docs/plans/2026-09-04-memchr-docs-search.md`.
+/// version needed a floor and a ceiling on pattern length, below and above
+/// which a token was scanned for rather than compiled. A `Finder` is cheap
+/// enough to build for any pattern length, so neither length bound applies
+/// here — see `docs/plans/2026-09-04-memchr-docs-search.md`.
+///
+/// The token-*count* bound does still apply, in lighter form. A `Finder` is
+/// pattern-length-independent (288 bytes on x86_64/`memchr` 2.8: it borrows
+/// its pattern rather than copying it) but not free, and `?q=` still has no
+/// length cap (issue #28's own item 2, deliberately deferred) — so nothing
+/// stops a query from being a very large number of very short, all-distinct
+/// tokens. [`MAX_FINDERS`] bounds that the same way `MAX_SEARCHERS` did
+/// before this change, sized for `Finder`'s actual measured cost rather than
+/// carried over by assumption.
 ///
 /// It deliberately does *not* fold the per-token passes into one multi-pattern
 /// pass, which is what issue #23 proposed. That was implemented and measured
@@ -387,12 +395,28 @@ struct QueryMatcher<'a> {
     /// How many times each pattern was typed. Scoring counts a repeated token
     /// once per occurrence, so patterns are deduplicated for *searching* only.
     occurrences: Vec<u32>,
-    /// A finder per distinct token, built eagerly for all of them: unlike an
-    /// automaton, building one costs tens to hundreds of nanoseconds, so there
-    /// is nothing to amortise by deferring it and no query shape a query is
-    /// not allowed to reach.
+    /// A finder for each of the first [`MAX_FINDERS`] distinct tokens, built
+    /// eagerly since a `Finder` is cheap regardless of pattern length. Tokens
+    /// past the cap have no finder and fall back to [`str::contains`] in
+    /// [`QueryMatcher::token_matches`] and [`QueryMatcher::earliest_match`],
+    /// exactly as before this change.
     finders: Vec<memmem::Finder<'a>>,
 }
+
+/// How many of a query's distinct tokens get a [`memmem::Finder`].
+///
+/// A `Finder` measures at 288 bytes on x86_64 with `memchr` 2.8 — small and
+/// independent of pattern length, since it borrows the pattern rather than
+/// copying it, unlike the ~7 KB-plus-30-bytes-per-pattern-byte automaton this
+/// replaced. But `?q=` has no length cap, so a query can still be a very
+/// large number of distinct tokens: a 65 KB query of the shortest possible
+/// distinct tokens is tens of thousands of them. This caps the memory one
+/// query's matcher can make the process allocate at a fixed few kilobytes
+/// (32 × 288 B ≈ 9 KB) regardless of query length — the same role
+/// `MAX_SEARCHERS` played before this change, at the same value, because
+/// nothing about switching searchers changes how many distinct tokens a
+/// search box or a reasonable query actually sends.
+const MAX_FINDERS: usize = 32;
 
 impl<'a> QueryMatcher<'a> {
     fn new(tokens: &'a [String]) -> Self {
@@ -415,8 +439,11 @@ impl<'a> QueryMatcher<'a> {
             }
         }
 
+        // Only the first `MAX_FINDERS` patterns can ever get one, so an
+        // enormous query does not get an enormous vector of finders.
         let finders = patterns
             .iter()
+            .take(MAX_FINDERS)
             .map(|pattern| memmem::Finder::new(pattern.as_bytes()))
             .collect();
         Self {
@@ -450,14 +477,23 @@ impl<'a> QueryMatcher<'a> {
     }
 
     fn token_matches(&self, index: usize, haystack: &str) -> bool {
-        self.finders[index].find(haystack.as_bytes()).is_some()
+        match self.finders.get(index) {
+            Some(finder) => finder.find(haystack.as_bytes()).is_some(),
+            // This token gets no finder — too far into the query for
+            // `MAX_FINDERS`. The substring scan it replaced is still exactly
+            // right, just slower.
+            None => haystack.contains(self.patterns[index]),
+        }
     }
 
     /// Byte offset of the earliest match of any token in `haystack`, which is
     /// where the result snippet is cut from.
     fn earliest_match(&self, haystack: &str) -> Option<usize> {
         (0..self.patterns.len())
-            .filter_map(|index| self.finders[index].find(haystack.as_bytes()))
+            .filter_map(|index| match self.finders.get(index) {
+                Some(finder) => finder.find(haystack.as_bytes()),
+                None => haystack.find(self.patterns[index]),
+            })
             .min()
     }
 }
@@ -1377,25 +1413,39 @@ mod tests {
         }
     }
 
-    /// A finder is built for every distinct token regardless of its length or
-    /// how many tokens the query has — the constraint the `aho-corasick`
-    /// version needed three bounds for (issue #28). Pinned so a future
-    /// swap back to a compiled searcher does not silently reintroduce a
-    /// length floor, a length ceiling, or a token-count cap without its own
+    /// A finder is built for a token regardless of its length — the
+    /// `aho-corasick` version needed a floor and a ceiling on pattern length
+    /// for this (issue #28), because its automaton's build cost scaled with
+    /// them; `memmem::Finder` borrows its pattern rather than copying it, so
+    /// neither bound carries over. Pinned so a future swap back to a compiled
+    /// searcher does not silently reintroduce a length bound without its own
     /// measurements.
     #[test]
-    fn every_token_gets_a_finder_whatever_its_length_or_the_query_size() {
-        let mut tokens: Vec<String> = vec![
+    fn a_finder_is_built_whatever_the_token_length() {
+        let tokens: Vec<String> = vec![
             "a".to_owned(),
             "abc".to_owned(),
             "c".repeat(256),
             "d".repeat(4096),
         ];
-        tokens.extend((0..40).map(|index| format!("token{index}")));
         let matcher = QueryMatcher::new(&tokens);
 
-        assert_eq!(matcher.finders.len(), matcher.patterns.len());
         assert_eq!(matcher.finders.len(), tokens.len());
+    }
+
+    /// Only the first [`MAX_FINDERS`] distinct tokens get a finder, however
+    /// long the query is — reinstated after a review of this change found
+    /// that a `memmem::Finder`, while independent of pattern length, still
+    /// costs 288 bytes each (measured, `memchr` 2.8, x86_64), and `?q=` has
+    /// no length cap. Tokens past the cap still have to match, via the
+    /// `str::contains` fallback in [`QueryMatcher::token_matches`] and
+    /// [`QueryMatcher::earliest_match`].
+    #[test]
+    fn only_the_first_tokens_get_finders_however_long_the_query() {
+        let tokens: Vec<String> = (0..40).map(|index| format!("token{index}")).collect();
+        let matcher = QueryMatcher::new(&tokens);
+
+        assert_eq!(matcher.finders.len(), MAX_FINDERS);
     }
 
     /// `İ` (U+0130, two bytes) folds to `i` plus a combining dot, three, so a

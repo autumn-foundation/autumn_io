@@ -15,7 +15,10 @@ directly should let those three bounds — and the code and tests that exist onl
 to enforce them — go away, while making every query at least as fast. This
 document is the before/after that decision needs, per
 `docs/plans/2026-09-03-aho-corasick-docs-search.md`'s own "Not taken" section,
-which flagged the swap but declined to make it without one.
+which flagged the swap but declined to make it without one. (Outcome, detailed
+in "Post-review correction" below: two of the three bounds do go away; the
+token-count one comes back, resized, once review found the "few dozen bytes"
+a `Finder` was assumed to cost was actually 288.)
 
 ## Non-goals
 
@@ -69,10 +72,10 @@ Unchanged from the #23/#27 document, and not reopened here:
 | Failure mode | How it bites | Guard |
 |---|---|---|
 | Building a `Finder` per token turns out not to be as cheap as assumed | The swap trades one cost for a similar one and nothing is actually gained | Measured directly on the committed harness below, not assumed from the prior document's estimate |
-| Deleting the bounds silently reintroduces the OOM issue #28's own predecessor document fixed | `?q=` becomes an amplification vector again if a `Finder` allocates more than a few bytes per pattern | `memmem::Finder::new` borrows the pattern rather than copying it into an automaton; verified in the evidence section against the same oversized-query shape the prior bounds were built for |
-| Removing `searcher()`'s "no searcher, fall back to `str::contains`" branch leaves a token unmatched | A token that used to fall back silently stops matching | Every pattern gets a `Finder` unconditionally now — there is no fallback branch left to leave a gap in. `every_token_gets_a_finder_whatever_its_length_or_the_query_size` pins that tokens below, at, and well past the old bounds' edges (1 and 3 bytes, below the old 4-byte floor; 256 bytes, the old ceiling; 4096 bytes, past it; and 44 distinct tokens, past the old 32-token cap) all get one |
+| Deleting the bounds silently reintroduces the OOM issue #28's own predecessor document fixed | `?q=` becomes an amplification vector again if a `Finder` allocates more than a few bytes per pattern | This row's premise turned out to matter more than it reads here: see "Post-review correction" below — the length bounds are safe to drop (`memmem::Finder::new` borrows rather than copies), but the *count* bound was not, since a `Finder` measures at 288 bytes rather than "a few dozen," and `MAX_FINDERS` restores it |
+| Removing `searcher()`'s "no searcher, fall back to `str::contains`" branch leaves a token unmatched | A token that used to fall back silently stops matching | Superseded by "Post-review correction" below: the fallback branch was reinstated, gated on `MAX_FINDERS` rather than length, and `a_finder_is_built_whatever_the_token_length` plus `only_the_first_tokens_get_finders_however_long_the_query` pin the two axes (length: unbounded; count: capped at 32) it now covers |
 | The equivalence claim from #23/#27 quietly stops holding as a side effect of the rewrite | Result order, snippets, or which pages match drift | The full differential test (`matcher_scores_every_page_exactly_as_the_naive_scan_did`) and all fifteen behavioural tests in `tests/docs_search_matcher.rs` are unchanged in behaviour and run against the new matcher unmodified |
-| The three now-deleted tests that pinned the bounds leave a gap where a future regression (e.g. someone reintroducing a length floor) goes unnoticed | A later change could silently reintroduce the bounds this change removes, and nothing would fail | Replaced with `every_token_gets_a_finder_whatever_its_length_or_the_query_size`, which asserts every pattern gets a finder regardless of length or query size — pinning the *absence* of bounds the same way the deleted tests pinned their presence |
+| The now-deleted tests that pinned the bounds leave a gap where a future regression (e.g. someone reintroducing a length floor, or dropping the count cap) goes unnoticed | A later change could silently reintroduce a length bound this change removed, or drop the count cap it kept, and nothing would fail | `a_finder_is_built_whatever_the_token_length` pins the *absence* of a length bound; `only_the_first_tokens_get_finders_however_long_the_query` pins the *presence* of `MAX_FINDERS` — one test per axis, replacing the three that pinned all bounds by value before this change |
 | It is slower, not faster, on some query shape the prior harness under-samples | The whole point of the change is lost on real traffic even if the default mix looks better | All three committed query mixes (default, multi, typeahead) are measured, matching the methodology issue #28 itself used to price the win |
 
 ## Six thinking hats
@@ -145,20 +148,24 @@ directly with no fallback branch, because every pattern now has a finder.
 and the `searcher()` method that enforced them are deleted. `Cargo.toml` swaps
 `aho-corasick = "1.1.4"` for `memchr = "2.8.0"` (the version already resolved
 in `Cargo.lock`). Nothing in `SearchIndex`, `SearchEntry`, or any public type
-changes.
+changes. (This is the state the pull request opened with; "Post-review
+correction" below reinstates `MAX_FINDERS` and its fallback branch once
+review found the token-count axis still mattered.)
 
 **Refactor.** The three bound-specific unit tests in `src/docs.rs`
 (`the_searcher_bounds_stay_where_they_were_measured`,
 `a_token_gets_a_searcher_only_within_those_bounds`,
 `only_the_first_tokens_get_searchers_however_long_the_query`) are deleted —
-there is nothing left for them to pin — and replaced with one test asserting
-every token gets a finder regardless of length or query size, which is the
-same "pin the current design decision" role the deleted tests played, aimed
-at the opposite fact. Doc comments referencing `aho-corasick`, automaton
-construction cost, or the three bounds are updated across `src/docs.rs` and
-`tests/docs_search_matcher.rs`; none of the fifteen *behavioural* tests in
-`tests/docs_search_matcher.rs` change their assertions, only (where they
-referenced the now-deleted bounds by name) their explanatory comments.
+there is nothing left for two of them to pin, per the length-bound reasoning
+above — and replaced with a test asserting a finder is built whatever a
+token's length. (A second replacement test, pinning that the token-*count*
+bound stays, was added later — see "Post-review correction" below; at this
+point in the change it looked like all three bounds could go.) Doc comments
+referencing `aho-corasick`, automaton construction cost, or the bounds are
+updated across `src/docs.rs` and `tests/docs_search_matcher.rs`; none of the
+fifteen *behavioural* tests in `tests/docs_search_matcher.rs` change their
+assertions, only (where they referenced the now-deleted bounds by name) their
+explanatory comments.
 
 Every other test's *assertion* is unmodified and runs as-is against the new
 matcher — the fifteen behavioural pins, the Unicode snippet-offset tests
@@ -167,8 +174,10 @@ inherited from #27, and the differential oracle's actual comparison,
 differential oracle's query-construction helper (`long_tokens` in
 `matcher_scores_every_page_exactly_as_the_naive_scan_did`) did need a small
 edit, because it referenced the now-deleted `MIN_SEARCHER_PATTERN_BYTES` and
-`MAX_SEARCHERS` constants to build a query that crossed the old bounds; with
-no bounds left to cross, it now just takes forty distinct words. That is the
+`MAX_SEARCHERS` constants to build a query that crossed the old bounds; it now
+just takes forty distinct words instead — which, after "Post-review
+correction" restores a 32-token cap, again crosses a bound, just not by
+reference to a constant that no longer exists. That comparison is the
 equivalence check this change relies on.
 
 ## Evidence gathered
@@ -282,19 +291,78 @@ movements above are within normal run-to-run noise for this host.
   the prior document measured against, so the two documents' numbers are
   comparable on toolchain even though they were taken on different hosts.
 
+### Post-review correction: one bound comes back, resized
+
+Codex's automated review of the pull request opened for this change (P2)
+pointed out that eagerly building a `Finder` for *every* distinct query token
+reintroduces the vector this document's "Goal" section quoted issue #28
+dismissing: `?q=` still has no length cap (issue #28's own item 2, filed
+separately and not addressed here), so nothing stopped a query from being an
+enormous number of distinct, very short tokens, each now getting a finder
+before `score` gets a chance to bail on the first missing one.
+
+Issue #28 assumed a `Finder` "allocates a few dozen bytes" and concluded
+neither `MAX_SEARCHER_PATTERN_BYTES` nor `MAX_SEARCHERS` was needed on that
+basis. Measuring rather than assuming: `std::mem::size_of::<memmem::Finder>()`
+is **288 bytes** on this toolchain (x86_64, `memchr` 2.8) — confirmed
+independently against Codex's own figure. That is small and, critically,
+*independent of pattern length* (a `Finder` borrows its pattern rather than
+copying it, unlike the automaton's ~30-bytes-per-pattern-byte), so
+`MIN_SEARCHER_PATTERN_BYTES` and `MAX_SEARCHER_PATTERN_BYTES` still do not
+apply — nothing about a token's length changes what a `Finder` costs to hold.
+But it is not "a few dozen bytes" either, and it is not zero, so the
+token-*count* axis `MAX_SEARCHERS` bounded is still live: a 65 KB query (the
+`?q=` ceiling item 2 names) of the shortest possible distinct tokens is tens
+of thousands of them, and at 288 bytes each that is single-digit megabytes per
+request rather than the ~dozens-of-kilobytes the issue assumed — small in
+absolute terms on today's traffic, but an unbounded-with-query-length
+allocation this matcher does not need to make.
+
+Fix: `MAX_FINDERS = 32` (same value and reasoning `MAX_SEARCHERS` had — bound
+the token count a query's matcher builds finders for, nothing about switching
+searchers changes how many distinct tokens a real query sends), with the same
+`str::contains` fallback for tokens past it that `token_matches` and
+`earliest_match` already had a branch for. Re-measured on the same harness
+after the fix: the bound costs +1.2 to +1.9 percentage points of the win
+(non-cap-bound queries pay one `Vec::get` instead of a direct index), leaving
+−23.3% to −31.4% marginal instructions per request — still comfortably beyond
+the swap's goal. Binary size moves by +1,736 B (6,795,528 → 6,797,264),
+noise-scale next to the −338,152 B this change nets overall. Two of the three
+original bounds — the length floor and ceiling — are still gone, because
+those were genuinely about automaton-construction cost that does not exist
+here; the count cap comes back because it was never about construction cost,
+it was about total allocation, which a smaller-but-nonzero `Finder` still
+makes possible at query lengths `?q=` does not yet reject.
+
+Two new unit tests replace the single one this document originally added:
+`a_finder_is_built_whatever_the_token_length` (pins the two removed bounds'
+absence, at 1, 3, 256 and 4096 bytes) and
+`only_the_first_tokens_get_finders_however_long_the_query` (pins `MAX_FINDERS`
+itself, mirroring the deleted `only_the_first_tokens_get_searchers_however_long_the_query`).
+`search_handles_far_more_tokens_than_a_search_box_sends` in
+`tests/docs_search_matcher.rs` — unmodified in assertions throughout this
+document's whole history — continues to cover the cap from the outside, and
+in fact now exercises it meaningfully again rather than a cap that had been
+deleted.
+
 ## Decision
 
-**Adopt `memchr::memmem::Finder`, built eagerly per query token, replacing
-`aho-corasick` and the three bounds it required.**
+**Adopt `memchr::memmem::Finder`, built eagerly per query token up to
+`MAX_FINDERS`, replacing `aho-corasick` and two of the three bounds it
+required.**
 
 Every query mix measured faster on this change than on the `aho-corasick`
-version it replaces — −24.2% to −32.6% marginal instructions per request,
-beyond the prior document's own rough estimate for this swap — with results
-identical to the byte, verified against the full existing behavioural suite
-and the differential oracle against the pre-#23 scan. The change also nets out
-smaller: three constants and the logic gating them are gone, the release
-binary is smaller, and the build graph has one fewer direct dependency with no
-new transitive ones, because `memchr` was already there.
+version it replaces — −23.3% to −31.4% marginal instructions per request after
+the post-review correction above, beyond the prior document's own rough
+estimate for this swap — with results identical to the byte, verified against
+the full existing behavioural suite and the differential oracle against the
+pre-#23 scan. The change also nets out smaller: two constants and the length
+gating on them are gone, the release binary is smaller, and the build graph
+has one fewer direct dependency with no new transitive ones, because `memchr`
+was already there. The third bound, a cap on how many distinct tokens get a
+finder, stays — resized for what a `Finder` actually costs rather than
+carried over by assumption, and pinned by the same kind of measurement this
+whole document is built on rather than by the issue's estimate of it.
 
 ### Not taken
 

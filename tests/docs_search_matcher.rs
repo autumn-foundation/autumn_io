@@ -336,9 +336,9 @@ fn a_match_outside_the_body_falls_back_to_the_description() {
 }
 
 /// A query far longer than a search box would ever send — seventy distinct
-/// tokens, past the token-count cap the `aho-corasick` version used to enforce
-/// (issue #28) — still filters and ranks rather than truncating, dropping
-/// tokens, or panicking.
+/// tokens, past `MAX_FINDERS` (32, unchanged by issue #28's matcher swap) —
+/// still filters and ranks rather than truncating, dropping tokens, or
+/// panicking.
 #[test]
 fn search_handles_far_more_tokens_than_a_search_box_sends() {
     let words: Vec<String> = (0..70).map(|n| format!("token{n}")).collect();
