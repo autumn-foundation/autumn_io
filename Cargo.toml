@@ -4,7 +4,26 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-autumn-web = { version = "0.7.0", features = ["markdown", "mcp"] }
+# `db` is autumn-web's biggest default feature (diesel, diesel-async,
+# libsqlite3-sys, pq-sys, tokio-postgres, rustls, ...): this site has no
+# database, no models, and no repository usage anywhere in `src/`. Opting out
+# of default features and listing only what's actually used — `maud` (Maud
+# templates), `htmx` (the `HxRequest` extractor and `HTMX_JS_PATH` asset in
+# the docs search widget), `markdown` (the guide-rendering pipeline in
+# `docs.rs`), `mcp` (which pulls in `openapi`, used directly in `api.rs`), and
+# `reporting` (the panic-isolating `ReportingLayer` — a production safety net,
+# not just optional error-sink wiring, so it stays even though nothing here
+# registers a custom `ErrorReporter`) — cuts both compile time and binary
+# size. `cache-moka`, `http-client`, `flash`, and `tailwind` (this app's own
+# `build.rs` shells out to the Tailwind CLI directly; the Cargo feature gates
+# no code at all) are dropped as unused.
+autumn-web = { version = "0.7.0", default-features = false, features = [
+    "maud",
+    "htmx",
+    "markdown",
+    "mcp",
+    "reporting",
+] }
 maud = "0.27.0"
 memchr = "2.8.0"
 pulldown-cmark = "0.13.3"
