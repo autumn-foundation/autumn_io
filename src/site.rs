@@ -440,7 +440,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                                 }
                             }
                             div class="article-body" {
-                                (PreEscaped(page.html.clone()))
+                                (PreEscaped(&page.html))
                             }
                         }
                         nav class="docs-pagination" aria-label="Docs pagination" {
@@ -840,7 +840,7 @@ fn document_head(meta: &PageMeta) -> Markup {
             meta name="twitter:description" content=(&meta.description);
             meta name="twitter:image" content=(&image_url);
             @if let Some(structured_data) = &meta.structured_data {
-                script type="application/ld+json" { (PreEscaped(structured_data.clone())) }
+                script type="application/ld+json" { (PreEscaped(structured_data)) }
             }
             script src=(copy_code_script_path) defer {}
         }
