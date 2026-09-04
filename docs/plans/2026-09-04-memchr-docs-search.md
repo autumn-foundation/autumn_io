@@ -70,7 +70,7 @@ Unchanged from the #23/#27 document, and not reopened here:
 |---|---|---|
 | Building a `Finder` per token turns out not to be as cheap as assumed | The swap trades one cost for a similar one and nothing is actually gained | Measured directly on the committed harness below, not assumed from the prior document's estimate |
 | Deleting the bounds silently reintroduces the OOM issue #28's own predecessor document fixed | `?q=` becomes an amplification vector again if a `Finder` allocates more than a few bytes per pattern | `memmem::Finder::new` borrows the pattern rather than copying it into an automaton; verified in the evidence section against the same oversized-query shape the prior bounds were built for |
-| Removing `searcher()`'s "no searcher, fall back to `str::contains`" branch leaves a token unmatched | A token that used to fall back silently stops matching | Every pattern gets a `Finder` unconditionally now — there is no fallback branch left to leave a gap in. `every_token_gets_a_finder_whatever_its_length_or_the_query_size` pins that every distinct token, at every length exercised by the old bounds, has one |
+| Removing `searcher()`'s "no searcher, fall back to `str::contains`" branch leaves a token unmatched | A token that used to fall back silently stops matching | Every pattern gets a `Finder` unconditionally now — there is no fallback branch left to leave a gap in. `every_token_gets_a_finder_whatever_its_length_or_the_query_size` pins that tokens below, at, and well past the old bounds' edges (1 and 3 bytes, below the old 4-byte floor; 256 bytes, the old ceiling; 4096 bytes, past it; and 44 distinct tokens, past the old 32-token cap) all get one |
 | The equivalence claim from #23/#27 quietly stops holding as a side effect of the rewrite | Result order, snippets, or which pages match drift | The full differential test (`matcher_scores_every_page_exactly_as_the_naive_scan_did`) and all fifteen behavioural tests in `tests/docs_search_matcher.rs` are unchanged in behaviour and run against the new matcher unmodified |
 | The three now-deleted tests that pinned the bounds leave a gap where a future regression (e.g. someone reintroducing a length floor) goes unnoticed | A later change could silently reintroduce the bounds this change removes, and nothing would fail | Replaced with `every_token_gets_a_finder_whatever_its_length_or_the_query_size`, which asserts every pattern gets a finder regardless of length or query size — pinning the *absence* of bounds the same way the deleted tests pinned their presence |
 | It is slower, not faster, on some query shape the prior harness under-samples | The whole point of the change is lost on real traffic even if the default mix looks better | All three committed query mixes (default, multi, typeahead) are measured, matching the methodology issue #28 itself used to price the win |
@@ -160,9 +160,16 @@ construction cost, or the three bounds are updated across `src/docs.rs` and
 `tests/docs_search_matcher.rs` change their assertions, only (where they
 referenced the now-deleted bounds by name) their explanatory comments.
 
-Every other test — the differential oracle, the fifteen behavioural pins, the
-Unicode snippet-offset tests inherited from #27 — runs unmodified against the
-new matcher, which is the equivalence check.
+Every other test's *assertion* is unmodified and runs as-is against the new
+matcher — the fifteen behavioural pins, the Unicode snippet-offset tests
+inherited from #27, and the differential oracle's actual comparison,
+`assert_eq!(matcher.score(entry), naive_score(entry, &tokens))`. The
+differential oracle's query-construction helper (`long_tokens` in
+`matcher_scores_every_page_exactly_as_the_naive_scan_did`) did need a small
+edit, because it referenced the now-deleted `MIN_SEARCHER_PATTERN_BYTES` and
+`MAX_SEARCHERS` constants to build a query that crossed the old bounds; with
+no bounds left to cross, it now just takes forty distinct words. That is the
+equivalence check this change relies on.
 
 ## Evidence gathered
 
@@ -226,7 +233,10 @@ work plus automaton-construction overhead to `memmem` work alone.
 - `matcher_scores_every_page_exactly_as_the_naive_scan_did` — the differential
   oracle against the pre-#23 `str::contains` scan, over the real embedded
   corpus and nineteen queries spanning both sides of every bound the old
-  matcher had — passes unmodified against the new matcher.
+  matcher had — passes against the new matcher, with its equivalence
+  assertion unmodified (its query-construction helper needed a small edit,
+  since it referenced the now-deleted bounds constants; see the TDD plan's
+  "Refactor" step).
 - The Unicode snippet-offset tests (`an_offset_inside_a_folded_character_maps_back_to_that_character`,
   `snippets_survive_case_folding_that_changes_byte_offsets`,
   `snippets_stay_valid_when_the_match_is_the_last_thing_on_the_page`) are
@@ -242,10 +252,13 @@ work plus automaton-construction overhead to `memmem` work alone.
 | Index build (`site_docs()` + `from_registry`), Ir | 3,959,946,143 | 3,949,504,543 | −0.26% (noise) |
 | Index build, wall clock (median of 5) | 0.5365 s | 0.5267 s | −1.8% (noise, within run-to-run spread) |
 
-The one dependency removed is exactly `aho-corasick` itself: `memchr` was
-already resolved a dozen times over in `Cargo.lock` before this change, so
-`Cargo.lock`'s only structural edit is `autumn_io`'s own dependency list
-swapping one direct dependency for the other (verified by inspection — see
+What's removed is `autumn_io`'s own direct dependency on `aho-corasick` — the
+crate itself stays in `Cargo.lock`, still pulled in transitively by `regex`
+and `regex-automata` for unrelated reasons, so it is not gone from the build
+graph. `memchr` was already resolved a dozen times over in `Cargo.lock` before
+this change, so `Cargo.lock`'s only structural edit is `autumn_io`'s own
+dependency list swapping one direct dependency for the other (verified by
+inspection — see
 the diff on `Cargo.lock`). Index build cost is unaffected because
 `QueryMatcher` is built per-query, not at index-build time; the small
 movements above are within normal run-to-run noise for this host.
