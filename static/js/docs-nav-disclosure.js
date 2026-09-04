@@ -69,6 +69,14 @@ if (disclosure && summary) {
   const sidebar = document.getElementById("docs-navigation");
 
   if (sidebar) {
+    const saveScrollTop = () => {
+      try {
+        sessionStorage.setItem(SCROLL_STORAGE_KEY, String(sidebar.scrollTop));
+      } catch {
+        // Ignore write failures; scroll restoration is a nice-to-have.
+      }
+    };
+
     try {
       const savedScrollTop = sessionStorage.getItem(SCROLL_STORAGE_KEY);
       if (savedScrollTop !== null) {
@@ -79,16 +87,17 @@ if (disclosure && summary) {
       // default top-of-nav position.
     }
 
-    sidebar.addEventListener(
-      "scroll",
-      () => {
-        try {
-          sessionStorage.setItem(SCROLL_STORAGE_KEY, String(sidebar.scrollTop));
-        } catch {
-          // Ignore write failures; scroll restoration is a nice-to-have.
-        }
-      },
-      { passive: true },
-    );
+    sidebar.addEventListener("scroll", saveScrollTop, { passive: true });
+
+    // A back-navigation can restore this page from the bfcache instead of
+    // reloading it, in which case this script doesn't re-run — so a scroll
+    // that happened on a *later* page is still the last thing saved. Without
+    // this, navigating forward again (without first scrolling here) would
+    // apply that later page's offset instead of this page's actual one.
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) {
+        saveScrollTop();
+      }
+    });
   }
 }
