@@ -1,8 +1,10 @@
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::LazyLock;
 
+use aho_corasick::{AhoCorasick, AhoCorasickKind};
 use autumn_web::markdown::{MarkdownError, MarkdownPage, MarkdownRegistry, MarkdownSource};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use syntect::easy::HighlightLines;
@@ -329,10 +331,12 @@ impl SearchIndex {
             return Vec::new();
         }
 
+        // One matcher per query, reused across every page (issue #23).
+        let matcher = QueryMatcher::new(&tokens);
         let mut scored: Vec<(u32, &SearchEntry)> = self
             .entries
             .iter()
-            .filter_map(|entry| entry.score(&tokens).map(|score| (score, entry)))
+            .filter_map(|entry| matcher.score(entry).map(|score| (score, entry)))
             .collect();
 
         // Highest score first; ties broken by title so ordering stays stable.
@@ -345,8 +349,176 @@ impl SearchIndex {
         scored
             .into_iter()
             .take(limit)
-            .map(|(_, entry)| entry.to_hit(&tokens))
+            .map(|(_, entry)| entry.to_hit(&matcher))
             .collect()
+    }
+}
+
+/// The tokens of one query, prepared for matching against every page.
+///
+/// Issue #23 profiled `str::contains` at ~96% of the marginal cost of a search
+/// request: called once per query token, per field, per page, over the whole
+/// embedded corpus. This is that call site, hoisted out of the page loop so
+/// the searchers are built once for the query rather than implicitly rebuilt
+/// on every page — and built by `aho-corasick`, which hands a single pattern
+/// to `memchr::memmem` and searches it about twice as cheaply as
+/// `str::contains` does.
+///
+/// It deliberately does *not* fold the per-token passes into one
+/// multi-pattern pass, which is what issue #23 proposed. That was implemented
+/// and measured three ways, and every one of them was slower — see
+/// `docs/plans/2026-09-03-aho-corasick-docs-search.md`. The reason is
+/// [`QueryMatcher::score`] below: a page is dropped as soon as one token is
+/// missing, so later tokens are only ever scanned on pages the earlier ones
+/// matched, and there is much less repeated scanning to fold than the shape of
+/// the code suggests.
+struct QueryMatcher<'a> {
+    /// Distinct tokens, in first-seen order; searchers are addressed by index
+    /// into this.
+    patterns: Vec<&'a str>,
+    /// How many times each pattern was typed. Scoring counts a repeated token
+    /// once per occurrence, so patterns are deduplicated for *searching* only.
+    occurrences: Vec<u32>,
+    /// A searcher per distinct token, built on first use and only within the
+    /// bounds below: a page usually bails long before the last token, and a
+    /// query is not allowed to make the matcher allocate without limit.
+    searchers: Vec<OnceCell<Option<AhoCorasick>>>,
+}
+
+/// Token length below which a token is scanned for rather than compiled.
+///
+/// Building the automaton costs ~12.7 µs whatever the pattern is, and on a
+/// token this short the scan it saves is worth less than that: `str::contains`
+/// on one to three bytes is already close to a `memchr`. The site's search box
+/// fires at two characters (`min_length(2)` in `site.rs`), so these are the
+/// first queries of every search interaction, and they must not get slower.
+/// Measured per search over the real corpus, `str::contains` against a
+/// compiled searcher:
+///
+/// | token | scan | compile |
+/// |---|---:|---:|
+/// | `a` | 13.6 µs | 30.9 µs |
+/// | `au` | 16.9 µs | 33.6 µs |
+/// | `the` | 18.6 µs | 34.4 µs |
+/// | `auth` | 117.1 µs | 77.6 µs |
+/// | `authentication` | 444.5 µs | 126.5 µs |
+const MIN_SEARCHER_PATTERN_BYTES: usize = 4;
+
+/// Token length above which a token is scanned for rather than compiled.
+///
+/// An automaton costs roughly 7 KB fixed plus 30 bytes per pattern byte
+/// (measured on `NoncontiguousNFA`), where the `str::contains` it replaces
+/// allocates nothing at all. Search-box tokens are words; anything past this
+/// is not a word, and paying 30x for it on a 256 MB machine is a worse trade
+/// than scanning for it the old way.
+const MAX_SEARCHER_PATTERN_BYTES: usize = 256;
+
+/// How many of a query's tokens get a searcher.
+///
+/// With the length cap above, this bounds one in-flight query's matcher at a
+/// few hundred kilobytes however long the query is. Queries reaching the cap
+/// are already far past what the search box sends, and the tokens past it are
+/// scanned for exactly as they were before this change.
+const MAX_SEARCHERS: usize = 32;
+
+impl<'a> QueryMatcher<'a> {
+    fn new(tokens: &'a [String]) -> Self {
+        let mut patterns: Vec<&'a str> = Vec::new();
+        let mut occurrences: Vec<u32> = Vec::new();
+        // Deduplicating through a map rather than a scan of `patterns` keeps
+        // construction linear in the token count. Nothing caps the length of a
+        // `?q=` query, and construction happens before any page is scanned, so
+        // a quadratic pass here would be work an oversized query could ask for
+        // even when its first token matches nothing.
+        let mut seen: HashMap<&'a str, usize> = HashMap::new();
+        for token in tokens {
+            match seen.get(token.as_str()) {
+                Some(&index) => occurrences[index] += 1,
+                None => {
+                    seen.insert(token.as_str(), patterns.len());
+                    patterns.push(token.as_str());
+                    occurrences.push(1);
+                }
+            }
+        }
+
+        // Only the first `MAX_SEARCHERS` patterns can ever get one, so an
+        // enormous query does not get an enormous vector of empty cells.
+        let searchers = (0..patterns.len().min(MAX_SEARCHERS))
+            .map(|_| OnceCell::new())
+            .collect();
+        Self {
+            patterns,
+            occurrences,
+            searchers,
+        }
+    }
+
+    /// Sum the match weights for every token of the query, or [`None`] when any
+    /// token is missing from the page — all tokens must match for a page to
+    /// appear at all.
+    fn score(&self, entry: &SearchEntry) -> Option<u32> {
+        let mut total = 0;
+        for index in 0..self.patterns.len() {
+            let weight = self.token_weight(index, entry);
+            if weight == 0 {
+                return None;
+            }
+            total += weight * self.occurrences[index];
+        }
+        Some(total)
+    }
+
+    /// The weight one token earns on one page: the fields it appears in, added
+    /// up. Zero means the token is absent from the page entirely.
+    fn token_weight(&self, index: usize, entry: &SearchEntry) -> u32 {
+        u32::from(self.token_matches(index, &entry.title_lower)) * TITLE_MATCH_WEIGHT
+            + u32::from(self.token_matches(index, &entry.headings_lower)) * HEADING_MATCH_WEIGHT
+            + u32::from(self.token_matches(index, &entry.text_lower)) * BODY_MATCH_WEIGHT
+    }
+
+    fn token_matches(&self, index: usize, haystack: &str) -> bool {
+        match self.searcher(index) {
+            Some(searcher) => searcher.is_match(haystack),
+            // This token gets no searcher — too long, too far into the query,
+            // or the automaton would not build. The substring scan it replaced
+            // is still exactly right, just slower.
+            None => haystack.contains(self.patterns[index]),
+        }
+    }
+
+    /// The searcher for one token, or [`None`] when it does not get one and
+    /// the caller should scan for the token directly.
+    fn searcher(&self, index: usize) -> Option<&AhoCorasick> {
+        let pattern = self.patterns[index];
+        if index >= MAX_SEARCHERS
+            || !(MIN_SEARCHER_PATTERN_BYTES..=MAX_SEARCHER_PATTERN_BYTES).contains(&pattern.len())
+        {
+            return None;
+        }
+
+        self.searchers[index]
+            .get_or_init(|| {
+                AhoCorasick::builder()
+                    // The cheapest automaton to build, and no slower to run:
+                    // with one pattern the search is `memmem`'s, and the
+                    // automaton behind it is barely entered.
+                    .kind(Some(AhoCorasickKind::NoncontiguousNFA))
+                    .build([pattern])
+                    .ok()
+            })
+            .as_ref()
+    }
+
+    /// Byte offset of the earliest match of any token in `haystack`, which is
+    /// where the result snippet is cut from.
+    fn earliest_match(&self, haystack: &str) -> Option<usize> {
+        (0..self.patterns.len())
+            .filter_map(|index| match self.searcher(index) {
+                Some(searcher) => searcher.find(haystack).map(|found| found.start()),
+                None => haystack.find(self.patterns[index]),
+            })
+            .min()
     }
 }
 
@@ -359,6 +531,9 @@ struct SearchEntry {
     headings_lower: String,
     text: String,
     text_lower: String,
+    /// Whether a byte offset in `text_lower` is the same offset in `text`.
+    /// See [`SearchEntry::original_offset`].
+    lower_offsets_match: bool,
 }
 
 impl SearchEntry {
@@ -370,6 +545,8 @@ impl SearchEntry {
             .collect::<Vec<_>>()
             .join(" ");
         let text = html_to_plain_text(&page.html);
+        let text_lower = text.to_lowercase();
+        let lower_offsets_match = lowercasing_preserves_offsets(&text, &text_lower);
 
         Self {
             slug: page.slug.clone(),
@@ -377,54 +554,88 @@ impl SearchEntry {
             description: page.description.clone(),
             title_lower: page.title.to_lowercase(),
             headings_lower: headings.to_lowercase(),
-            text_lower: text.to_lowercase(),
             text,
+            text_lower,
+            lower_offsets_match,
         }
     }
 
-    /// Sum the match weights for every token, or return [`None`] when any token
-    /// is missing from the page (all tokens must match for a page to appear).
-    fn score(&self, tokens: &[String]) -> Option<u32> {
-        let mut total = 0;
-        for token in tokens {
-            let mut token_score = 0;
-            if self.title_lower.contains(token) {
-                token_score += TITLE_MATCH_WEIGHT;
-            }
-            if self.headings_lower.contains(token) {
-                token_score += HEADING_MATCH_WEIGHT;
-            }
-            if self.text_lower.contains(token) {
-                token_score += BODY_MATCH_WEIGHT;
-            }
-            if token_score == 0 {
-                return None;
-            }
-            total += token_score;
-        }
-        Some(total)
-    }
-
-    fn to_hit(&self, tokens: &[String]) -> SearchHit {
+    fn to_hit(&self, matcher: &QueryMatcher) -> SearchHit {
         SearchHit {
             slug: self.slug.clone(),
             title: self.title.clone(),
-            snippet: self.snippet(tokens),
+            snippet: self.snippet(matcher),
         }
     }
 
     /// Build a context snippet around the earliest body match, falling back to
     /// the page description when the query only matched the title or headings.
-    fn snippet(&self, tokens: &[String]) -> String {
-        match tokens
-            .iter()
-            .filter_map(|token| self.text_lower.find(token))
-            .min()
-        {
-            Some(index) => build_snippet(&self.text, index, SNIPPET_RADIUS),
+    fn snippet(&self, matcher: &QueryMatcher) -> String {
+        match matcher.earliest_match(&self.text_lower) {
+            Some(index) => build_snippet(&self.text, self.original_offset(index), SNIPPET_RADIUS),
             None => self.description.clone(),
         }
     }
+
+    /// Translate a byte offset in `text_lower` into the same position in
+    /// `text`, which is what the snippet is cut from.
+    ///
+    /// `str::to_lowercase` is not length-preserving: `İ` (U+0130) is two bytes
+    /// and folds to `i` plus a combining dot, three. Every such character
+    /// earlier in the page shifts every later offset, so on those pages a
+    /// snippet taken at the raw offset points past the match it is meant to
+    /// show. Pages where nothing changes length — every guide today — skip the
+    /// walk entirely, and the walk itself only runs for the handful of pages a
+    /// request actually builds snippets for.
+    fn original_offset(&self, lower_index: usize) -> usize {
+        if self.lower_offsets_match {
+            return lower_index;
+        }
+
+        // Walk both lengths in step and stop at the character whose lowercase
+        // form covers `lower_index`. A match can start inside that form rather
+        // than at its start — a query for a bare combining dot against a page
+        // containing `İ` — and the start of the character it came from is the
+        // closest thing the original text has to that position.
+        let (mut lower, mut original) = (0, 0);
+        for character in self.text.chars() {
+            let next = lower + lowercase_len(character);
+            if next > lower_index {
+                break;
+            }
+            lower = next;
+            original += character.len_utf8();
+        }
+        original
+    }
+}
+
+/// Whether `str::to_lowercase` maps `text` byte-for-byte, so that offsets into
+/// `lowered` are offsets into `text` itself.
+///
+/// Run once per page when the index is built. All-ASCII text is settled in one
+/// pass, because ASCII always folds one byte to one — though only four of the
+/// 140 guides qualify, since smart punctuation (`—`, `’`, `…`) is enough to
+/// disqualify a page. The rest need the character walk, because a length
+/// change is conclusive only in one direction: one character growing and
+/// another shrinking would cancel out in the total. Measured at 1.0-1.4 ms
+/// over the whole corpus, against 33 ms for the index build it sits in.
+fn lowercasing_preserves_offsets(text: &str, lowered: &str) -> bool {
+    text.is_ascii()
+        || (text.len() == lowered.len()
+            && text
+                .chars()
+                .filter(|character| !character.is_ascii())
+                .all(|character| lowercase_len(character) == character.len_utf8()))
+}
+
+/// Byte length of `character` once lowercased.
+///
+/// `str::to_lowercase` differs from `char::to_lowercase` in exactly one place —
+/// a Greek capital sigma at the end of a word folds to `ς` rather than `σ` —
+/// and both of those are two bytes, so the two agree on length everywhere.
+fn lowercase_len(character: char) -> usize {
+    character.to_lowercase().map(char::len_utf8).sum()
 }
 
 /// Strip HTML tags and decode the handful of entities the renderer emits,
@@ -1129,6 +1340,207 @@ mod tests {
 
         assert!(index.search("zebra giraffes", 20).is_empty());
         assert_eq!(index.search("zebra handling", 20).len(), 1);
+    }
+
+    /// The scan `QueryMatcher` replaced, kept as an oracle: the plain
+    /// per-token, per-field `str::contains` loop from before issue #23.
+    fn naive_score(entry: &SearchEntry, tokens: &[String]) -> Option<u32> {
+        let mut total = 0;
+        for token in tokens {
+            let mut token_score = 0;
+            if entry.title_lower.contains(token) {
+                token_score += TITLE_MATCH_WEIGHT;
+            }
+            if entry.headings_lower.contains(token) {
+                token_score += HEADING_MATCH_WEIGHT;
+            }
+            if entry.text_lower.contains(token) {
+                token_score += BODY_MATCH_WEIGHT;
+            }
+            if token_score == 0 {
+                return None;
+            }
+            total += token_score;
+        }
+        Some(total)
+    }
+
+    /// The equivalence claim of issue #23, checked against the real corpus
+    /// rather than fixtures: for every query, every page must score exactly
+    /// what the scan it replaced scored — including which pages score at all.
+    ///
+    /// The query list deliberately spans both sides of every bound the matcher
+    /// has — tokens too short to compile a searcher for and tokens long enough,
+    /// and a query with more distinct tokens than get searchers at all — plus
+    /// tokens that overlap each other, repeated tokens, tokens that match
+    /// nothing, and substrings that only ever appear inside longer words.
+    #[test]
+    fn matcher_scores_every_page_exactly_as_the_naive_scan_did() {
+        let registry = crate::site_docs().expect("embedded guides render");
+        let index = SearchIndex::from_registry(registry);
+
+        let queries = [
+            "authentication",
+            "database",
+            "the",
+            "zzzznonexistentzzzz",
+            "routing middleware",
+            "attribute encryption",
+            "routing middleware authentication",
+            "content negotiation conditional get",
+            "deploy clustering edge fleet rollback",
+            "the the the",
+            "cat categor ego",
+            "ent enti entit",
+            "a b c d e f",
+            "AUTHENTICATION Database",
+            "café",
+            // Short enough that they are scanned for rather than compiled.
+            "a",
+            "the ap",
+        ];
+
+        // More distinct tokens than get searchers, each long enough that it
+        // would get one, so the head of the query is matched by searcher and
+        // the tail by the fallback scan. Cut from a real page so every token
+        // matches somewhere and the score does not bail before the tail.
+        let mut long_tokens: Vec<&str> = index.entries[0]
+            .text_lower
+            .split_whitespace()
+            .filter(|word| word.len() >= MIN_SEARCHER_PATTERN_BYTES && word.is_ascii())
+            .collect();
+        long_tokens.sort_unstable();
+        long_tokens.dedup();
+        long_tokens.truncate(MAX_SEARCHERS + 8);
+        assert!(
+            long_tokens.len() > MAX_SEARCHERS,
+            "the first guide should have enough distinct words to cross the cap"
+        );
+        let long_query = long_tokens.join(" ");
+        let queries = queries
+            .iter()
+            .map(|query| (*query).to_string())
+            .chain([long_query, "the ".repeat(40)])
+            .collect::<Vec<_>>();
+
+        for query in &queries {
+            let tokens: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+            let matcher = QueryMatcher::new(&tokens);
+            for entry in &index.entries {
+                assert_eq!(
+                    matcher.score(entry),
+                    naive_score(entry, &tokens),
+                    "score for {:?} on page {:?}",
+                    query,
+                    entry.slug
+                );
+            }
+        }
+    }
+
+    /// The bounds that decide which tokens are worth compiling a searcher for
+    /// are measured decisions, not preferences: below the floor a searcher
+    /// costs more to build than the scan it saves, and above the ceilings a
+    /// query can make the matcher allocate without limit. Pinned by value with
+    /// the reasoning in the failure message — the way
+    /// `syntect_uses_the_oniguruma_regex_backend` pins this repo's other
+    /// measured dependency choice — so that retuning one is deliberate and
+    /// arrives with its own numbers.
+    #[test]
+    fn the_searcher_bounds_stay_where_they_were_measured() {
+        assert_eq!(
+            MIN_SEARCHER_PATTERN_BYTES, 4,
+            "below four bytes, building a searcher (~12.7 us) costs more than \
+             the scan it saves, and the docs search box fires from two \
+             characters — issue #23"
+        );
+        assert_eq!(
+            MAX_SEARCHER_PATTERN_BYTES, 256,
+            "an automaton costs ~7 KB plus ~30 bytes per pattern byte where the \
+             scan allocates nothing, and `?q=` has no length cap"
+        );
+        assert_eq!(
+            MAX_SEARCHERS, 32,
+            "with the length ceiling this bounds one query's matcher at a few \
+             hundred kilobytes, on a 256 MB machine"
+        );
+    }
+
+    /// The bounds as the matcher applies them: literals rather than the
+    /// constants, so that moving a constant moves this test's meaning too.
+    #[test]
+    fn a_token_gets_a_searcher_only_within_those_bounds() {
+        let tokens: Vec<String> = vec![
+            "abc".to_owned(),
+            "abcd".to_owned(),
+            "c".repeat(256),
+            "d".repeat(257),
+        ];
+        let matcher = QueryMatcher::new(&tokens);
+
+        assert!(matcher.searcher(0).is_none(), "three bytes: not worth it");
+        assert!(matcher.searcher(1).is_some(), "four bytes: worth it");
+        assert!(matcher.searcher(2).is_some(), "256 bytes: still worth it");
+        assert!(
+            matcher.searcher(3).is_none(),
+            "257 bytes: too much automaton"
+        );
+    }
+
+    #[test]
+    fn only_the_first_tokens_get_searchers_however_long_the_query() {
+        let tokens: Vec<String> = (0..40).map(|index| format!("token{index}")).collect();
+        let matcher = QueryMatcher::new(&tokens);
+
+        assert!(matcher.searcher(31).is_some());
+        assert!(matcher.searcher(32).is_none());
+        assert!(matcher.searcher(39).is_none());
+    }
+
+    /// `İ` (U+0130, two bytes) folds to `i` plus a combining dot, three, so a
+    /// query can match at an offset inside that expansion — an offset with no
+    /// character of its own in the original text. The snippet is cut from the
+    /// character the match came from, not the one after it.
+    #[test]
+    fn an_offset_inside_a_folded_character_maps_back_to_that_character() {
+        let index = SearchIndex::from_registry(
+            &DocRegistry::from_sources([DocSource::new(
+                "cities",
+                "+++\ntitle = \"Cities\"\ndescription = \"Cities.\"\norder = 1\n+++\n\nDeploying to İstanbul.\n",
+            )])
+            .expect("fixture builds"),
+        );
+        let entry = &index.entries[0];
+        assert!(
+            !entry.lower_offsets_match,
+            "the fixture should be a page lowercasing does not map byte-for-byte"
+        );
+
+        let original = entry.text.find('İ').expect("the fixture contains it");
+        // Found via the combining dot, since the fixture has earlier plain `i`s.
+        let lowered = entry
+            .text_lower
+            .find('\u{307}')
+            .expect("İ folds to i plus a combining dot")
+            - 'i'.len_utf8();
+
+        assert_eq!(entry.original_offset(lowered), original);
+        // One byte in: the combining dot, mid-expansion.
+        assert_eq!(entry.original_offset(lowered + 1), original);
+        // Past the whole expansion: the next character, and no drift after it.
+        assert_eq!(
+            entry.original_offset(lowered + 3),
+            original + 'İ'.len_utf8()
+        );
+    }
+
+    #[test]
+    fn a_repeated_token_is_searched_once_and_scored_once_per_occurrence() {
+        let tokens: Vec<String> = "zebra zebra".split_whitespace().map(String::from).collect();
+        let matcher = QueryMatcher::new(&tokens);
+
+        assert_eq!(matcher.patterns, vec!["zebra"]);
+        assert_eq!(matcher.occurrences, vec![2]);
     }
 
     #[test]
