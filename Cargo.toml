@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-aho-corasick = "1.1.4"
 autumn-web = { version = "0.7.0", features = ["markdown", "mcp"] }
 maud = "0.27.0"
+memchr = "2.8.0"
 pulldown-cmark = "0.13.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"

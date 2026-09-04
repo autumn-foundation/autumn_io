@@ -244,9 +244,9 @@ dependencies = [
 name = "autumn_io"
 version = "0.1.0"
 dependencies = [
- "aho-corasick",
  "autumn-web",
  "maud",
+ "memchr",
  "pulldown-cmark",
  "serde",
  "serde_json",

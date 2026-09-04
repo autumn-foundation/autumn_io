@@ -4,10 +4,13 @@
 //! `/api/search`, `/search` and the MCP `search_autumn_docs` tool — and found
 //! that ~96% of the marginal cost of a request was `str::contains`, called
 //! once per query token per field per page over the whole embedded corpus.
-//! Searching is now `aho-corasick`'s, with one searcher per query token built
+//! Searching is now `memchr::memmem`'s, with one finder per query token built
 //! once for the query — see
-//! `docs/plans/2026-09-03-aho-corasick-docs-search.md`, including why the
-//! multi-pattern pass the issue proposed was measured and left out.
+//! `docs/plans/2026-09-03-aho-corasick-docs-search.md` for why the
+//! multi-pattern pass the issue proposed was measured and left out, and
+//! `docs/plans/2026-09-04-memchr-docs-search.md` for why the matcher talks to
+//! `memchr` directly rather than through the `aho-corasick` wrapper #23's own
+//! recommendation shipped with (issue #28).
 //!
 //! The load-bearing constraint is that this is a *performance* change. The
 //! issue rejected a word/token index precisely because it would change which
@@ -80,18 +83,62 @@ fn slugs(hits: &[autumn_io::docs::SearchHit]) -> Vec<&str> {
     hits.iter().map(|hit| hit.slug.as_str()).collect()
 }
 
-/// The load-bearing dependency of issue #23.
+/// The load-bearing dependency of issue #23, as issue #28 shipped it.
 ///
-/// `str::contains` was ~96% of the marginal cost of a request. `aho-corasick`
+/// `str::contains` was ~96% of the marginal cost of a request. `memchr::memmem`
 /// answers the same question — does this token appear in this text? — for
-/// about half the instructions, because a single pattern goes to
-/// `memchr::memmem` rather than the standard library's two-way searcher.
+/// about half the instructions, and does so directly rather than through the
+/// `aho-corasick` automaton wrapper #23's own recommendation used: a wrapper
+/// whose per-query construction cost was 500-1000x `memmem::Finder::new`'s
+/// (see `docs/plans/2026-09-04-memchr-docs-search.md`).
 ///
 /// This pins the manifest only: it fails if someone removes the dependency,
 /// not if someone stops using it. The unit tests in `src/docs.rs` are what
-/// hold the matcher itself to actually building searchers.
+/// hold the matcher itself to actually building finders.
 #[test]
-fn docs_search_declares_the_aho_corasick_matcher() {
+fn docs_search_declares_the_memchr_matcher() {
+    let declared = CARGO_TOML
+        .split("[dependencies]")
+        .nth(1)
+        .expect("Cargo.toml should have a [dependencies] section")
+        .lines()
+        .take_while(|line| !line.starts_with('['))
+        .any(|line| line.trim_start().starts_with("memchr"));
+
+    assert!(
+        declared,
+        "docs search needs memchr as a direct dependency (issue #28); \
+         without it the per-token substring scan comes back"
+    );
+}
+
+/// `memchr` reaches us as a true leaf — no dependencies of its own, pure Rust,
+/// no build script — one level flatter than the `aho-corasick` wrapper it
+/// replaced (issue #28). That property is most of why either was an
+/// acceptable answer to #23 at all: this repo has been bitten twice by
+/// builder OOM (#9, #16), and the alternative structural fix was a whole new
+/// index.
+///
+/// Checked against the resolved lockfile rather than the declaration, so a
+/// future version that grows a dependency surface fails here rather than in
+/// Docker.
+#[test]
+fn the_matcher_dependency_stays_a_leaf() {
+    assert_eq!(
+        locked_dependencies_of("memchr"),
+        Vec::<&str>::new(),
+        "memchr should stay a dependency-free leaf; anything else changes the \
+         build graph this change was accepted on"
+    );
+}
+
+/// `aho-corasick`'s automaton wrapper is exactly what issue #28 removed:
+/// `memchr::memmem::Finder` costs 11-266 ns to build against ~12.7 µs for a
+/// single-pattern automaton, which was the reason the matcher needed a
+/// minimum-length floor, a maximum-length ceiling and a token-count cap at
+/// all. Pinned so it does not silently come back.
+#[test]
+fn docs_search_no_longer_needs_the_aho_corasick_wrapper() {
     let declared = CARGO_TOML
         .split("[dependencies]")
         .nth(1)
@@ -101,27 +148,9 @@ fn docs_search_declares_the_aho_corasick_matcher() {
         .any(|line| line.trim_start().starts_with("aho-corasick"));
 
     assert!(
-        declared,
-        "docs search needs aho-corasick as a direct dependency (issue #23); \
-         without it the per-token substring scan comes back"
-    );
-}
-
-/// `aho-corasick` reaches us as a leaf: pure Rust, one dependency (`memchr`),
-/// no build script. That is most of why it was an acceptable answer to #23 at
-/// all — this repo has been bitten twice by builder OOM (#9, #16), and the
-/// alternative structural fix was a whole new index.
-///
-/// Checked against the resolved lockfile rather than the declaration, so a
-/// future version that grows a heavier dependency surface fails here rather
-/// than in Docker.
-#[test]
-fn the_matcher_dependency_stays_a_memchr_leaf() {
-    assert_eq!(
-        locked_dependencies_of("aho-corasick"),
-        vec!["memchr"],
-        "aho-corasick should stay a pure-Rust leaf; anything else changes the \
-         build graph this change was accepted on"
+        !declared,
+        "docs search no longer needs aho-corasick as a direct dependency \
+         (issue #28); memchr::memmem::Finder replaces it"
     );
 }
 
@@ -269,11 +298,11 @@ fn search_folds_case_beyond_ascii() {
     assert!(index.search("STRASSE", 10).is_empty());
 }
 
-/// A token too short to compile a searcher for takes the plain scan, on the
-/// snippet path as well as the scoring one — and the search box sends nothing
-/// else for its first two keystrokes. Without that fallback the page still
-/// matches, but every typeahead result silently shows the page description
-/// instead of the text that matched.
+/// A two-character token — the shortest the search box ever sends
+/// (`min_length(2)` in `site.rs`) — still cuts a snippet around its match, on
+/// the snippet path as well as the scoring one. This is the case the
+/// `aho-corasick` version's minimum-length floor used to route around the
+/// searcher for (issue #28); a `memchr::memmem::Finder` handles it directly.
 #[test]
 fn short_tokens_still_cut_the_snippet_around_the_match() {
     let index = index_of(&[(
@@ -307,9 +336,9 @@ fn a_match_outside_the_body_falls_back_to_the_description() {
 }
 
 /// A query far longer than a search box would ever send — seventy distinct
-/// tokens, past the point where the matcher stops building searchers and goes
-/// back to scanning — still filters and ranks rather than truncating, dropping
-/// tokens, or panicking.
+/// tokens, past `MAX_FINDERS` (32, unchanged by issue #28's matcher swap) —
+/// still filters and ranks rather than truncating, dropping tokens, or
+/// panicking.
 #[test]
 fn search_handles_far_more_tokens_than_a_search_box_sends() {
     let words: Vec<String> = (0..70).map(|n| format!("token{n}")).collect();
@@ -326,18 +355,20 @@ fn search_handles_far_more_tokens_than_a_search_box_sends() {
     let missing = format!("{query} absentium");
     assert!(index.search(&missing, 10).is_empty());
 
-    // And a token past the cap is what decides the result, so the tokens that
-    // got no searcher are really being matched rather than waved through.
+    // The 70th token is what decides the result, so it is really being
+    // matched rather than waved through past any cap.
     let mut altered = words.clone();
     altered[69] = "token69x".to_string();
     assert!(index.search(&altered.join(" "), 10).is_empty());
 }
 
-/// A single enormous token gets no searcher either — an automaton costs about
+/// A single enormous token still has to match exactly. The `aho-corasick`
+/// version used to fall back to a plain scan here — an automaton cost about
 /// thirty bytes per pattern byte, and this runs on a 256 MB machine against an
-/// uncapped query string. It still has to match exactly.
+/// uncapped query string (issue #28) — but a `memchr::memmem::Finder` over a
+/// 4 KB pattern allocates nothing beyond the pattern itself.
 #[test]
-fn search_matches_a_token_too_long_to_compile() {
+fn search_matches_a_very_long_token() {
     let long: &'static str = "z".repeat(4096).leak();
     let body: &'static str = format!("A page containing {long} and nothing else.").leak();
     let index = index_of(&[("long", "Long", body), ("short", "Short", "No z run here.")]);
@@ -345,7 +376,7 @@ fn search_matches_a_token_too_long_to_compile() {
     assert_eq!(slugs(&index.search(long, 10)), ["long"]);
     assert!(index.search(&format!("{long}z"), 10).is_empty());
 
-    // Mixed with ordinary tokens, both sides of the cap still have to agree.
+    // Mixed with ordinary tokens, both still have to agree.
     assert_eq!(slugs(&index.search(&format!("page {long}"), 10)), ["long"]);
     assert!(index.search(&format!("absent {long}"), 10).is_empty());
 }
