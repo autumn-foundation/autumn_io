@@ -24,3 +24,51 @@ tower-http = { version = "0.6.10", features = ["compression-gzip", "map-response
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 
 [workspace]
+
+# This binary is built once per deploy and then serves until the next one, so
+# the profile spends build time freely and optimises for what runs. Numbers
+# below are callgrind instruction counts on aarch64-linux, taken through the
+# harnesses in `src/bin/` the same way issues #19 and #23 took theirs; see
+# `docs/plans/2026-09-04-release-profile-and-ci.md`.
+[profile.release]
+# Not "s", and emphatically not "z". Measured against this corpus:
+#
+#                    search (marginal/req)   cold-start render
+#   opt-level = 3          2,171,562           3,395,498,611
+#   opt-level = "s"        2,135,722  (-1.7%)  3,767,464,464  (+11.0%)
+#   opt-level = "z"        2,404,462 (+10.7%)  4,302,839,402  (+26.7%)
+#
+# The size levels look defensible on the marginal search path — "s" is a wash
+# there — and then cost 11% and 27% of the cold-start render. That render is
+# not a rare path for this app: `fly.toml` sets `min_machines_running = 0` with
+# `auto_stop_machines`, so the first request after a scale-to-zero pays it in
+# full, and it is the one a real visitor is most likely to wait on.
+opt-level = 3
+
+# Whole-program optimisation across the dependency graph, in one codegen unit
+# so nothing is left on the table at the boundaries. Together these are where
+# the binary's size win is: 36,580,752 -> 27,601,240 bytes, -24.5%, at the same
+# opt-level — nearly four times what dropping to "s" would save from here, and
+# free at runtime. They cost the build about a minute.
+#
+# The obvious worry is the builder, which the Dockerfile sizes at 8 GB after an
+# OOM. It is not a problem: the fat-LTO link peaks at 3909 MB, *below* the
+# 4401 MB peak of compiling `autumn-web`, so the ceiling is unchanged and still
+# lives in rustc's front end. The Dockerfile records this.
+lto = "fat"
+codegen-units = 1
+
+# Explicit because the tempting value is wrong here. Autumn uses unwinding as a
+# correctness mechanism, not just for diagnostics: `autumn-web`'s `db.rs`
+# catches panics inside a transaction because one that unwound without a
+# rollback would let deadpool recycle a connection with an open write
+# transaction, and the job runner and event dispatcher isolate a panicking
+# handler from its siblings the same way. Under `panic = "abort"` each of those
+# isolation boundaries becomes a process kill.
+panic = "unwind"
+
+# Deliberately no `strip`. `src/bin/profile_docs_search.rs` says why in prose —
+# callgrind attributes by symbol, and this repo's performance work depends on
+# that — and stripping also turns production panic backtraces into addresses.
+# `strip = "debuginfo"` is not a compromise: release builds carry none to start
+# with, so it would remove nothing.

@@ -1,0 +1,114 @@
+name: CI
+
+# Every check that does not need a database or another service, which — because
+# this app embeds its corpus and renders it in-process — is all of them.
+#
+# This replaces `docs-harness.yml`, which ran only `docs_site` and
+# `mcp_docs_api`. That scope was chosen for speed, but it left the rest of the
+# suite unrun, and the gap was not theoretical: the five fixture tests in
+# `syntax_highlighting_backend.rs` had *never* passed. They were written in #22
+# against a `<pre>` tag that #21 had already changed to `<pre tabindex="0">` one
+# commit earlier, and nothing executed them until this workflow did. The whole
+# suite runs here for that reason.
+on:
+  push:
+    branches: [trunk]
+  pull_request:
+
+# Every job here reads the repository and nothing else: checkout, build, test.
+# Declared once at the top level so each job inherits it, rather than letting
+# them run with whatever the repository default happens to be — which is what
+# CodeQL flags, once per job, when this block is missing.
+permissions:
+  contents: read
+
+# A new push to the same branch supersedes the run in flight. Trunk is exempt:
+# its runs are the record of what was green when it was pushed.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/trunk' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Registry flakiness should not read as a code failure.
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # `--all-targets` reaches the profiling harnesses in `src/bin/` and the
+      # integration tests, which are exactly the places lint rot accumulates
+      # unnoticed.
+      - run: cargo clippy --locked --all-targets -- -D warnings
+
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # `--locked` is load-bearing beyond reproducibility: the Dockerfile builds
+      # with it, and `the_oniguruma_build_stays_free_of_bindgen` inspects a
+      # `Cargo.lock` that Cargo would otherwise silently refresh underneath it.
+      - run: cargo test --locked
+      # 125 passing at the commit that added this workflow (23 lib, 17
+      # docs_search_matcher, 46 docs_site, 9 fly_deploy_config, 21 mcp_docs_api,
+      # 9 syntax_highlighting_backend), 0 failures. Five of those had never
+      # passed before this workflow existed; see the note at the top.
+
+  release-build:
+    name: Release build (fat LTO)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build with the compiler the Dockerfile actually deploys with, read out
+      # of the Dockerfile so the two cannot drift. Stable is what `fmt`,
+      # `clippy` and `test` run, and it is routinely years ahead of the pinned
+      # builder image — a release that compiles on stable and not on the
+      # builder is a deploy-time failure this job exists to catch.
+      - id: toolchain
+        run: |
+          version="$(grep -oE '^FROM rust:[0-9]+\.[0-9]+' Dockerfile | head -1 | cut -d: -f2)"
+          test -n "$version" || { echo "no pinned rust version in Dockerfile"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.version }}
+      - uses: Swatinem/rust-cache@v2
+
+      # `[profile.release]` is fat LTO over one codegen unit. That is one
+      # single-threaded, memory-hungry link at the end of the build, and it is
+      # the step most likely to break or OOM without any warning from a debug
+      # build — so it is compiled here on every change, not first discovered
+      # during a deploy. `CARGO_BUILD_JOBS` matches the Dockerfile's, which is
+      # set there to keep concurrent rustc peaks from stacking.
+      - env:
+          CARGO_BUILD_JOBS: 1
+          RUSTONIG_STATIC_LIBONIG: 1
+        run: cargo build --locked --release --bin autumn_io
+
+      # Binary size is a deliberate tradeoff here (symbols are kept — see
+      # `[profile.release]` in Cargo.toml), so record it rather than gate on it.
+      - run: |
+          ls -l target/release/autumn_io
+          echo "size: $(du -h target/release/autumn_io | cut -f1)"

@@ -87,3 +87,83 @@ fn fly_vm_declares_exactly_one_memory_key() {
         "use the documented `memory` key, not legacy `memory_mb`: {memory_keys:?}"
     );
 }
+
+/// The settings of the `[profile.release]` block, without its comments.
+///
+/// Scoped to the one block so that a `[profile.dev]` or a dependency line
+/// containing the same words cannot satisfy — or break — a check below by
+/// accident. Comments are dropped for the same reason they are in
+/// `dockerfile_builder_keeps_the_c_toolchain_oniguruma_needs`: that block names
+/// `panic = "abort"` and `strip` explicitly in order to warn against them, and
+/// the assertions here are about what the profile *sets*.
+fn release_profile() -> String {
+    let (_, profile) = CARGO_TOML
+        .split_once("[profile.release]")
+        .expect("Cargo.toml should declare a release profile");
+
+    profile
+        .split_once("\n[")
+        .map_or(profile, |(section, _)| section)
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The binary is built once per deploy and then serves until the next one, so
+/// the profile is tuned for what runs rather than for build time.
+///
+/// `opt-level` is the one worth stating a reason for: the size levels are a
+/// standing temptation and both were measured and rejected. `"s"` costs 11% of
+/// the cold-start render and `"z"` costs 27%, against a corpus this app renders
+/// on the first request after every scale-to-zero.
+#[test]
+fn release_profile_optimises_the_deployed_binary() {
+    let profile = release_profile();
+
+    assert!(
+        profile.contains("opt-level = 3"),
+        "opt-level 3: \"s\" and \"z\" were measured at +11.0% and +26.7% on the \
+         cold-start render (see docs/plans/2026-09-04-release-profile-and-ci.md)"
+    );
+    assert!(profile.contains(r#"lto = "fat""#));
+    assert!(profile.contains("codegen-units = 1"));
+}
+
+/// `panic = "abort"` is the standard companion to a profile like this one and
+/// is wrong for this app.
+///
+/// Autumn treats unwinding as a correctness mechanism: `autumn-web`'s `db.rs`
+/// catches panics inside a transaction because one that unwound without a
+/// rollback would let deadpool recycle a connection with an open write
+/// transaction, and the job runner and event dispatcher isolate a panicking
+/// handler from its siblings the same way. Aborting converts each of those
+/// boundaries into a process kill.
+#[test]
+fn release_profile_keeps_unwinding_for_autumn_panic_isolation() {
+    let profile = release_profile();
+
+    assert!(
+        !profile.contains(r#"panic = "abort""#),
+        "autumn-web catches panics to roll transactions back and to isolate \
+         jobs and event handlers; aborting kills the process instead"
+    );
+    assert!(
+        profile.contains(r#"panic = "unwind""#),
+        "state it explicitly, so the choice reads as deliberate"
+    );
+}
+
+/// Stripping is the largest remaining size lever and it is declined.
+///
+/// `src/bin/profile_docs_search.rs` already warns about it in prose —
+/// callgrind attributes by symbol, and the figures in the last three plan
+/// documents were taken that way — and it also turns production panic
+/// backtraces into bare addresses. The image is not size-constrained.
+#[test]
+fn release_profile_keeps_symbols_for_profiling_and_backtraces() {
+    assert!(
+        !release_profile().contains("strip"),
+        "callgrind attribution and panic backtraces both need the symbol table"
+    );
+}

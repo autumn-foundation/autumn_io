@@ -18,6 +18,13 @@
 //! guides look. They are golden strings on purpose: when highlighting moves,
 //! the right outcome is a loud failure and a human looking at the diff.
 //!
+//! The golden strings' opening tag was re-recorded once, when CI first ran
+//! this file: it was written as `<pre>` while #21 had already made scrollable
+//! blocks `<pre tabindex="0">` one commit earlier, so these tests never passed
+//! and nothing ran them. Only the tag moved — every scope run inside it was
+//! byte-identical — which is why re-recording was right here and is not the
+//! default response to a failure in this file.
+//!
 //! `tests/fly_deploy_config.rs` holds the other build-configuration guards.
 
 use autumn_io::docs::{DocRegistry, DocSource};
@@ -82,8 +89,13 @@ fn render(markdown: &str) -> String {
 
 /// The `<pre>…</pre>` of the first code block, which is what the highlighter
 /// produced. Everything around it belongs to the page template.
+///
+/// Matched on `<pre` rather than `<pre>`: the opening tag carries whatever
+/// attributes the template puts there — `tabindex="0"` since #21 made
+/// scrollable blocks keyboard-focusable — and this helper is here to isolate
+/// the highlighter's output, not to assert the template's attributes.
 fn code_block(html: &str) -> String {
-    let start = html.find("<pre>").expect("a rendered code block");
+    let start = html.find("<pre").expect("a rendered code block");
     let end = html.find("</pre>").expect("a closed code block");
     html[start..end + "</pre>".len()].to_owned()
 }
@@ -208,7 +220,7 @@ fn rust_blocks_highlight_into_the_same_scopes_on_either_backend() {
     assert_eq!(
         block,
         concat!(
-            r#"<pre><code class="language-rust">"#,
+            r#"<pre tabindex="0"><code class="language-rust">"#,
             r#"<span style="color:#b48ead;">fn </span>"#,
             r#"<span style="color:#8fa1b3;">main</span>"#,
             "<span style=\"color:#c0c5ce;\">() {}\n</span>",
@@ -228,7 +240,7 @@ fn shell_blocks_highlight_into_the_same_scopes_on_either_backend() {
     assert_eq!(
         block,
         concat!(
-            r#"<pre><code class="language-bash">"#,
+            r#"<pre tabindex="0"><code class="language-bash">"#,
             r#"<span style="color:#8fa1b3;">cargo</span>"#,
             r#"<span style="color:#c0c5ce;"> run</span>"#,
             r#"<span style="color:#bf616a;"> --bin</span>"#,
@@ -289,7 +301,7 @@ fn html_metacharacters_in_code_stay_escaped_across_scope_boundaries() {
     assert_eq!(
         block,
         concat!(
-            r#"<pre><code class="language-rust">"#,
+            r#"<pre tabindex="0"><code class="language-rust">"#,
             r#"<span style="color:#b48ead;">let</span>"#,
             r#"<span style="color:#c0c5ce;"> generic: Vec&lt;&amp;</span>"#,
             r#"<span style="color:#b48ead;">str</span>"#,
