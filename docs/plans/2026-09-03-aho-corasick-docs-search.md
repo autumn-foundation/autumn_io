@@ -1,7 +1,12 @@
 # Docs Search: Multi-Pattern Matching for the Per-Request Scan
 
 Date: 2026-09-03
-Status: Accepted — measured, implemented
+Status: Accepted — measured, implemented. Superseded 2026-09-04 by
+`docs/plans/2026-09-04-memchr-docs-search.md` (issue #28): the matcher this
+document adopted was replaced with `memchr::memmem` directly, for the reasons
+priced in "Not taken" below. This document's measurements and its rejection of
+the multi-pattern pass (issue #23's own recommendation) are unaffected and
+still the reference for that question.
 Issue: https://github.com/autumn-foundation/autumn_io/issues/23
 
 ## Goal
@@ -435,6 +440,12 @@ code is worse than the small extra diff.
   same harness put it at another ~7-10 percentage points beyond what shipped.
   It is a second dependency decision, not this one, and #23 named
   `aho-corasick`; recorded here with numbers so whoever wants it has them.
+  **Update, issue #28:** adopted. The ~7-10 point estimate above undersold it —
+  measured on this same harness at −24.2% to −32.6% marginal Ir per request on
+  top of what this document shipped, because the estimate only priced
+  automaton-construction instructions and missed the allocator traffic and the
+  three bounds' branch overhead that went with them. See
+  `docs/plans/2026-09-04-memchr-docs-search.md`.
 - **An n-gram or suffix index** (options 3 and 4 in the brainstorm). These stop
   the scan happening at all rather than making it cheaper, and are the right
   answer if the corpus grows an order of magnitude. They are a structural
