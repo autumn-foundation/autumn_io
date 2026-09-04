@@ -15,6 +15,13 @@ on:
     branches: [trunk]
   pull_request:
 
+# Every job here reads the repository and nothing else: checkout, build, test.
+# Declared once at the top level so each job inherits it, rather than letting
+# them run with whatever the repository default happens to be — which is what
+# CodeQL flags, once per job, when this block is missing.
+permissions:
+  contents: read
+
 # A new push to the same branch supersedes the run in flight. Trunk is exempt:
 # its runs are the record of what was green when it was pushed.
 concurrency:
