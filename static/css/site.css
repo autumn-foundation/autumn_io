@@ -407,7 +407,7 @@ pre {
 }
 
 .home-mcp-copy code {
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 
 .home-mcp-example pre {
@@ -648,6 +648,13 @@ pre {
   background: #f1dec8;
   color: var(--rust-dark);
   font-size: 0.88em;
+  /* Rust paths and method chains (`autumn_web::app().routes(...)`) are one
+     unbroken token: no spaces for normal wrapping to break on. Without this,
+     inline code in prose and list items overflows the article column at
+     narrow widths instead of wrapping (WCAG 1.4.10 Reflow). Code *blocks*
+     keep their intentional horizontal scroll via `.code-block pre` — this
+     only affects inline code, which is prose and should reflow like prose. */
+  overflow-wrap: break-word;
 }
 
 .article-body .code-block {
@@ -771,7 +778,13 @@ pre {
   .home-harvest,
   .home-mcp,
   .docs-layout {
-    grid-template-columns: 1fr;
+    /* Every desktop grid-template-columns above uses minmax(0, ...) so a wide
+       child (a long inline URL/code token, a code block) can't force the
+       track past the viewport. This collapse-to-one-column override dropped
+       that guard, so on narrow viewports the single column reverted to
+       sizing by its content's min-content width instead of the container's
+       available width. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .home-harvest-actions,
