@@ -54,6 +54,15 @@ COPY migrations ./migrations
 # more than the crate that actually failed, and this tree's requirement has
 # grown fast.
 #
+# Fat LTO over one codegen unit (see `[profile.release]` in Cargo.toml) does not
+# move this budget either, which is worth stating because it is the one change
+# that plausibly could: it ends the build with a single link holding the whole
+# graph's IR, a shape none of the measurements above cover. Measured on this
+# Dockerfile's toolchain with `CARGO_BUILD_JOBS=1`, peak RSS across the whole
+# build is 4401 MB — indistinguishable from the 4409 MB above — and the LTO
+# link *in isolation* peaks at 3909 MB in 71 s, below the cost of compiling
+# autumn-web. The ceiling is still rustc's front end, and 8 GB still covers it.
+#
 # Moving syntect onto the Oniguruma backend did not move this budget, and the
 # mechanism is why: the ceiling is rustc on autumn-web/autumn-macros, which that
 # change does not touch, and `onig` replaces `fancy-regex` + `bit-set` +
