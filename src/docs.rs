@@ -510,6 +510,15 @@ struct SearchEntry {
     /// Whether a byte offset in `text_lower` is the same offset in `text`.
     /// See [`SearchEntry::original_offset`].
     lower_offsets_match: bool,
+    /// Checkpoints for [`SearchEntry::original_offset`] on a page where
+    /// `lower_offsets_match` is false: pairs of `(lower_offset,
+    /// original_offset)`, one byte offset into `text_lower` and the matching
+    /// one into `text`, taken every [`OFFSET_CHECKPOINT_STRIDE`]
+    /// characters and precomputed once here, in `from_page`, so a request
+    /// only ever has to walk from the closest checkpoint rather than from the
+    /// start of the page (issue #34). Always empty when `lower_offsets_match`
+    /// is true, since `original_offset` never walks in that case.
+    offset_checkpoints: Vec<(usize, usize)>,
 }
 
 impl SearchEntry {
@@ -523,6 +532,11 @@ impl SearchEntry {
         let text = html_to_plain_text(&page.html);
         let text_lower = text.to_lowercase();
         let lower_offsets_match = lowercasing_preserves_offsets(&text, &text_lower);
+        let offset_checkpoints = if lower_offsets_match {
+            Vec::new()
+        } else {
+            build_offset_checkpoints(&text)
+        };
 
         Self {
             slug: page.slug.clone(),
@@ -533,6 +547,7 @@ impl SearchEntry {
             text,
             text_lower,
             lower_offsets_match,
+            offset_checkpoints,
         }
     }
 
@@ -563,18 +578,35 @@ impl SearchEntry {
     /// show. Pages where nothing changes length — every guide today — skip the
     /// walk entirely, and the walk itself only runs for the handful of pages a
     /// request actually builds snippets for.
+    ///
+    /// On a page that does need it, the walk starts from the closest
+    /// checkpoint in `offset_checkpoints` rather than from the start of the
+    /// page (issue #34): a from-zero walk on every lookup made the cost of a
+    /// snippet proportional to page length, silently, on whatever page first
+    /// used a length-changing character — 0.022 ms → 1.81 ms per search on a
+    /// 162 KB page, per the issue's own measurement. `offset_checkpoints`
+    /// always has at least one entry, `(0, 0)`, whenever this branch runs (see
+    /// `build_offset_checkpoints`), and every `usize` satisfies `0 <=
+    /// lower_index`, so the binary search below can never return `0` and the
+    /// following subtraction can never underflow.
     fn original_offset(&self, lower_index: usize) -> usize {
         if self.lower_offsets_match {
             return lower_index;
         }
 
-        // Walk both lengths in step and stop at the character whose lowercase
-        // form covers `lower_index`. A match can start inside that form rather
+        let checkpoint = self
+            .offset_checkpoints
+            .partition_point(|&(lower, _)| lower <= lower_index)
+            - 1;
+        let (mut lower, mut original) = self.offset_checkpoints[checkpoint];
+
+        // Walk both lengths in step, from the checkpoint rather than from the
+        // start of the page, and stop at the character whose lowercase form
+        // covers `lower_index`. A match can start inside that form rather
         // than at its start — a query for a bare combining dot against a page
         // containing `İ` — and the start of the character it came from is the
         // closest thing the original text has to that position.
-        let (mut lower, mut original) = (0, 0);
-        for character in self.text.chars() {
+        for character in self.text[original..].chars() {
             let next = lower + lowercase_len(character);
             if next > lower_index {
                 break;
@@ -584,6 +616,36 @@ impl SearchEntry {
         }
         original
     }
+}
+
+/// Number of characters between entries in [`SearchEntry::offset_checkpoints`].
+/// Bounds the walk `original_offset` does on a page that needs it to at most
+/// this many characters, however long the page is, in exchange for a table of
+/// `page length / OFFSET_CHECKPOINT_STRIDE` entries. Not swept or tuned — no
+/// guide exercises this path today (issue #34) — just chosen so neither the
+/// table nor the walk it leaves behind is unbounded.
+const OFFSET_CHECKPOINT_STRIDE: usize = 64;
+
+/// Precompute checkpoints mapping `text_lower` byte offsets back to `text`
+/// byte offsets, one every [`OFFSET_CHECKPOINT_STRIDE`] characters, so
+/// [`SearchEntry::original_offset`] never has to walk from the start of the
+/// page. Only called from `from_page` for a page where lowering does not
+/// preserve offsets; the walk this replaces is otherwise skipped entirely.
+///
+/// Always returns at least one checkpoint, `(0, 0)`, and every entry's
+/// `text_lower` offset is strictly greater than the one before it, since both
+/// only grow across the single forward pass over `text.chars()` below.
+fn build_offset_checkpoints(text: &str) -> Vec<(usize, usize)> {
+    let mut checkpoints = vec![(0, 0)];
+    let (mut lower, mut original) = (0, 0);
+    for (count, character) in text.chars().enumerate() {
+        if count > 0 && count % OFFSET_CHECKPOINT_STRIDE == 0 {
+            checkpoints.push((lower, original));
+        }
+        lower += lowercase_len(character);
+        original += character.len_utf8();
+    }
+    checkpoints
 }
 
 /// Whether `str::to_lowercase` maps `text` byte-for-byte, so that offsets into
@@ -1483,6 +1545,97 @@ mod tests {
             entry.original_offset(lowered + 3),
             original + 'İ'.len_utf8()
         );
+    }
+
+    /// Issue #34: the checkpoint table exists to move `original_offset`'s walk
+    /// off the request path, so it must only ever be built for the pages that
+    /// actually need the walk — every page in `sample_registry` lowercases
+    /// byte-for-byte, and the fixture below does not.
+    #[test]
+    fn offset_checkpoints_are_precomputed_only_for_pages_that_need_the_walk() {
+        let plain = SearchIndex::from_registry(&sample_registry());
+        for entry in &plain.entries {
+            assert!(entry.lower_offsets_match);
+            assert!(
+                entry.offset_checkpoints.is_empty(),
+                "a page lowercasing byte-for-byte should never build a checkpoint table"
+            );
+        }
+
+        let folding = SearchIndex::from_registry(
+            &DocRegistry::from_sources([DocSource::new(
+                "cities",
+                "+++\ntitle = \"Cities\"\ndescription = \"Cities.\"\norder = 1\n+++\n\nDeploying to İstanbul.\n",
+            )])
+            .expect("fixture builds"),
+        );
+        let entry = &folding.entries[0];
+        assert!(!entry.lower_offsets_match);
+        assert!(
+            !entry.offset_checkpoints.is_empty(),
+            "a page that needs the walk should get a checkpoint table"
+        );
+        assert_eq!(
+            entry.offset_checkpoints[0],
+            (0, 0),
+            "the first checkpoint anchors the walk at the start of the page"
+        );
+    }
+
+    /// A from-scratch walk from the start of the page, exactly as
+    /// `SearchEntry::original_offset` worked before issue #34 precomputed
+    /// checkpoints. Kept independent of the production code so the
+    /// checkpoint-based version can be checked against it rather than against
+    /// itself.
+    fn naive_original_offset(text: &str, lower_index: usize) -> usize {
+        let (mut lower, mut original) = (0, 0);
+        for character in text.chars() {
+            let next = lower + lowercase_len(character);
+            if next > lower_index {
+                break;
+            }
+            lower = next;
+            original += character.len_utf8();
+        }
+        original
+    }
+
+    /// The checkpoint table must agree with a brute-force walk from the start
+    /// of the page at *every* offset, not only the ones a sample query happens
+    /// to land on — including offsets that fall exactly on a checkpoint
+    /// boundary, one before it, and one after it, since those are exactly the
+    /// positions a checkpoint table can get wrong that a plain walk cannot.
+    #[test]
+    fn original_offset_matches_a_brute_force_walk_at_every_checkpoint_boundary() {
+        // İ (2 bytes, folds to 3) mixed with plain ASCII words, repeated
+        // enough to span several checkpoint strides in both the lowered and
+        // original text.
+        let body: String = (0..40).map(|n| format!("İstanbul quarter {n} ")).collect();
+        let markdown: &'static str = format!(
+            "+++\ntitle = \"Cities\"\ndescription = \"Cities.\"\norder = 1\n+++\n\n{body}\n"
+        )
+        .leak();
+        let index = SearchIndex::from_registry(
+            &DocRegistry::from_sources([DocSource::new("cities", markdown)])
+                .expect("fixture builds"),
+        );
+        let entry = &index.entries[0];
+        assert!(
+            !entry.lower_offsets_match,
+            "fixture should need the offset walk"
+        );
+        assert!(
+            entry.offset_checkpoints.len() > 2,
+            "fixture should be long enough to span more than one checkpoint stride"
+        );
+
+        for lower_index in 0..=entry.text_lower.len() + 5 {
+            assert_eq!(
+                entry.original_offset(lower_index),
+                naive_original_offset(&entry.text, lower_index),
+                "mismatch at lower_index {lower_index}"
+            );
+        }
     }
 
     #[test]
