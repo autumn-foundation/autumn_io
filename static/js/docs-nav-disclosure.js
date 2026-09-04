@@ -57,3 +57,38 @@ if (disclosure && summary) {
     }
   });
 }
+
+// Every docs link is a plain full-page navigation (no client-side router),
+// so the browser tears down and rebuilds the sidebar on every click. Its
+// scroll position isn't part of the browser's native scroll restoration
+// (that only covers the document viewport), so without this the nav resets
+// to the top on each click, losing your place once you're deep in the tree.
+// Persist scrollTop across navigations via sessionStorage, scoped per tab.
+{
+  const SCROLL_STORAGE_KEY = "docs-nav-scroll";
+  const sidebar = document.getElementById("docs-navigation");
+
+  if (sidebar) {
+    try {
+      const savedScrollTop = sessionStorage.getItem(SCROLL_STORAGE_KEY);
+      if (savedScrollTop !== null) {
+        sidebar.scrollTop = Number(savedScrollTop);
+      }
+    } catch {
+      // sessionStorage unavailable (e.g. privacy mode) — fall back to the
+      // default top-of-nav position.
+    }
+
+    sidebar.addEventListener(
+      "scroll",
+      () => {
+        try {
+          sessionStorage.setItem(SCROLL_STORAGE_KEY, String(sidebar.scrollTop));
+        } catch {
+          // Ignore write failures; scroll restoration is a nice-to-have.
+        }
+      },
+      { passive: true },
+    );
+  }
+}
