@@ -14,6 +14,7 @@ const HARVEST_GUIDE_START_PATH: &str = "/docs/harvest-project-skeleton";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
 const BRAND_MARK_1X_PATH: &str = "/static/img/autumn-mark-68.png";
 const BRAND_MARK_2X_PATH: &str = "/static/img/autumn-mark-136.png";
+const DOCS_NAV_DISCLOSURE_JS_PATH: &str = "/static/js/docs-nav-disclosure.js";
 const HOME_FEATURED_DOC_SLUGS: &[&str] = &["getting-started", "coming-from-other-frameworks"];
 const HOME_SECONDARY_DOC_SLUGS: &[&str] = &[
     "what-happens-when",
@@ -464,7 +465,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                     }
                     aside class="docs-toc" aria-label="On this page" {
                         p class="toc-label" { "On this page" }
-                        nav {
+                        nav aria-label="On this page" {
                             @for item in &page.toc {
                                 a class=(format!("toc-link depth-{}", item.level)) href=(format!("#{}", item.id)) {
                                     (&item.title)
@@ -524,34 +525,44 @@ fn docs_navigation_pages(registry: &DocRegistry) -> Vec<&DocPage> {
 }
 
 fn docs_sidebar(registry: &DocRegistry, active_slug: Option<&str>) -> Markup {
+    let disclosure_script_path = versioned_asset_path(DOCS_NAV_DISCLOSURE_JS_PATH);
+
     html! {
         aside id="docs-navigation" class="docs-sidebar" aria-label="Docs navigation" {
             (docs_search_box())
-            nav {
-                p class="sidebar-label" { "Docs" }
-                @for group in DOCS_NAV_GROUPS {
-                    @if docs_nav_group_has_pages(registry, group) {
+            // Wrapped in a native disclosure, closed by default on narrow
+            // viewports by docs-nav-disclosure.js, so keyboard/AT users
+            // don't have to tab through every nav link before reaching the
+            // article (issue #25). `open` here keeps the nav fully usable
+            // with JavaScript disabled.
+            details class="docs-nav-disclosure" open {
+                summary class="docs-nav-summary" { "Docs" }
+                nav aria-label="Docs sections" {
+                    @for group in DOCS_NAV_GROUPS {
+                        @if docs_nav_group_has_pages(registry, group) {
+                            section class="docs-nav-section" {
+                                p class="docs-nav-section-title" { (group.label) }
+                                @for slug in group.slugs {
+                                    @if let Some(page) = registry.page(slug) {
+                                        (docs_nav_link(page, active_slug))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    @if registry.pages().iter().any(|page| !is_grouped_doc_slug(&page.slug)) {
                         section class="docs-nav-section" {
-                            p class="docs-nav-section-title" { (group.label) }
-                            @for slug in group.slugs {
-                                @if let Some(page) = registry.page(slug) {
+                            p class="docs-nav-section-title" { (UNGROUPED_DOCS_LABEL) }
+                            @for page in registry.pages() {
+                                @if !is_grouped_doc_slug(&page.slug) {
                                     (docs_nav_link(page, active_slug))
                                 }
                             }
                         }
                     }
                 }
-                @if registry.pages().iter().any(|page| !is_grouped_doc_slug(&page.slug)) {
-                    section class="docs-nav-section" {
-                        p class="docs-nav-section-title" { (UNGROUPED_DOCS_LABEL) }
-                        @for page in registry.pages() {
-                            @if !is_grouped_doc_slug(&page.slug) {
-                                (docs_nav_link(page, active_slug))
-                            }
-                        }
-                    }
-                }
             }
+            script src=(disclosure_script_path) defer {}
         }
     }
 }

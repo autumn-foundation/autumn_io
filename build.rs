@@ -4,6 +4,7 @@ fn main() {
     println!("cargo:rerun-if-changed=static/css/input.css");
     println!("cargo:rerun-if-changed=static/css/site.css");
     println!("cargo:rerun-if-changed=static/js/copy-code.js");
+    println!("cargo:rerun-if-changed=static/js/docs-nav-disclosure.js");
     println!("cargo:rerun-if-changed=static/img/autumn-social.png");
     println!("cargo:rerun-if-changed=static/img/autumn-mark-68.png");
     println!("cargo:rerun-if-changed=static/img/autumn-mark-136.png");
@@ -66,6 +67,7 @@ fn static_asset_hash() -> u64 {
     for path in [
         "static/css/site.css",
         "static/js/copy-code.js",
+        "static/js/docs-nav-disclosure.js",
         "static/img/autumn-social.png",
         "static/img/autumn-mark-68.png",
         "static/img/autumn-mark-136.png",

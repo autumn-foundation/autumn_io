@@ -7,6 +7,7 @@ use autumn_io::site::{render_docs_page, render_home_page};
 const GUIDE_START_SLUG: &str = "getting-started";
 const SITE_CSS: &str = include_str!("../static/css/site.css");
 const COPY_CODE_JS: &str = include_str!("../static/js/copy-code.js");
+const DOCS_NAV_DISCLOSURE_JS: &str = include_str!("../static/js/docs-nav-disclosure.js");
 
 const QUICKSTART_SOURCE: &str = r#"+++
 title = "Quickstart"
@@ -165,6 +166,62 @@ fn rendered_docs_page_contains_nav_toc_and_copyable_code_block() {
     assert!(html.contains(r#"<span class="code-language">Rust</span>"#));
     assert!(html.contains(r#"<span class="code-window-dots" aria-hidden="true">"#));
     assert!(html.contains("Next"));
+}
+
+#[test]
+fn docs_sidebar_nav_links_render_inside_a_native_disclosure() {
+    // On narrow viewports the 140-link sidebar nav sat first in DOM order,
+    // forcing keyboard/AT users to tab through every link before reaching
+    // the article (issue #25). Wrapping the link list in <details>/<summary>
+    // lets a small script collapse it by default on mobile, without
+    // reordering the DOM (which would break screen-reader source order).
+    let registry = DocRegistry::from_sources([
+        DocSource::new("quickstart", QUICKSTART_SOURCE),
+        DocSource::new("routing", ROUTING_SOURCE),
+    ])
+    .expect("valid docs source should parse");
+    let page = registry.page("quickstart").expect("quickstart exists");
+    let html = render_docs_page(&registry, page).into_string();
+
+    // Server-rendered markup defaults to `open` so the nav stays fully
+    // usable with JavaScript disabled or before the script runs.
+    assert!(html.contains(r#"<details class="docs-nav-disclosure" open>"#));
+    assert!(html.contains(r#"<summary class="docs-nav-summary">Docs</summary>"#));
+
+    let sidebar = html
+        .split_once(r#"<aside id="docs-navigation" class="docs-sidebar""#)
+        .and_then(|(_, rest)| rest.split_once("</aside>"))
+        .map(|(sidebar, _)| sidebar)
+        .expect("docs sidebar should render");
+
+    let details_open = sidebar
+        .find("<details")
+        .expect("disclosure should wrap the nav links");
+    let first_link = sidebar
+        .find(r#"href="/docs/routing""#)
+        .expect("nav link should render");
+    let details_close = sidebar.find("</details>").expect("disclosure should close");
+    assert!(
+        details_open < first_link && first_link < details_close,
+        "nav links must render inside the <details> disclosure"
+    );
+
+    // The disclosure script only makes sense on pages that render the
+    // sidebar, so it ships alongside it rather than in the shared <head>.
+    assert!(html.contains("/static/js/docs-nav-disclosure.js?v="));
+}
+
+#[test]
+fn docs_sidebar_and_toc_navs_have_distinct_accessible_names() {
+    // axe-core flagged `landmark-unique`: both inner <nav> elements were
+    // unnamed and collided once both were visible (desktop widths).
+    let registry = DocRegistry::from_sources([DocSource::new("quickstart", QUICKSTART_SOURCE)])
+        .expect("valid docs source should parse");
+    let page = registry.page("quickstart").expect("quickstart exists");
+    let html = render_docs_page(&registry, page).into_string();
+
+    assert!(html.contains(r#"<nav aria-label="Docs sections">"#));
+    assert!(html.contains(r#"<nav aria-label="On this page">"#));
 }
 
 #[test]
@@ -909,6 +966,51 @@ fn css_places_docs_article_before_large_navigation_on_mobile() {
 }
 
 #[test]
+fn css_collapses_docs_nav_disclosure_on_mobile_and_stays_open_on_desktop() {
+    // Desktop keeps the current always-open, unmarked label look…
+    assert!(SITE_CSS.contains(".docs-nav-summary {"));
+    assert!(SITE_CSS.contains("list-style: none;"));
+    assert!(SITE_CSS.contains("::-webkit-details-marker"));
+    // …the focus outline rule already used for links/buttons also covers
+    // the summary, since <summary> isn't matched by either selector.
+    assert!(SITE_CSS.contains(".docs-nav-summary:focus-visible,"));
+    // …while narrow viewports turn it into a visible, tappable toggle.
+    assert!(SITE_CSS.contains(".docs-nav-disclosure[open] .docs-nav-summary::after"));
+}
+
+#[test]
+fn docs_nav_disclosure_script_defaults_open_state_from_the_1080px_breakpoint() {
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains(".docs-nav-disclosure"));
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("(max-width: 1080px)"));
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("matchMedia"));
+    // Pin the actual boolean direction (open when NOT narrow) rather than
+    // just checking the words exist: a sign-flip regression here would
+    // silently invert every default-open/closed state this issue is about.
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("disclosure.open = !narrow;"));
+    // Desktop must stay pixel-identical to today: the summary is taken out
+    // of the tab order there (so keyboard users can't reach a toggle that
+    // did nothing before), and a stray mouse click that closes it anyway is
+    // reverted immediately.
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("summary.tabIndex = narrow ? 0 : -1;"));
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains(
+        "disclosure.addEventListener(\"toggle\", () => {\n    if (!narrowViewport.matches) {\n      disclosure.open = true;"
+    ));
+    // The in-article "Browse docs" jump link must still reveal the nav, on
+    // first load and on repeat same-page clicks.
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("docs-mobile-nav-link"));
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("hashchange"));
+}
+
+#[test]
+fn docs_nav_disclosure_breakpoint_matches_the_css_layout_switch() {
+    // The JS default-open breakpoint and the CSS layout-reflow breakpoint
+    // are two independently hardcoded 1080px literals; nothing else ties
+    // them together, so pin both here rather than let them drift apart.
+    assert!(SITE_CSS.contains("@media (max-width: 1080px) {"));
+    assert!(DOCS_NAV_DISCLOSURE_JS.contains("\"(max-width: 1080px)\""));
+}
+
+#[test]
 fn css_keeps_markdown_tables_inside_the_article_column() {
     assert!(SITE_CSS.contains(".article-body table"));
     assert!(SITE_CSS.contains("overflow-x: auto;"));
@@ -998,7 +1100,10 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .send()
         .await
         .assert_status(200)
-        .assert_body_contains("Search the guides");
+        .assert_body_contains("Search the guides")
+        // render_docs_search_page shares docs_sidebar() with render_docs_page;
+        // confirm the mobile nav disclosure renders there too.
+        .assert_body_contains(r#"<details class="docs-nav-disclosure" open>"#);
 
     app.get("/docs/no-such-page")
         .send()
