@@ -16,6 +16,15 @@ primary_region = 'ord'
   min_machines_running = 0
   processes = ['app']
 
+# Lets Fly's built-in Prometheus scrape autumn-web's own
+# `/actuator/prometheus` endpoint (on by default; see `[actuator]` in
+# autumn.toml) into `https://api.fly.io/prometheus/<org-slug>`. No separate
+# exporter or port needed — the scrape target is the app's normal HTTP port.
+# This is what the `fly-autoscaler/` companion app queries; see its README.
+[metrics]
+  port = 3000
+  path = "/actuator/prometheus"
+
 [[vm]]
   # `memory` and `memory_mb` were both set, with different values. flyctl
   # resolves that in `computeToGuest`: it sets the guest's memory from `memory`,

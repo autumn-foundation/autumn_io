@@ -154,6 +154,17 @@ fn release_profile_keeps_unwinding_for_autumn_panic_isolation() {
     );
 }
 
+/// Fly's built-in Prometheus scraping needs to be told where the scrape
+/// endpoint lives. Without this block Fly never learns about
+/// `/actuator/prometheus`, and the `fly-autoscaler` companion app
+/// (`fly-autoscaler/fly.toml`) has nothing to query — see
+/// `fly-autoscaler/README.md`.
+#[test]
+fn fly_toml_exposes_the_prometheus_scrape_endpoint() {
+    assert!(FLY_TOML.contains("[metrics]"));
+    assert!(FLY_TOML.contains(r#"path = "/actuator/prometheus""#));
+}
+
 /// Stripping is the largest remaining size lever and it is declined.
 ///
 /// `src/bin/profile_docs_search.rs` already warns about it in prose —

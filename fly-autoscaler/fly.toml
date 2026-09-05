@@ -1,0 +1,52 @@
+# Companion app for Fly.io's metric-based autoscaling
+# (https://fly.io/docs/launch/autoscale-by-metric/). Deployed and billed as
+# its own tiny Fly app — separate from `autumn-io` itself — using Fly's
+# official `flyio/fly-autoscaler` image. It does not run any autumn_io code;
+# it just polls Fly's built-in Prometheus for autumn-io's request rate and
+# adjusts autumn-io's machine count via the Fly Machines API.
+#
+# Deliberately scoped to FAS_CREATED_MACHINE_COUNT, not
+# FAS_STARTED_MACHINE_COUNT: the root `../fly.toml` already owns start/stop
+# via `auto_stop_machines` / `auto_start_machines` / `min_machines_running =
+# 0` on the proxy's own connection-count signal (idle-to-zero). Having this
+# autoscaler also force machines started/stopped off a *different* signal
+# (request rate) would fight the proxy's decisions on the same machines. This
+# config instead only grows/shrinks the pool of autumn-io machine *objects*
+# that exist for the proxy to autostart into during real load, so idle-to-zero
+# economics are untouched.
+#
+# See ./README.md for the setup commands (app creation, tokens, secrets) —
+# none of that is done by committing this file.
+
+app = "autumn-io-autoscaler"
+primary_region = "ord"
+
+[build]
+  image = "flyio/fly-autoscaler:0.3"
+
+[env]
+  FAS_APP_NAME = "autumn-io"
+
+  # autumn-web's built-in `autumn_http_requests_total` counter — already
+  # scraped by Fly via `[metrics]` in the root fly.toml, no app code change
+  # needed.
+  #
+  # TODO: replace <ORG_SLUG> with the Fly org autumn-io deploys under
+  # (`fly orgs list`).
+  FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/<ORG_SLUG>"
+  FAS_PROMETHEUS_METRIC_NAME = "reqrate"
+  FAS_PROMETHEUS_QUERY = "sum(rate(autumn_http_requests_total{app=\"autumn-io\"}[1m]))"
+
+  # Pool size, not started-machine count (see the file header). Floor of 1 —
+  # a docs site is cheap to keep one machine object provisioned for — ceiling
+  # of 3, ~15 req/s budget per shared-cpu-1x/256mb machine. These are starting
+  # points, not measurements: tune the divisor and ceiling once real traffic
+  # numbers exist (`fly metrics` / the Fly dashboard after this has run for a
+  # while).
+  FAS_CREATED_MACHINE_COUNT = "max(1, min(3, ceil(reqrate / 15)))"
+
+# The autoscaler's own scrape endpoint (its internal reconciliation-loop
+# metrics, not autumn-io's).
+[metrics]
+  port = 9090
+  path = "/metrics"
