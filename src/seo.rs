@@ -27,9 +27,16 @@ pub fn absolute_url(path: &str) -> String {
     }
 }
 
+/// Path prefix for a guide page, shared with [`docs_path`] so the two never
+/// drift: [`crate::site::docs_nav_link`] interpolates this directly into a
+/// `format_args!` rather than calling `docs_path`, since `format_args!`
+/// can't be returned from a function (its argument array is a temporary
+/// tied to the creating expression).
+pub const DOCS_PATH_PREFIX: &str = "/docs/";
+
 #[must_use]
 pub fn docs_path(slug: &str) -> String {
-    format!("/docs/{slug}")
+    format!("{DOCS_PATH_PREFIX}{slug}")
 }
 
 #[must_use]

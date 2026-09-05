@@ -670,13 +670,19 @@ pub fn render_docs_search_page(registry: &DocRegistry, query: &str, results: Mar
     }
 }
 
+/// Renders `href` via `format_args!` directly into maud's output buffer
+/// rather than `seo::docs_path(&page.slug)`: `docs_path` allocates and
+/// returns an owned `String` that maud's attribute writer would immediately
+/// escape into the buffer and then drop. `Arguments`'s `Render` impl writes
+/// straight to the buffer, so this link — rendered once per registry page,
+/// once per full sidebar render — skips that allocation entirely.
 fn docs_nav_link(page: &DocPage, active_slug: Option<&str>) -> Markup {
     if active_slug == Some(page.slug.as_str()) {
         html! {
             a
                 class="docs-nav-link active"
                 aria-current="page"
-                href=(seo::docs_path(&page.slug))
+                href=(format_args!("{}{}", seo::DOCS_PATH_PREFIX, page.slug))
             {
                 span { (&page.title) }
             }
@@ -685,7 +691,7 @@ fn docs_nav_link(page: &DocPage, active_slug: Option<&str>) -> Markup {
         html! {
             a
                 class="docs-nav-link"
-                href=(seo::docs_path(&page.slug))
+                href=(format_args!("{}{}", seo::DOCS_PATH_PREFIX, page.slug))
             {
                 span { (&page.title) }
             }
