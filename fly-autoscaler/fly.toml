@@ -33,7 +33,7 @@ primary_region = "ord"
   #
   # TODO: replace <ORG_SLUG> with the Fly org autumn-io deploys under
   # (`fly orgs list`).
-  FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/<ORG_SLUG>"
+  FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/personal"
   FAS_PROMETHEUS_METRIC_NAME = "reqrate"
   FAS_PROMETHEUS_QUERY = "sum(rate(autumn_http_requests_total{app=\"autumn-io\"}[1m]))"
 
