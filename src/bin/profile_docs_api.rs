@@ -1,35 +1,35 @@
 //! Per-request docs-API/MCP harness.
 //!
-//! `/api/docs`, `/api/docs/{slug}`, and the MCP tools built from the same
-//! handlers (`content/guide/mcp.md`) are thin `axum` wrappers — `Query`,
-//! `Path`, and `Json` — around `DocRegistry`/`DocPage` methods and
-//! `site::doc_group_label`. This harness calls those directly, the same way
-//! `profile_docs_search` calls `SearchIndex::search` rather than going
-//! through `search_autumn_docs`: the extractors and JSON serialization are
-//! framework code, not logic this site controls, and `/api/search` is
-//! already covered by `profile_docs_search` since it shares
-//! `SearchIndex::search` with the HTML search box.
+//! `/api/search` (and the MCP `search_autumn_docs` tool built from the same
+//! handler) is already covered by `profile_docs_search`, since it shares
+//! `SearchIndex::search` with the HTML search box. `list_autumn_docs` and
+//! `get_autumn_doc` — and the MCP tools autumn-web derives from them — had no
+//! profiling coverage at all.
+//!
+//! This calls those two handlers directly rather than reimplementing their
+//! logic: an earlier version of this harness summed `doc_group_label` and
+//! `DocPage::section` results by hand, and two rounds of review kept finding
+//! real per-request work (the group-tally allocations, `GuideSummary`'s
+//! description abridging, `gate_by_size`, `GuideSectionRef`/`GuideDocument`
+//! construction) it left out. Calling the handlers themselves closes that gap
+//! for good instead of chasing it function by function. `list_autumn_docs`
+//! and `get_autumn_doc` are `async fn` only because Autumn's route macros
+//! require the signature — neither contains an `.await` — so [`block_on`]
+//! polls each call once against [`Waker::noop`] rather than pulling in a
+//! runtime.
 //!
 //! Two request shapes, matching the two remaining handlers in `api.rs`:
 //!
-//! - **List** (`list_autumn_docs`): one unfiltered request plus one filtered
-//!   request per group actually present in the corpus, each simulated as its
-//!   own independent call via [`simulate_list_request`] — every call redoes
-//!   the handler's full unfiltered tally pass from scratch (there is no
-//!   cross-request cache), so amortizing the tally across the 14 simulated
-//!   calls would undercount the path the same way running it once would.
-//! - **Read + narrow** (`get_autumn_doc`): for every guide, the whole-guide
-//!   fetch — `page.markdown.clone()` and `page.preamble().to_owned()`,
-//!   matching the handler's own `(page.markdown.clone(), page.toc.as_slice(),
-//!   page.preamble().to_owned())` for the no-`section` case, so the clones'
-//!   allocations count rather than just their lengths — then
-//!   `DocPage::section` for every heading in `page.toc`: every id the
-//!   whole-guide response's `sections` field lists as narrowable. That is
-//!   not a hypothetical path: `get_autumn_doc`'s own docs describe it as the
+//! - **List**: one unfiltered `list_autumn_docs` call, plus one filtered call
+//!   per group its own response lists — the same discovery path an agent
+//!   would follow.
+//! - **Read + narrow**: for every guide, the whole-guide `get_autumn_doc`
+//!   call, then one more call per heading in the whole-guide response's own
+//!   `sections` list — every id it lists as narrowable. That is not a
+//!   hypothetical path: `get_autumn_doc`'s own docs describe it as the
 //!   required next call for `deployment.md` (over 150 KB) and
 //!   `generators.md`, both of which upstream ships today, so an agent
-//!   reading either guide triggers `DocPage::section` on its very first
-//!   follow-up call.
+//!   reading either guide triggers it on its very first follow-up call.
 //!
 //! ```bash
 //! cargo build --release --bin profile_docs_api
@@ -52,80 +52,75 @@
 //!     ./target/release/profile_docs_api
 //! ```
 
-use autumn_io::docs::DocRegistry;
-use autumn_io::site;
+use std::future::Future;
+use std::pin::pin;
+use std::task::{Context, Poll, Waker};
 
-/// One `list_autumn_docs` call: the handler's own unfiltered tally pass
-/// (always runs, filtered or not), then its `.filter().map(guide_summary)`
-/// pass — `Option::is_none_or` short-circuits the filter closure's own
-/// `doc_group_label` call when `group` is `None`, exactly as the handler's
-/// `filter.as_deref().is_none_or(...)` does, so an unfiltered call pays for
-/// the filter pass only in the (skipped) closure calls it would have made.
-fn simulate_list_request(registry: &DocRegistry, group: Option<&str>) -> usize {
-    let mut total = 0usize;
+use autumn_io::api::{GetDocQuery, ListDocsQuery, get_autumn_doc, list_autumn_docs};
+use autumn_web::extract::{Path, Query};
 
-    for page in registry.pages() {
-        total += site::doc_group_label(&page.slug).len();
+/// Poll `future` once and return its output, panicking if it is not ready
+/// immediately.
+///
+/// Sound here specifically because `list_autumn_docs`/`get_autumn_doc`
+/// contain no `.await` (confirmed by grep, not just by reading): they are
+/// `async fn` only because Autumn's route macros require it, so the first
+/// poll always resolves and nothing ever calls the waker it was given.
+fn block_on<F: Future>(future: F) -> F::Output {
+    let mut future = pin!(future);
+    let mut cx = Context::from_waker(Waker::noop());
+    match future.as_mut().poll(&mut cx) {
+        Poll::Ready(value) => value,
+        Poll::Pending => unreachable!("docs API handlers never suspend"),
     }
-
-    let matching: Vec<_> = registry
-        .pages()
-        .iter()
-        .filter(|page| {
-            group.is_none_or(|name| {
-                total += 1; // the filter closure's own doc_group_label call
-                site::doc_group_label(&page.slug) == name
-            })
-        })
-        .collect();
-
-    for page in matching {
-        total += site::doc_group_label(&page.slug).len();
-    }
-
-    total
 }
 
 fn main() {
     let registry = autumn_io::site_docs().expect("embedded guides render");
 
-    let mut group_names: Vec<&'static str> = Vec::new();
-    for page in registry.pages() {
-        let name = site::doc_group_label(&page.slug);
-        if !group_names.contains(&name) {
-            group_names.push(name);
-        }
+    let index = block_on(list_autumn_docs(Query(ListDocsQuery { group: None })))
+        .expect("unfiltered list_autumn_docs succeeds")
+        .0;
+    let mut list_total = index.guides.len();
+    for group in &index.groups {
+        let filtered = block_on(list_autumn_docs(Query(ListDocsQuery {
+            group: Some(group.name.clone()),
+        })))
+        .expect("filtered list_autumn_docs succeeds")
+        .0;
+        list_total += filtered.guides.len();
     }
 
-    // One unfiltered list_autumn_docs call, plus one filtered call per group
-    // actually present in the corpus — each its own independent request.
-    let mut list_total = simulate_list_request(registry, None);
-    for name in &group_names {
-        list_total += simulate_list_request(registry, Some(name));
-    }
-
-    // get_autumn_doc: whole-guide fetch plus narrowing into every listed
-    // section, for every guide.
     let mut read_total = 0usize;
     let mut sections_visited = 0usize;
     for page in registry.pages() {
-        let markdown = page.markdown.clone();
-        let preamble = page.preamble().to_owned();
-        read_total += markdown.len();
-        read_total += preamble.len();
+        let whole = block_on(get_autumn_doc(
+            Path(page.slug.clone()),
+            Query(GetDocQuery { section: None }),
+        ))
+        .expect("whole-guide get_autumn_doc succeeds")
+        .0;
+        read_total += whole.markdown.as_deref().map_or(0, str::len);
+        read_total += whole.sections.len();
+
         for item in &page.toc {
-            if let Some(section) = page.section(&item.id) {
-                read_total += section.markdown.len();
-                read_total += section.preamble.len();
-                read_total += page.subsections(&item.id).len();
-                sections_visited += 1;
-            }
+            let section = block_on(get_autumn_doc(
+                Path(page.slug.clone()),
+                Query(GetDocQuery {
+                    section: Some(item.id.clone()),
+                }),
+            ))
+            .expect("section get_autumn_doc succeeds")
+            .0;
+            read_total += section.markdown.as_deref().map_or(0, str::len);
+            read_total += section.sections.len();
+            sections_visited += 1;
         }
     }
 
     println!(
         "pages={} groups={} list_total={list_total} read_total={read_total} sections_visited={sections_visited}",
         registry.pages().len(),
-        group_names.len()
+        index.groups.len()
     );
 }
