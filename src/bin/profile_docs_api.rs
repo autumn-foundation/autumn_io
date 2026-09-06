@@ -12,14 +12,18 @@
 //!
 //! Two request shapes, matching the two remaining handlers in `api.rs`:
 //!
-//! - **List** (`list_autumn_docs`): one unfiltered tally of every page's
-//!   group via `site::doc_group_label`, plus one filtered tally per group
-//!   actually present in the corpus — the handler's filter closure calls
-//!   `doc_group_label` again for *every* page regardless of match, so a
-//!   filtered call cost the same tally pass twice.
+//! - **List** (`list_autumn_docs`): one unfiltered request plus one filtered
+//!   request per group actually present in the corpus, each simulated as its
+//!   own independent call via [`simulate_list_request`] — every call redoes
+//!   the handler's full unfiltered tally pass from scratch (there is no
+//!   cross-request cache), so amortizing the tally across the 14 simulated
+//!   calls would undercount the path the same way running it once would.
 //! - **Read + narrow** (`get_autumn_doc`): for every guide, the whole-guide
-//!   fetch (`page.markdown.clone()`, `page.preamble()`), then
-//!   `DocPage::section` for every heading in `page.toc` — every id the
+//!   fetch — `page.markdown.clone()` and `page.preamble().to_owned()`,
+//!   matching the handler's own `(page.markdown.clone(), page.toc.as_slice(),
+//!   page.preamble().to_owned())` for the no-`section` case, so the clones'
+//!   allocations count rather than just their lengths — then
+//!   `DocPage::section` for every heading in `page.toc`: every id the
 //!   whole-guide response's `sections` field lists as narrowable. That is
 //!   not a hypothetical path: `get_autumn_doc`'s own docs describe it as the
 //!   required next call for `deployment.md` (over 150 KB) and
@@ -48,29 +52,56 @@
 //!     ./target/release/profile_docs_api
 //! ```
 
+use autumn_io::docs::DocRegistry;
 use autumn_io::site;
+
+/// One `list_autumn_docs` call: the handler's own unfiltered tally pass
+/// (always runs, filtered or not), then its `.filter().map(guide_summary)`
+/// pass — `Option::is_none_or` short-circuits the filter closure's own
+/// `doc_group_label` call when `group` is `None`, exactly as the handler's
+/// `filter.as_deref().is_none_or(...)` does, so an unfiltered call pays for
+/// the filter pass only in the (skipped) closure calls it would have made.
+fn simulate_list_request(registry: &DocRegistry, group: Option<&str>) -> usize {
+    let mut total = 0usize;
+
+    for page in registry.pages() {
+        total += site::doc_group_label(&page.slug).len();
+    }
+
+    let matching: Vec<_> = registry
+        .pages()
+        .iter()
+        .filter(|page| {
+            group.is_none_or(|name| {
+                total += 1; // the filter closure's own doc_group_label call
+                site::doc_group_label(&page.slug) == name
+            })
+        })
+        .collect();
+
+    for page in matching {
+        total += site::doc_group_label(&page.slug).len();
+    }
+
+    total
+}
 
 fn main() {
     let registry = autumn_io::site_docs().expect("embedded guides render");
 
-    // list_autumn_docs: one unfiltered tally, plus one filtered tally per
-    // group actually present in the corpus — the same two passes the
-    // handler runs per request, filtered or not.
     let mut group_names: Vec<&'static str> = Vec::new();
-    let mut list_total = 0usize;
     for page in registry.pages() {
         let name = site::doc_group_label(&page.slug);
         if !group_names.contains(&name) {
             group_names.push(name);
         }
-        list_total += name.len();
     }
+
+    // One unfiltered list_autumn_docs call, plus one filtered call per group
+    // actually present in the corpus — each its own independent request.
+    let mut list_total = simulate_list_request(registry, None);
     for name in &group_names {
-        for page in registry.pages() {
-            if site::doc_group_label(&page.slug) == *name {
-                list_total += 1;
-            }
-        }
+        list_total += simulate_list_request(registry, Some(name));
     }
 
     // get_autumn_doc: whole-guide fetch plus narrowing into every listed
@@ -78,8 +109,10 @@ fn main() {
     let mut read_total = 0usize;
     let mut sections_visited = 0usize;
     for page in registry.pages() {
-        read_total += page.markdown.len();
-        read_total += page.preamble().len();
+        let markdown = page.markdown.clone();
+        let preamble = page.preamble().to_owned();
+        read_total += markdown.len();
+        read_total += preamble.len();
         for item in &page.toc {
             if let Some(section) = page.section(&item.id) {
                 read_total += section.markdown.len();
