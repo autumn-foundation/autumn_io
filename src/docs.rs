@@ -992,25 +992,6 @@ fn render_markdown_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Ve
                 let code = collect_code_block_text(&mut events);
                 rendered.push(Event::Html(render_code_block(&kind, &code).into()));
             }
-            Event::Start(Tag::Link {
-                link_type,
-                dest_url,
-                title,
-                id,
-            }) => {
-                let dest_url = rewrite_link_destination(dest_url.as_ref())
-                    .map(CowStr::from)
-                    .unwrap_or(dest_url);
-                rendered.push(Event::Start(Tag::Link {
-                    link_type,
-                    dest_url,
-                    title,
-                    id,
-                }));
-            }
-            Event::Html(html) | Event::InlineHtml(html) => {
-                rendered.push(Event::Html(html_escaped_text(html.as_ref()).into()));
-            }
             Event::Start(Tag::TableHead) => {
                 in_table_head = true;
                 rendered.push(event);
@@ -1032,15 +1013,42 @@ fn render_markdown_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Ve
                         r#"<span class="sr-only">Row label</span>"#.into(),
                     ));
                 } else {
-                    rendered.extend(cell);
+                    // Buffered events skipped the match arms below, so run
+                    // them through the same escaping/rewriting by hand.
+                    rendered.extend(cell.into_iter().map(transform_inline_event));
                 }
                 rendered.push(Event::End(TagEnd::TableCell));
             }
-            event => rendered.push(event),
+            event => rendered.push(transform_inline_event(event)),
         }
     }
 
     rendered
+}
+
+fn transform_inline_event(event: Event<'_>) -> Event<'_> {
+    match event {
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => {
+            let dest_url = rewrite_link_destination(dest_url.as_ref())
+                .map(CowStr::from)
+                .unwrap_or(dest_url);
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                title,
+                id,
+            })
+        }
+        Event::Html(html) | Event::InlineHtml(html) => {
+            Event::Html(html_escaped_text(html.as_ref()).into())
+        }
+        event => event,
+    }
 }
 
 fn collect_table_cell_events<'a>(events: &mut impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>> {
@@ -1419,6 +1427,19 @@ mod tests {
 
         assert!(rendered.html.contains("<td></td>"));
         assert!(!rendered.html.contains("sr-only"));
+    }
+
+    #[test]
+    fn raw_html_in_a_non_empty_table_header_cell_is_still_escaped() {
+        // A non-empty header cell's content is buffered to check for
+        // emptiness, then replayed; it must go through the same escaping
+        // as everything else, not bypass it (would otherwise re-open the
+        // XSS this renderer already closes for prose and code blocks).
+        let rendered =
+            render_markdown("| <script>alert(1)</script> | B |\n| --- | --- |\n| x | y |\n");
+
+        assert!(!rendered.html.contains("<script>"));
+        assert!(rendered.html.contains("&lt;script&gt;"));
     }
 
     fn sample_registry() -> DocRegistry {
