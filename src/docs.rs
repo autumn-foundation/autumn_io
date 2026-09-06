@@ -1004,6 +1004,7 @@ pub fn slugify_heading(heading: &str) -> String {
 fn render_markdown_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Vec<Event<'a>> {
     let mut rendered = Vec::new();
     let mut events = events.into_iter();
+    let mut in_table_head = false;
 
     while let Some(event) = events.next() {
         match event {
@@ -1011,30 +1012,76 @@ fn render_markdown_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Ve
                 let code = collect_code_block_text(&mut events);
                 rendered.push(Event::Html(render_code_block(&kind, &code).into()));
             }
+            Event::Start(Tag::TableHead) => {
+                in_table_head = true;
+                rendered.push(event);
+            }
+            Event::End(TagEnd::TableHead) => {
+                in_table_head = false;
+                rendered.push(event);
+            }
+            Event::Start(Tag::TableCell) if in_table_head => {
+                // Some guide tables use a blank header cell for a row-label
+                // column (row labels live in bold body cells instead). A
+                // screen reader announces nothing for that column, so give
+                // an empty header cell a visually-hidden name (axe:
+                // empty-table-header).
+                let cell = collect_table_cell_events(&mut events);
+                rendered.push(Event::Start(Tag::TableCell));
+                if cell.is_empty() {
+                    rendered.push(Event::Html(
+                        r#"<span class="sr-only">Row label</span>"#.into(),
+                    ));
+                } else {
+                    // Buffered events skipped the match arms below, so run
+                    // them through the same escaping/rewriting by hand.
+                    rendered.extend(cell.into_iter().map(transform_inline_event));
+                }
+                rendered.push(Event::End(TagEnd::TableCell));
+            }
+            event => rendered.push(transform_inline_event(event)),
+        }
+    }
+
+    rendered
+}
+
+fn transform_inline_event(event: Event<'_>) -> Event<'_> {
+    match event {
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => {
+            let dest_url = rewrite_link_destination(dest_url.as_ref())
+                .map(CowStr::from)
+                .unwrap_or(dest_url);
             Event::Start(Tag::Link {
                 link_type,
                 dest_url,
                 title,
                 id,
-            }) => {
-                let dest_url = rewrite_link_destination(dest_url.as_ref())
-                    .map(CowStr::from)
-                    .unwrap_or(dest_url);
-                rendered.push(Event::Start(Tag::Link {
-                    link_type,
-                    dest_url,
-                    title,
-                    id,
-                }));
-            }
-            Event::Html(html) | Event::InlineHtml(html) => {
-                rendered.push(Event::Html(html_escaped_text(html.as_ref()).into()));
-            }
-            event => rendered.push(event),
+            })
         }
+        Event::Html(html) | Event::InlineHtml(html) => {
+            Event::Html(html_escaped_text(html.as_ref()).into())
+        }
+        event => event,
+    }
+}
+
+fn collect_table_cell_events<'a>(events: &mut impl Iterator<Item = Event<'a>>) -> Vec<Event<'a>> {
+    let mut cell = Vec::new();
+
+    for event in events.by_ref() {
+        if matches!(event, Event::End(TagEnd::TableCell)) {
+            break;
+        }
+        cell.push(event);
     }
 
-    rendered
+    cell
 }
 
 fn rewrite_link_destination(destination: &str) -> Option<String> {
@@ -1354,6 +1401,65 @@ mod tests {
 
         assert!(rendered.contains(r#"<span class="code-language">Evil&lt;script&gt;</span>"#));
         assert!(!rendered.contains(r#"<span class="code-language">Evil<script></span>"#));
+    }
+
+    #[test]
+    fn empty_table_header_cells_get_a_visually_hidden_label() {
+        let rendered =
+            render_markdown("| | when it runs |\n| --- | --- |\n| **First** | before start |\n");
+
+        assert!(
+            rendered
+                .html
+                .contains(r#"<th><span class="sr-only">Row label</span></th>"#)
+        );
+        assert!(!rendered.html.contains("<th></th>"));
+    }
+
+    #[test]
+    fn empty_aligned_table_header_cells_also_get_a_visually_hidden_label() {
+        // A `:---` column alignment makes pulldown-cmark add a `style`
+        // attribute to `<th>`, so it never renders the bare `<th></th>`
+        // that a naive string search would look for.
+        let rendered =
+            render_markdown("| | when it runs |\n| :--- | --- |\n| **First** | before start |\n");
+
+        assert!(
+            rendered
+                .html
+                .contains(r#"<span class="sr-only">Row label</span>"#)
+        );
+    }
+
+    #[test]
+    fn non_empty_table_header_cells_are_left_untouched() {
+        let rendered = render_markdown("| Name | Value |\n| --- | --- |\n| a | 1 |\n");
+
+        assert!(rendered.html.contains("<th>Name</th>"));
+        assert!(!rendered.html.contains("sr-only"));
+    }
+
+    #[test]
+    fn empty_table_body_cells_do_not_get_a_header_label() {
+        // Only header cells stand in for a missing column name; an empty
+        // body cell is just a cell with no value and must stay empty.
+        let rendered = render_markdown("| Name | Value |\n| --- | --- |\n| a | |\n");
+
+        assert!(rendered.html.contains("<td></td>"));
+        assert!(!rendered.html.contains("sr-only"));
+    }
+
+    #[test]
+    fn raw_html_in_a_non_empty_table_header_cell_is_still_escaped() {
+        // A non-empty header cell's content is buffered to check for
+        // emptiness, then replayed; it must go through the same escaping
+        // as everything else, not bypass it (would otherwise re-open the
+        // XSS this renderer already closes for prose and code blocks).
+        let rendered =
+            render_markdown("| <script>alert(1)</script> | B |\n| --- | --- |\n| x | y |\n");
+
+        assert!(!rendered.html.contains("<script>"));
+        assert!(rendered.html.contains("&lt;script&gt;"));
     }
 
     fn sample_registry() -> DocRegistry {
