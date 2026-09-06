@@ -511,18 +511,17 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
 /// which is not what this site's renderer emits (`secured-role`, `api-doc`).
 /// The sync tool rewrites those onto real heading IDs; this asserts none is
 /// left dangling, so a reader who follows one actually lands on the heading.
+///
+/// The two fragments once allowlisted here as "broken upstream too"
+/// (`mail-compliance` -> `mail.md#deferred-delivery`,
+/// `authorization` -> `macro-transparency.md#authorize`) are fixed directly
+/// in the vendored snapshot rather than tracked as known debt — see
+/// `content/guide/mail-compliance.md` and `content/guide/authorization.md`.
+/// If a future re-sync from upstream reintroduces either, this test (and the
+/// corpus-wide `exported_site_has_no_dead_internal_links`) will catch it.
 #[test]
 fn vendored_link_fragments_resolve_to_real_heading_ids() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
-
-    // Fragments that are broken upstream too: hand-written stubs matching no
-    // heading under either convention, so there is nothing to rewrite them to.
-    // The sync tool leaves an unresolvable fragment exactly as authored rather
-    // than guessing at a heading and sending the reader somewhere wrong.
-    let dangling_upstream = [
-        ("mail-compliance", "/docs/mail#deferred-delivery"),
-        ("authorization", "/docs/macro-transparency#authorize"),
-    ];
 
     let mut unresolved = Vec::new();
     for page in registry.pages() {
@@ -548,12 +547,6 @@ fn vendored_link_fragments_resolve_to_real_heading_ids() {
                 continue;
             };
             if target.toc.iter().any(|item| item.id == fragment) {
-                continue;
-            }
-            if dangling_upstream
-                .iter()
-                .any(|(slug, link)| *slug == page.slug && *link == href)
-            {
                 continue;
             }
             unresolved.push(format!("{} -> {href}", page.slug));
@@ -1338,6 +1331,119 @@ fn export_site_refuses_output_dirs_that_contain_the_static_source_tree() {
         source_asset_preserved,
         "unsafe export must not delete static assets contained by the output dir"
     );
+}
+
+/// Corpus-wide link check: every `href` in the exported site must be an
+/// external URL, a same-page fragment with a matching `id`, or an absolute
+/// site path that actually exists in the export — otherwise it is a dead
+/// link a reader can click into mid-task. Runs against the real bundled
+/// guide corpus (not fixtures) so it catches drift in `content/guide` itself,
+/// not just the rendering pipeline.
+#[test]
+fn exported_site_has_no_dead_internal_links() {
+    let workspace = unique_temp_dir("autumn-io-link-check");
+    let dist = workspace.join("dist");
+    let registry = autumn_io::site_docs().expect("bundled docs should load");
+    export_site(registry, &ExportConfig::new(&dist)).expect("site should export");
+
+    let mut broken = Vec::new();
+    for html_path in html_files_under(&dist) {
+        let html = std::fs::read_to_string(&html_path).expect("exported html should be readable");
+        // Inline code keeps HTML syntax shown as prose (e.g. `<a href="#panel-id">`
+        // demonstrating generated markup) unescaped apart from `<`/`>`, so a raw
+        // `href="` can appear in text that was never a real link.
+        let content_only = strip_code_spans(&html);
+        for href in html_hrefs(&content_only) {
+            if let Some(problem) = dead_link_reason(&dist, &html, href) {
+                broken.push(format!(
+                    "{}: href=\"{href}\" ({problem})",
+                    html_path
+                        .strip_prefix(&dist)
+                        .unwrap_or(&html_path)
+                        .display()
+                ));
+            }
+        }
+    }
+
+    std::fs::remove_dir_all(workspace).expect("cleanup link-check export");
+
+    assert!(
+        broken.is_empty(),
+        "found dead links in the exported site:\n{}",
+        broken.join("\n")
+    );
+}
+
+fn html_files_under(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+
+    while let Some(current) = stack.pop() {
+        for entry in std::fs::read_dir(&current).expect("export dir should be readable") {
+            let entry = entry.expect("export entry should be readable");
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("html") {
+                files.push(path);
+            }
+        }
+    }
+
+    files
+}
+
+/// `None` when `href` resolves to something real; `Some(reason)` otherwise.
+/// `own_html` is the page the link was found on, used to check same-page
+/// fragments.
+fn dead_link_reason(dist: &std::path::Path, own_html: &str, href: &str) -> Option<&'static str> {
+    let lower = href.to_ascii_lowercase();
+    if lower.starts_with("https://")
+        || lower.starts_with("http://")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("tel:")
+    {
+        return None;
+    }
+
+    if let Some(fragment) = href.strip_prefix('#') {
+        return (!has_id(own_html, fragment)).then_some("same-page fragment has no matching id");
+    }
+
+    let Some(path) = href.strip_prefix('/') else {
+        return Some(
+            "href is neither an absolute site path, a same-page fragment, nor an external URL",
+        );
+    };
+
+    let (path, fragment) = path
+        .split_once('#')
+        .map_or((path, None), |(p, f)| (p, Some(f)));
+    // Cache-busting query strings (`?v=<hash>`) are not part of the file path.
+    let path = path.split('?').next().unwrap_or(path);
+    let target = if path.is_empty() {
+        dist.join("index.html")
+    } else if dist.join(path).is_dir() {
+        dist.join(path).join("index.html")
+    } else {
+        dist.join(path)
+    };
+
+    match std::fs::read_to_string(&target) {
+        Ok(target_html) => match fragment {
+            Some(fragment) if !fragment.is_empty() && !has_id(&target_html, fragment) => {
+                Some("target page has no matching id for the linked fragment")
+            }
+            _ => None,
+        },
+        Err(_) if target.exists() => None,
+        Err(_) => Some("target path does not exist in the exported site"),
+    }
+}
+
+fn has_id(html: &str, id: &str) -> bool {
+    html.contains(&format!("id=\"{id}\""))
 }
 
 fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
