@@ -112,20 +112,27 @@ impl DocPage {
     /// This is what keeps the largest guides usable over MCP: `deployment.md`
     /// is 150 KB of Markdown, far more than an agent wants in one tool result,
     /// but a single section of it is a few kilobytes.
+    ///
+    /// `markdown` and `toc` are both `pub`, so nothing stops a caller from
+    /// cloning a page and editing one without the other; `heading_offsets`
+    /// has no such guard either. Every offset this reads is therefore
+    /// checked rather than indexed directly, so a caller that breaks that
+    /// invariant gets `None` back — the same answer as "no such heading" —
+    /// rather than a panic from slicing `markdown` at a stale offset.
     #[must_use]
     pub fn section(&self, id: &str) -> Option<DocSection> {
         let start_index = self.toc.iter().position(|item| item.id == id)?;
         let level = self.toc[start_index].level;
         let end_index = self.section_end_index(start_index, level);
 
-        let start = self.heading_offsets[start_index];
+        let start = *self.heading_offsets.get(start_index)?;
         let end = self
             .heading_offsets
             .get(end_index)
             .copied()
             .unwrap_or(self.markdown.len());
 
-        let untrimmed = &self.markdown[start..end];
+        let untrimmed = self.markdown.get(start..end)?;
         let markdown = untrimmed.trim_end().to_owned();
 
         // The first heading nested inside this section, if any, is exactly
@@ -133,11 +140,18 @@ impl DocPage {
         // ended the section earlier, since `end_index` is the first heading
         // at or above `level`, so everything strictly before it is nested.
         let preamble_len = if start_index + 1 < end_index {
-            (self.heading_offsets[start_index + 1] - start).min(markdown.len())
+            self.heading_offsets
+                .get(start_index + 1)
+                .and_then(|&next| next.checked_sub(start))
+                .map_or(markdown.len(), |len| len.min(markdown.len()))
         } else {
             markdown.len()
         };
-        let preamble = markdown[..preamble_len].trim_end().to_owned();
+        let preamble = markdown
+            .get(..preamble_len)
+            .unwrap_or(&markdown)
+            .trim_end()
+            .to_owned();
 
         Some(DocSection {
             id: id.to_owned(),
@@ -187,8 +201,12 @@ impl DocPage {
     /// introduction needs the same fallback the size gate gives a section.
     #[must_use]
     pub fn preamble(&self) -> &str {
-        match self.heading_offsets.first() {
-            Some(&offset) => self.markdown[..offset].trim_end(),
+        match self
+            .heading_offsets
+            .first()
+            .and_then(|&offset| self.markdown.get(..offset))
+        {
+            Some(prefix) => prefix.trim_end(),
             None => self.markdown.trim_end(),
         }
     }
@@ -1350,6 +1368,32 @@ mod tests {
             ),
         ])
         .expect("sample registry builds")
+    }
+
+    /// `markdown` and `toc` are both `pub`, so nothing in the type system
+    /// stops a caller from cloning a page and mutating one without the
+    /// other — `heading_offsets` then describes a string that no longer
+    /// exists. `section`/`preamble` must degrade to `None`/the whole
+    /// trimmed string rather than panic by indexing `markdown` at a stale
+    /// offset, since a caller that does this gets to see a wrong answer,
+    /// not a crash.
+    #[test]
+    fn section_and_preamble_degrade_safely_when_markdown_is_mutated_after_toc() {
+        let registry = sample_registry();
+        let mut page = registry
+            .page("widgets")
+            .expect("fixture page exists")
+            .clone();
+        let original_id = page.toc[0].id.clone();
+        assert!(
+            page.heading_offsets[0] > 0,
+            "fixture's first heading should not start at byte 0"
+        );
+
+        page.markdown = String::new();
+
+        assert_eq!(page.section(&original_id), None);
+        assert_eq!(page.preamble(), "");
     }
 
     #[test]
