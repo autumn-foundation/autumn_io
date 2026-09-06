@@ -56,6 +56,13 @@ pub struct DocPage {
     /// ids [`DocPage::section`] derives from it match the `#anchor` fragments
     /// the site puts on the rendered page.
     pub markdown: String,
+    /// Byte offset into [`markdown`](DocPage::markdown) of each heading in
+    /// [`toc`](DocPage::toc), parallel to it index-for-index. Computed once by
+    /// [`add_heading_ids`] over the same walk that builds `toc`, so
+    /// [`DocPage::section`] and [`DocPage::preamble`] can jump straight to a
+    /// heading instead of re-walking `markdown` from the start and
+    /// recomputing every id before it on every call.
+    heading_offsets: Vec<usize>,
 }
 
 /// In-page table of contents item generated from Markdown headings.
@@ -93,60 +100,49 @@ impl DocPage {
     /// The ids are exactly those in [`DocPage::toc`] — the anchors the rendered
     /// page carries — because both walks run over the same
     /// [`markdown`](DocPage::markdown) with the same fence tracking and
-    /// duplicate-id numbering.
+    /// duplicate-id numbering. That equivalence is what lets this look the id
+    /// up in `toc` and jump straight to [`heading_offsets`](DocPage::heading_offsets)
+    /// rather than re-walking `markdown` line by line and recomputing every
+    /// id before it, the way this used to work: profiled at 88,081,209
+    /// instructions (`DocPage::section` plus the `unique_heading_id` calls it
+    /// made) on a harness that narrows into every heading of every guide once
+    /// — about 27% of that harness's own per-call cost, isolated the same way
+    /// issue #19/#41 isolate `profile_docs_page_render`.
     ///
     /// This is what keeps the largest guides usable over MCP: `deployment.md`
     /// is 150 KB of Markdown, far more than an agent wants in one tool result,
     /// but a single section of it is a few kilobytes.
     #[must_use]
     pub fn section(&self, id: &str) -> Option<DocSection> {
-        let mut used_ids = HashMap::<String, usize>::new();
-        let mut in_fence = false;
-        let mut open: Option<(u8, String)> = None;
-        let mut markdown = String::new();
-        let mut preamble_len: Option<usize> = None;
+        let start_index = self.toc.iter().position(|item| item.id == id)?;
+        let level = self.toc[start_index].level;
+        let end_index = self.section_end_index(start_index, level);
 
-        for line in self.markdown.lines() {
-            let is_fence = line.trim_start().starts_with("```");
-            if is_fence {
-                in_fence = !in_fence;
-            }
+        let start = self.heading_offsets[start_index];
+        let end = self
+            .heading_offsets
+            .get(end_index)
+            .copied()
+            .unwrap_or(self.markdown.len());
 
-            // A `#` only opens a heading outside a fenced block — otherwise a
-            // shell comment in a code sample would split the section.
-            if !in_fence
-                && !is_fence
-                && let Some((level, title)) = parse_heading_line(line)
-            {
-                // Consume an id for every heading in document order, so the
-                // duplicate-suffix counters match the ones `add_heading_ids`
-                // assigned when it built the toc.
-                let heading_id = unique_heading_id(&title, &mut used_ids);
-                match &open {
-                    Some((open_level, _)) if level <= *open_level => break,
-                    // The first heading nested inside the open section: mark
-                    // where its preamble ends, before this line is appended.
-                    Some(_) if preamble_len.is_none() => preamble_len = Some(markdown.len()),
-                    None if heading_id == id => open = Some((level, title)),
-                    _ => {}
-                }
-            }
+        let untrimmed = &self.markdown[start..end];
+        let markdown = untrimmed.trim_end().to_owned();
 
-            if open.is_some() {
-                markdown.push_str(line);
-                markdown.push('\n');
-            }
-        }
-
-        let (level, title) = open?;
-        markdown.truncate(markdown.trim_end().len());
-        let preamble_len = preamble_len.unwrap_or(markdown.len()).min(markdown.len());
+        // The first heading nested inside this section, if any, is exactly
+        // `start_index + 1` — anything between it and `end_index` would have
+        // ended the section earlier, since `end_index` is the first heading
+        // at or above `level`, so everything strictly before it is nested.
+        let preamble_len = if start_index + 1 < end_index {
+            (self.heading_offsets[start_index + 1] - start).min(markdown.len())
+        } else {
+            markdown.len()
+        };
         let preamble = markdown[..preamble_len].trim_end().to_owned();
 
         Some(DocSection {
             id: id.to_owned(),
             level,
-            title,
+            title: self.toc[start_index].title.clone(),
             markdown,
             preamble,
         })
@@ -166,14 +162,20 @@ impl DocPage {
             return &[];
         };
 
-        let level = self.toc[start].level;
-        let nested = &self.toc[start + 1..];
-        let end = nested
+        let end = self.section_end_index(start, self.toc[start].level);
+        &self.toc[start + 1..end]
+    }
+
+    /// Index into [`toc`](DocPage::toc) of the first heading after `start`
+    /// whose level is at or above `level` — where the section starting at
+    /// `start` ends — or `toc.len()` when none follows it. Shared by
+    /// [`DocPage::section`] and [`DocPage::subsections`], which both need the
+    /// same boundary.
+    fn section_end_index(&self, start: usize, level: u8) -> usize {
+        self.toc[start + 1..]
             .iter()
             .position(|item| item.level <= level)
-            .unwrap_or(nested.len());
-
-        &nested[..end]
+            .map_or(self.toc.len(), |offset| start + 1 + offset)
     }
 
     /// The page's Markdown up to (not including) its first heading — the
@@ -185,20 +187,10 @@ impl DocPage {
     /// introduction needs the same fallback the size gate gives a section.
     #[must_use]
     pub fn preamble(&self) -> &str {
-        let mut in_fence = false;
-
-        for line in self.markdown.lines() {
-            let is_fence = line.trim_start().starts_with("```");
-            if !in_fence && !is_fence && parse_heading_line(line).is_some() {
-                let offset = line.as_ptr() as usize - self.markdown.as_ptr() as usize;
-                return self.markdown[..offset].trim_end();
-            }
-            if is_fence {
-                in_fence = !in_fence;
-            }
+        match self.heading_offsets.first() {
+            Some(&offset) => self.markdown[..offset].trim_end(),
+            None => self.markdown.trim_end(),
         }
-
-        self.markdown.trim_end()
     }
 }
 
@@ -798,6 +790,7 @@ fn map_markdown_error(error: MarkdownError) -> DocsError {
 struct RenderedMarkdown {
     html: String,
     toc: Vec<TocItem>,
+    heading_offsets: Vec<usize>,
 }
 
 /// Render a framework-parsed [`MarkdownPage`] into a site [`DocPage`], keeping
@@ -815,6 +808,7 @@ fn render_doc_page(page: &MarkdownPage) -> DocPage {
         order: page.frontmatter.order,
         html: rendered.html,
         toc: rendered.toc,
+        heading_offsets: rendered.heading_offsets,
         markdown,
     }
 }
@@ -848,6 +842,7 @@ fn render_markdown(markdown: &str) -> RenderedMarkdown {
     RenderedMarkdown {
         html: rendered,
         toc: headings.toc,
+        heading_offsets: headings.heading_offsets,
     }
 }
 
@@ -881,11 +876,16 @@ fn strip_redundant_title_heading(markdown: &str, title: &str) -> String {
 struct MarkdownWithHeadings {
     markdown: String,
     toc: Vec<TocItem>,
+    /// Byte offset of each `toc` entry's heading line in the *input*
+    /// `markdown` (not `Self::markdown`, which has `{#id}` suffixes spliced
+    /// in) — see [`DocPage::heading_offsets`].
+    heading_offsets: Vec<usize>,
 }
 
 fn add_heading_ids(markdown: &str) -> MarkdownWithHeadings {
     let mut output = String::with_capacity(markdown.len());
     let mut toc = Vec::new();
+    let mut heading_offsets = Vec::new();
     let mut used_ids = HashMap::<String, usize>::new();
     let mut in_fence = false;
 
@@ -904,6 +904,7 @@ fn add_heading_ids(markdown: &str) -> MarkdownWithHeadings {
                 id: id.clone(),
                 title: title.clone(),
             });
+            heading_offsets.push(line.as_ptr() as usize - markdown.as_ptr() as usize);
             output.push_str(&"#".repeat(level.into()));
             output.push(' ');
             output.push_str(&title);
@@ -920,6 +921,7 @@ fn add_heading_ids(markdown: &str) -> MarkdownWithHeadings {
     MarkdownWithHeadings {
         markdown: output,
         toc,
+        heading_offsets,
     }
 }
 
