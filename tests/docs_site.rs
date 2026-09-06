@@ -1012,6 +1012,29 @@ fn css_keeps_markdown_tables_inside_the_article_column() {
 }
 
 #[test]
+fn css_hides_sr_only_labels_visually_but_not_from_assistive_tech() {
+    // `display: none` and `visibility: hidden` would also hide the label
+    // from screen readers, so the rule must use the clip-based technique.
+    assert!(SITE_CSS.contains(".sr-only {"));
+    assert!(SITE_CSS.contains("clip: rect(0, 0, 0, 0);"));
+}
+
+#[test]
+fn no_bundled_page_has_an_unlabeled_empty_table_header() {
+    // axe: empty-table-header (issue #44). Guards the whole bundled corpus,
+    // not just the pages it was originally seen on.
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    for page in registry.pages() {
+        assert!(
+            !page.html.contains("<th></th>"),
+            "{} has an empty table header with no accessible name",
+            page.slug
+        );
+    }
+}
+
+#[test]
 fn copy_code_script_updates_accessible_status_text() {
     assert!(COPY_CODE_JS.contains("aria-label"));
     assert!(COPY_CODE_JS.contains("Copied code to clipboard"));
