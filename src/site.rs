@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
 use autumn_web::prelude::HTMX_JS_PATH;
 use autumn_web::widgets::{ActiveSearchConfig, active_search, active_search_empty_state};
 use autumn_web::{Markup, PreEscaped, html};
@@ -703,16 +706,45 @@ fn docs_nav_group_has_pages(registry: &DocRegistry, group: &DocsNavGroup) -> boo
     group.slugs.iter().any(|slug| registry.page(slug).is_some())
 }
 
-/// Re-scans every group's slice on every call: 140 slugs across 13 groups,
-/// compared linearly (via `Iterator::any`/`contains`) until one matches.
-/// Called once per page from `docs_sidebar`'s ungrouped-section check on
-/// every docs page render — profiled at 3,241,420 instructions, isolated the
-/// same way issue #19/#41 isolate `profile_docs_page_render`
-/// (`Total(profile_docs_page_render) - Total(profile_docs_render)`).
+/// Maps each grouped guide's slug straight to its sidebar group label, built
+/// once from [`DOCS_NAV_GROUPS`] instead of walked on every lookup.
+///
+/// `doc_group_label` and `is_grouped_doc_slug` used to each re-scan every
+/// group's slice on every call — 140 slugs across 13 groups, compared
+/// linearly until one matched: O(slug count) per call, so O(page count *
+/// slug count) across a full page render or docs-API request. Profiled at
+/// 1,049,133 instructions (`doc_group_label`, ~7.7% of `profile_docs_api`'s
+/// isolated per-request loop) and 3,241,420 instructions
+/// (`is_grouped_doc_slug`, called from the sidebar's ungrouped-section check
+/// on every docs page render). A `HashMap` lookup replaces both linear scans
+/// with a single hash and probe, O(1) per call: on this corpus (140 slugs)
+/// that measured -57.0% and -60.6% respectively on the same harnesses, and a
+/// synthetic sweep at 140/560/2240 slugs (not committed — see the fix
+/// commit) confirms the shape rather than just the constant: the old scan's
+/// cost per lookup scaled with slug count (≈5,745 instructions/slug at every
+/// size tested) while the new lookup's only size-dependent cost is building
+/// the map once, not looking things up in it.
+///
+/// Built by iterating [`DOCS_NAV_GROUPS`] in order and keeping the first
+/// label seen for a slug (`entry` / `or_insert`), so a slug listed in more
+/// than one group would still resolve to the first group that claims it —
+/// the same rule the old linear scan applied — though no slug in the corpus
+/// today is actually listed twice.
+static DOC_GROUP_INDEX: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
+    let mut index = HashMap::new();
+    for group in DOCS_NAV_GROUPS {
+        for slug in group.slugs {
+            index.entry(*slug).or_insert(group.label);
+        }
+    }
+    index
+});
+
+/// Whether `slug` belongs to any [`DOCS_NAV_GROUPS`] entry, i.e. whether the
+/// sidebar's `"Reference"` fallback section should list it.
+#[inline(never)]
 fn is_grouped_doc_slug(slug: &str) -> bool {
-    DOCS_NAV_GROUPS
-        .iter()
-        .any(|group| group.slugs.contains(&slug))
+    DOC_GROUP_INDEX.contains_key(slug)
 }
 
 /// Label of the sidebar section a guide belongs to, or `"Reference"` for a
@@ -720,19 +752,13 @@ fn is_grouped_doc_slug(slug: &str) -> bool {
 ///
 /// Exposed so the JSON docs API can ship the site's own grouping to agents,
 /// which is otherwise the only navigational structure the guides have.
-///
-/// Same linear scan as [`is_grouped_doc_slug`], run once per guide from both
-/// `list_autumn_docs`'s group tally and `api::guide_summary`, plus once per
-/// `get_autumn_doc` call. Profiled at 1,049,133 instructions, isolated via
-/// `profile_docs_api` the same way — about 7.7% of that harness's own
-/// per-request loop (`Total(profile_docs_api) - Total(profile_docs_render)`,
-/// 13,693,189 instructions).
 #[must_use]
+#[inline(never)]
 pub fn doc_group_label(slug: &str) -> &'static str {
-    DOCS_NAV_GROUPS
-        .iter()
-        .find(|group| group.slugs.contains(&slug))
-        .map_or(UNGROUPED_DOCS_LABEL, |group| group.label)
+    DOC_GROUP_INDEX
+        .get(slug)
+        .copied()
+        .unwrap_or(UNGROUPED_DOCS_LABEL)
 }
 
 pub fn render_missing_docs_page(registry: &DocRegistry, slug: &str) -> Markup {
