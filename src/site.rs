@@ -703,6 +703,12 @@ fn docs_nav_group_has_pages(registry: &DocRegistry, group: &DocsNavGroup) -> boo
     group.slugs.iter().any(|slug| registry.page(slug).is_some())
 }
 
+/// Re-scans every group's slice on every call: 140 slugs across 13 groups,
+/// compared linearly (via `Iterator::any`/`contains`) until one matches.
+/// Called once per page from `docs_sidebar`'s ungrouped-section check on
+/// every docs page render — profiled at 3,241,420 instructions, isolated the
+/// same way issue #19/#41 isolate `profile_docs_page_render`
+/// (`Total(profile_docs_page_render) - Total(profile_docs_render)`).
 fn is_grouped_doc_slug(slug: &str) -> bool {
     DOCS_NAV_GROUPS
         .iter()
@@ -714,6 +720,13 @@ fn is_grouped_doc_slug(slug: &str) -> bool {
 ///
 /// Exposed so the JSON docs API can ship the site's own grouping to agents,
 /// which is otherwise the only navigational structure the guides have.
+///
+/// Same linear scan as [`is_grouped_doc_slug`], run once per guide from both
+/// `list_autumn_docs`'s group tally and `api::guide_summary`, plus once per
+/// `get_autumn_doc` call. Profiled at 1,049,133 instructions, isolated via
+/// `profile_docs_api` the same way — about 7.7% of that harness's own
+/// per-request loop (`Total(profile_docs_api) - Total(profile_docs_render)`,
+/// 13,693,189 instructions).
 #[must_use]
 pub fn doc_group_label(slug: &str) -> &'static str {
     DOCS_NAV_GROUPS
