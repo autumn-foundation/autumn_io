@@ -104,6 +104,25 @@ it on every response it serves, and the conformance test asserts the origin emit
 (the shim would be inventing headers). A framework upgrade that changes the set
 fails the test and names the file to edit.
 
+## Cache entries are keyed by the artifact, and `HEAD` is never stored
+
+Both of these came out of review, and both are invisible from any single
+request.
+
+`caches.default` survives Worker deployments. Keyed on the request URL alone, a
+warmed colo would go on serving the previous deploy's HTML — and a cached 404
+would hide a newly published guide. Every entry is therefore keyed on the
+capsule's own SHA-256, which the build script emits. Hashing the artifact rather
+than stamping a timestamp makes it exact: the guides are embedded in the
+capsule, so those bytes change if and only if what the edge lane renders can.
+
+`HEAD` is not stored at all. Cloudflare's Cache API is `GET`-only, but the real
+hazard is upstream of that: axum routes `HEAD` to the `GET` handler and strips
+the body, so the capsule answers with zero body bytes and the `GET`'s
+`content-length`. Cached under a key a `GET` would later read, that is a
+truncated page claiming to be the whole one. A `HEAD` still *reads* the cache —
+the key is a synthetic `GET` — with the body stripped on the way out.
+
 ## The KV seam, and why a snapshot
 
 `EdgeCache::get` is synchronous inside a running handler. Every CDN key/value API

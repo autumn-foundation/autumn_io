@@ -33,6 +33,7 @@ speaks the NDJSON dialogue on its stdio, and forwards declines upstream.
 | `worker/src/wire.js` | wire protocol v1: frames, base64, header canonicalization |
 | `worker/src/wasi.js` | a minimal `wasi_snapshot_preview1` host over in-memory stdio |
 | `worker/src/capsule.js` | the dialogue driver — request in, outcome out, runtime-agnostic |
+| `worker/src/cache.js` | colo cache policy: the versioned key, what may be stored, HEAD handling |
 | `worker/src/index.js` | the Worker: cache, capsule, origin fallthrough |
 | `worker/test/` | `node --test`, driving the real artifact |
 | `worker/wrangler.toml` | deploy configuration |
@@ -107,6 +108,38 @@ The edge lane is not viable at all without the lazy render.
 The Cache API is what makes the numbers above a per-page-per-colo cost rather
 than a per-request one. The content changes only on deploy.
 
+### Cache keys are versioned by the artifact
+
+`caches.default` survives Worker deployments. An entry keyed on the request URL
+alone would let a warmed colo serve the previous deploy's HTML indefinitely —
+and a cached 404 would hide a newly published guide from every colo that had
+already answered for that slug.
+
+So every entry is keyed on the capsule's own SHA-256, which `build-capsule.sh`
+writes to `worker/build/capsule-version.js`. Hashing the artifact rather than
+stamping a timestamp is what makes it exact: the guides are embedded in the
+capsule, so those bytes change if and only if what the edge lane renders can
+change. A deploy makes the old entries unreachable with no purge step to
+remember; a rebuild that produces an identical artifact keeps its warm cache.
+
+The stored copy also carries a one-day `Cache-Control`, so unreachable entries
+age out rather than sitting in the cache forever. It goes on the *stored* copy
+only — the origin sends no `Cache-Control` on a docs page (it revalidates with
+an `ETag`), and the edge lane should not quietly start pinning pages in
+browsers, where no purge can reach them.
+
+### `HEAD` is served from the cache but never stored
+
+Cloudflare's Cache API is `GET`-only for `match` as well as `put`, so the key is
+always a synthetic `GET` and a `HEAD` reads the `GET` representation with the
+body stripped on the way out.
+
+Storing a `HEAD` is refused for a sharper reason than the API restriction:
+axum's `MethodRouter` routes `HEAD` to the `GET` handler and strips the body, so
+the capsule answers a `HEAD` with **zero body bytes and the `GET`'s
+`content-length`**. Cached under a key a `GET` would later read, that is a
+truncated page claiming to be the whole one.
+
 ## The KV seam
 
 The site declares no `needs(...)` capability: every guide is embedded in the
@@ -142,6 +175,9 @@ in-memory:
 - **`routes.test.js`** checks the Worker's path pre-filter against the capsule's
   actual router, one path at a time. It has already caught one bug — `/docs/`
   with an empty slug, which the filter accepted and `matchit` does not match.
+- **`cache.test.js`** pins the cache policy. Neither behaviour it covers is
+  visible from a single request: the versioned key needs two deployments to go
+  wrong, and the `HEAD` corruption needs a `HEAD` followed by a `GET`.
 
 On the Rust side, [`tests/edge_conformance.rs`](../tests/edge_conformance.rs) is
 the byte-identity proof, and [`tests/port_parity.rs`](../tests/port_parity.rs)
