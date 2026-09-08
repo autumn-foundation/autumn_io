@@ -12,14 +12,18 @@
 //! the exact function the deployed handler runs on every request.
 //!
 //! ```bash
-//! cargo build --release --bin profile_docs_page_render
+//! cargo build --profile profiling --bin profile_docs_page_render
 //!
+//! # Attribution needs symbols, which is why this builds `--profile profiling`
+//! # rather than `--release`: the release profile strips, and callgrind would
+//! # report hex addresses. `profiling` inherits `release`, so the codegen these
+//! # numbers describe is still the deployed one.
 //! valgrind --tool=callgrind --callgrind-out-file=callgrind.out \
-//!     ./target/release/profile_docs_page_render
+//!     ./target/profiling/profile_docs_page_render
 //! callgrind_annotate --threshold=99.9 callgrind.out
 //!
 //! valgrind --tool=dhat --dhat-out-file=dhat.out.json \
-//!     ./target/release/profile_docs_page_render
+//!     ./target/profiling/profile_docs_page_render
 //! ```
 
 fn main() {

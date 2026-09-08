@@ -97,9 +97,19 @@ fn fly_vm_declares_exactly_one_memory_key() {
 /// `panic = "abort"` and `strip` explicitly in order to warn against them, and
 /// the assertions here are about what the profile *sets*.
 fn release_profile() -> String {
+    profile_section("[profile.release]")
+}
+
+/// The profile the `src/bin/profile_*` harnesses are built with.
+fn profiling_profile() -> String {
+    profile_section("[profile.profiling]")
+}
+
+/// The body of one `[profile.*]` section, comments stripped.
+fn profile_section(header: &str) -> String {
     let (_, profile) = CARGO_TOML
-        .split_once("[profile.release]")
-        .expect("Cargo.toml should declare a release profile");
+        .split_once(header)
+        .unwrap_or_else(|| panic!("Cargo.toml should declare {header}"));
 
     profile
         .split_once("\n[")
@@ -165,17 +175,42 @@ fn fly_toml_exposes_the_prometheus_scrape_endpoint() {
     assert!(FLY_TOML.contains(r#"path = "/actuator/prometheus""#));
 }
 
-/// Stripping is the largest remaining size lever and it is declined.
+/// Stripping the release binary is deliberate; the guarantee it used to carry
+/// moved rather than disappeared.
 ///
-/// `src/bin/profile_docs_search.rs` already warns about it in prose —
-/// callgrind attributes by symbol, and the figures in the last three plan
-/// documents were taken that way — and it also turns production panic
-/// backtraces into bare addresses. The image is not size-constrained.
+/// `[profile.release]` sets `strip = true` for deploy size. That knowingly
+/// costs symbolicated panic backtraces in production — a real trade, and the
+/// reason this test no longer forbids stripping. It would also have cost
+/// callgrind attribution, and that half had to be kept: every harness under
+/// `src/bin/profile_*.rs` reports instruction counts, and callgrind attributes
+/// by symbol.
+///
+/// `[profile.profiling]` is where it lives now, so this asserts the two things
+/// that make it worth having. It must **inherit `release`**, or the figures
+/// stop describing the deployed binary — and that failure is the dangerous one,
+/// because a profile that quietly stopped inheriting still produces numbers,
+/// just numbers about a binary nobody runs. And it must **keep its symbols**,
+/// or there is nothing to attribute them to.
+///
+/// Deliberately not asserted: that `[profile.release]` still strips. Losing the
+/// symbol table is the risky direction, not keeping it, so a future decision to
+/// stop stripping should not have to argue with a test.
 #[test]
-fn release_profile_keeps_symbols_for_profiling_and_backtraces() {
+fn the_profiling_profile_keeps_symbols_and_matches_release_codegen() {
+    let profile = profiling_profile();
+
     assert!(
-        !release_profile().contains("strip"),
-        "callgrind attribution and panic backtraces both need the symbol table"
+        profile.contains(r#"inherits = "release""#),
+        "callgrind figures only describe production if the codegen matches it"
+    );
+    assert!(
+        profile.contains(r#"strip = "none""#),
+        "callgrind attributes by symbol; without the table it reports hex \
+         addresses"
+    );
+    assert!(
+        profile.contains("debug = true"),
+        "line-level attribution needs debug info, not only the symbol table"
     );
 }
 
