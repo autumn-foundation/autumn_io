@@ -190,7 +190,39 @@ duration it overrides origin headers for browsers zone-wide, regardless of what
 the Cache Rule says. Set it to **Respect Existing Headers**. Otherwise readers
 hold pages for that duration and a purge cannot reach them.
 
-### 5. Purge on deploy
+### 5. Leave Web Analytics off
+
+**Analytics & Logs → Web Analytics.** Cloudflare's automatic setup injects a
+beacon script into every HTML response as it passes through the proxy. The
+origin sends `script-src 'self'`, so the browser refuses it and every page load
+logs a console error:
+
+```
+Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/…'
+violates the following Content Security Policy directive: "script-src 'self'".
+```
+
+This is the CSP working, not failing — an injected third-party script is exactly
+what it exists to stop. It is left disabled, because the numbers that matter for
+*this* decision do not come from the beacon: requests, cache hit ratio and
+bandwidth are **zone analytics**, measured server-side by the proxy, and they
+arrive whether or not any script runs in the browser. The beacon adds Core Web
+Vitals and page views on top of that.
+
+Enabling it means overriding `security.headers.content_security_policy` in
+`autumn.toml` to allow `static.cloudflareinsights.com` in `script-src`, plus
+whatever host the beacon reports to in `connect-src` — widening only `script-src`
+silences the console error while the beacon still collects nothing. The real cost
+is not the trust (Cloudflare terminates TLS for this zone and can already inject
+anything into the page) but the pinning: `autumn.toml` has no "append a host", so
+overriding means writing the whole policy here and no longer inheriting
+improvements to the framework's default.
+
+If that trade is ever taken, add a test asserting the policy still denies
+everything else. Nothing guards the CSP today, because it is the framework
+default and there was nothing to guard.
+
+### 6. Purge on deploy
 
 Without this, a new guide takes up to an hour to appear. One call after a
 successful release:
@@ -211,7 +243,7 @@ build input and must not be committed.
 their URLs carry `?v=<hash>` and change on any deploy that changes their bytes,
 so they would have been re-fetched anyway.
 
-### 6. Verify
+### 7. Verify
 
 ```sh
 # A guide: MISS on the first request, HIT on the second.
