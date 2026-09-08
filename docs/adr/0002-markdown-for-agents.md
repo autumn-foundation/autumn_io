@@ -101,11 +101,23 @@ One addition to the Cache Rule from ADR-0001, in the dashboard:
 rule) matching
 
 ```
-http.request.headers["accept"][0] contains "text/markdown"
+any(lower(http.request.headers["accept"][*])[*] contains "text/markdown")
 ```
 
 with *Cache eligibility: Bypass cache*. Without it, an agent hitting a colo that
 already holds the HTML page gets HTML no matter what it asked for.
+
+Two details in that expression are not decoration, because the origin parser is
+more permissive than a substring match:
+
+- **`lower(…)`.** Cloudflare's `contains` is case-sensitive; media types are
+  not (RFC 7231 §3.1.1.1), so `Accept: Text/Markdown` negotiates Markdown at the
+  origin. Without the lowercasing it would miss this rule and be answered from
+  the HTML cache.
+- **`[*]` and `any(…)` rather than `[0]`.** `http.request.headers` holds every
+  value of a repeated header, and the origin parser reads all of them for the
+  reason RFC 7230 §3.2.2 gives. Matching only `[0]` would disagree with the
+  origin about a request a proxy had split across two `Accept` fields.
 
 A custom cache key that includes `Accept` is the other shape this can take
 (Enterprise), and is strictly better: agents get cached Markdown instead of

@@ -104,21 +104,31 @@ struct AcceptQualities {
     wildcard: Option<(f32, usize)>,
 }
 
-/// Scan the `Accept` header once, recording the best `(q, index)` per range.
+/// Scan the request's `Accept` fields once, recording the best `(q, index)`
+/// per range.
 ///
 /// Media ranges and the quality parameter are matched case-insensitively
 /// (RFC 7231 §3.1.1.1), and parameters other than `q` are ignored, so
 /// `Accept: Text/Markdown;variant=GFM` records the Markdown slot at `q=1`.
 /// Out-of-range q-values are clamped to `[0.0, 1.0]`.
+///
+/// Reads *every* `Accept` field, not just the first. A header that may appear
+/// more than once is semantically one comma-separated list however it arrives
+/// on the wire (RFC 7230 §3.2.2), and proxies do split and re-emit them. Taking
+/// only `HeaderMap::get`'s first value would drop the rest, so `Accept: */*;q=0.1`
+/// followed by `Accept: text/markdown` would resolve to HTML on the strength of
+/// half the request. The index continues across fields, which is what makes the
+/// tie-break ("earlier entry wins") mean the same thing in both wire forms.
 fn accept_qualities(headers: &HeaderMap) -> AcceptQualities {
-    let accept = headers
-        .get(header::ACCEPT)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
+    let entries = headers
+        .get_all(header::ACCEPT)
+        .into_iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','));
 
     let mut qualities = AcceptQualities::default();
 
-    for (index, raw_entry) in accept.split(',').enumerate() {
+    for (index, raw_entry) in entries.enumerate() {
         let entry = raw_entry.trim();
         if entry.is_empty() {
             continue;
@@ -384,14 +394,48 @@ mod tests {
     /// Build a [`MarkdownNegotiate`] as the extractor would, from an optional
     /// `Accept` header.
     fn negotiate(accept: Option<&str>) -> MarkdownNegotiate {
+        negotiate_fields(accept.into_iter())
+    }
+
+    /// The same, for a request carrying more than one `Accept` field.
+    fn negotiate_fields<'a>(accept: impl Iterator<Item = &'a str>) -> MarkdownNegotiate {
         let mut headers = HeaderMap::new();
-        if let Some(value) = accept {
-            headers.insert(header::ACCEPT, HeaderValue::from_str(value).unwrap());
+        for value in accept {
+            headers.append(header::ACCEPT, HeaderValue::from_str(value).unwrap());
         }
 
         MarkdownNegotiate {
             qualities: accept_qualities(&headers),
         }
+    }
+
+    #[test]
+    fn a_preference_split_across_accept_fields_is_still_one_list() {
+        // RFC 7230 §3.2.2: repeated fields are one comma-separated list. A proxy
+        // that splits them must not cost the client its stated preference.
+        assert_eq!(
+            negotiate_fields(["*/*;q=0.1", "text/markdown"].into_iter()).representation(),
+            Representation::Markdown,
+        );
+        assert_eq!(
+            negotiate_fields(["text/html;q=0", "text/markdown;q=0"].into_iter()).resolve(),
+            Resolution::NotAcceptable,
+            "an exclusion in a later field forbids just as one in the first does",
+        );
+    }
+
+    #[test]
+    fn the_tie_break_reads_split_fields_in_arrival_order() {
+        // Equal q across two fields: the earlier entry wins, and "earlier" has
+        // to mean the same thing whether the list arrived in one field or two.
+        assert_eq!(
+            negotiate_fields(["text/markdown", "text/html"].into_iter()).representation(),
+            Representation::Markdown,
+        );
+        assert_eq!(
+            negotiate_fields(["text/html", "text/markdown"].into_iter()).representation(),
+            Representation::Html,
+        );
     }
 
     #[test]
