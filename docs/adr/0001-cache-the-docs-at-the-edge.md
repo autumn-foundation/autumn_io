@@ -190,7 +190,39 @@ duration it overrides origin headers for browsers zone-wide, regardless of what
 the Cache Rule says. Set it to **Respect Existing Headers**. Otherwise readers
 hold pages for that duration and a purge cannot reach them.
 
-### 5. Leave Web Analytics off
+### 5. Cloudflare's HTML injections vs. this site's CSP
+
+Several Cloudflare features work by **rewriting HTML in flight**, and this site
+sends `script-src 'self'` with no `'unsafe-inline'`. Every one of them therefore
+either gets blocked, or quietly takes over something the origin was already
+doing. Turning the proxy on surfaced four at once. None is a bug in the site,
+and none should be answered by loosening the CSP.
+
+| Injection | What it does here | Disposition |
+| --- | --- | --- |
+| **Rocket Loader** | Rewrites every `<script>` to a bogus MIME type so the browser skips it, then executes them itself | **Turn off** (Speed → Optimization → Content Optimization) |
+| **Bot-detection beacon** | Adds an inline script (`__CF$cv$params` → `/cdn-cgi/challenge-platform/…`) | Blocked by the CSP; harmless |
+| **Web Analytics** | Adds `static.cloudflareinsights.com/beacon.min.js` | Left off — see below |
+| **WebMCP bridge** | Adds `<script type="module" src="/.webmcp/bridge.js">` | Same-origin, so allowed; enabled by Cloudflare rather than by this repo |
+
+**Rocket Loader is the one that matters**, because it does not fail loudly — it
+succeeds at taking ownership. It rewrites `htmx.min.js`, `copy-code.js` and
+`docs-nav-disclosure.js` to `type="<token>-text/javascript"`, which no browser
+executes, and relies on its own script to run them later. It is same-origin, so
+the CSP permits it and the page probably works. That is the problem: every
+script on the site becomes contingent on one Cloudflare script behaving, the
+`defer` already on those tags is defeated, and the assets this ADR is about
+serving cleanly are rewritten in transit. For three small deferred scripts it
+buys nothing.
+
+Two notes for anyone debugging this from a browser console. The origin sends
+**exactly one** CSP header and no `<meta>` CSP — so a *report-only* violation
+mentioning `'unsafe-inline' 'unsafe-eval'` is coming from a browser extension,
+not from this site; check with `curl -sI` before chasing it. And a blocked
+inline script is far more likely to be one of Cloudflare's injections than
+anything in `src/`, because this site ships no inline scripts at all.
+
+#### Web Analytics specifically
 
 **Analytics & Logs → Web Analytics.** Cloudflare's automatic setup injects a
 beacon script into every HTML response as it passes through the proxy. The
