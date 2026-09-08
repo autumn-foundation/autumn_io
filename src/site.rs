@@ -500,6 +500,7 @@ fn docs_navigation_neighbors<'a>(
     (previous, next)
 }
 
+#[inline(never)]
 fn docs_navigation_pages(registry: &DocRegistry) -> Vec<&DocPage> {
     let mut pages = Vec::new();
     let mut seen_slugs = Vec::new();
