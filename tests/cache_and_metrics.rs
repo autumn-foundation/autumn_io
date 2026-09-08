@@ -71,6 +71,39 @@ async fn the_docs_entry_point_redirect_is_cacheable() {
 }
 
 #[tokio::test]
+async fn no_cacheable_response_sets_a_cookie() {
+    // A `Set-Cookie` anywhere on the read path makes the whole page
+    // uncacheable: no CDN stores a response carrying one, because doing so
+    // would hand one visitor's cookie to the next. It defeats `s-maxage`
+    // silently — the page renders correctly and simply always comes from the
+    // origin.
+    //
+    // This is the second half of a guard, and the weaker half. Under the test
+    // profile CSRF is off by default, so this cannot catch the case that
+    // actually happened (Autumn's *prod* profile enabling it); that is pinned
+    // by `csrf_cookie_stays_disabled_so_the_read_path_can_be_cached` in
+    // `tests/fly_deploy_config.rs`, which reads the committed config. What this
+    // one covers is the next cause rather than the last one: any future layer —
+    // sessions, flash, consent — that starts setting a cookie on these routes.
+    let app = app();
+
+    for path in [
+        "/",
+        "/docs",
+        "/docs/getting-started",
+        "/robots.txt",
+        "/sitemap.xml",
+    ] {
+        let response = app.get(path).send().await;
+        assert_eq!(
+            response.header("set-cookie"),
+            None,
+            "{path} sets a cookie, so no shared cache will ever store it",
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_page_still_revalidates_with_a_browser() {
     // `max-age=0` costs nothing because `EtagLayer` answers the revalidation
     // with a `304` and never re-renders. If the ETag ever stopped being sent,

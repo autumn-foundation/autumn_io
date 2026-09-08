@@ -10,6 +10,7 @@ use autumn_web::config::{AutumnConfig, MockEnv};
 const CARGO_TOML: &str = include_str!("../Cargo.toml");
 const DOCKERFILE: &str = include_str!("../Dockerfile");
 const FLY_TOML: &str = include_str!("../fly.toml");
+const AUTUMN_TOML: &str = include_str!("../autumn.toml");
 const EXPORT_RS: &str = include_str!("../src/export.rs");
 const SEO_RS: &str = include_str!("../src/seo.rs");
 const SITE_RS: &str = include_str!("../src/site.rs");
@@ -288,5 +289,43 @@ fn embedded_files_are_inside_the_docker_build_context() {
         "the Dockerfile builder does not COPY these embedded files, so the \
          production image build would fail on them:\n  {}",
         missing.join("\n  "),
+    );
+}
+
+/// A `Set-Cookie` on the read path makes the whole site uncacheable.
+///
+/// Autumn's prod profile enables CSRF as a smart default, and the CSRF layer
+/// issues `Set-Cookie: autumn-csrf=…` on any response whose request arrived
+/// without that cookie. Every cache-fill request a CDN makes is such a request,
+/// because it sends no browser cookies of its own — so every page came back
+/// with a cookie, and Cloudflare never stores a response carrying one.
+///
+/// The result was `cf-cache-status: BYPASS` on every page while the site looked
+/// entirely healthy. That is why this is a test rather than a comment: the
+/// failure changes no rendered byte, breaks no page, and shows up only as a
+/// response header on a request nobody makes by hand.
+///
+/// Disabling it is safe here and the reasoning is recorded in `autumn.toml`
+/// beside the setting: no sessions, no authentication compiled in, every
+/// declared route a GET, and the sole POST surface an unauthenticated
+/// read-only `/mcp`.
+#[test]
+fn csrf_cookie_stays_disabled_so_the_read_path_can_be_cached() {
+    let (_, csrf) = AUTUMN_TOML
+        .split_once("[security.csrf]")
+        .expect("autumn.toml should disable CSRF explicitly, overriding the prod default");
+
+    let section = csrf
+        .split_once("\n[")
+        .map_or(csrf, |(section, _)| section)
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        section.contains("enabled = false"),
+        "re-enabling CSRF puts a Set-Cookie on every page and silently stops \
+         Cloudflare caching any of them; see the comment above the setting"
     );
 }
