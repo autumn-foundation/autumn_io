@@ -124,6 +124,48 @@ struct AcceptQualities {
     wildcard: Option<(f32, usize)>,
 }
 
+/// Split a header list on `delimiter`, ignoring delimiters inside a quoted
+/// string.
+///
+/// A media range may carry a parameter whose value is a quoted string, and a
+/// quoted string may contain the very characters that separate ranges and
+/// parameters (RFC 7230 §3.2.6). Splitting naively on `,` cuts
+/// `text/markdown;profile="a,b";q=0` in half: the front half parses as
+/// `text/markdown` with no `q` at all, i.e. `q=1`, turning the client's
+/// *exclusion* into its strongest preference. Splitting naively on `;` inside
+/// the entry has the same shape of bug for a value like `profile="a;q=1"`.
+///
+/// A backslash escapes the next character inside a quoted string (`quoted-pair`),
+/// so `"a\",b"` is one value containing a quote and a comma, not the end of a
+/// string. Cutting only on ASCII delimiters keeps the byte offsets valid slice
+/// boundaries for UTF-8.
+fn split_outside_quotes(list: &str, delimiter: u8) -> Vec<&str> {
+    let mut entries = Vec::new();
+    let mut start = 0;
+    let mut quoted = false;
+    let mut escaped = false;
+
+    for (index, byte) in list.bytes().enumerate() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match byte {
+            b'\\' if quoted => escaped = true,
+            b'"' => quoted = !quoted,
+            _ if byte == delimiter && !quoted => {
+                entries.push(&list[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+
+    entries.push(&list[start..]);
+    entries
+}
+
 /// Scan the request's `Accept` fields once, recording the best `(q, index)`
 /// per range.
 ///
@@ -144,7 +186,7 @@ fn accept_qualities(headers: &HeaderMap) -> AcceptQualities {
         .get_all(header::ACCEPT)
         .into_iter()
         .filter_map(|value| value.to_str().ok())
-        .flat_map(|value| value.split(','));
+        .flat_map(|value| split_outside_quotes(value, b','));
 
     let mut qualities = AcceptQualities::default();
 
@@ -157,7 +199,7 @@ fn accept_qualities(headers: &HeaderMap) -> AcceptQualities {
         let mut media_range = "";
         let mut quality = 1.0_f32;
 
-        for (position, segment) in entry.split(';').enumerate() {
+        for (position, segment) in split_outside_quotes(entry, b';').into_iter().enumerate() {
             let segment = segment.trim();
             if position == 0 {
                 media_range = segment;
@@ -632,6 +674,38 @@ mod tests {
         assert_eq!(
             negotiate(Some("application/json")).resolve(),
             Resolution::Html
+        );
+    }
+
+    #[test]
+    fn a_quoted_parameter_value_does_not_split_the_entry() {
+        // `profile="a,b"` is one parameter containing a comma. Splitting on it
+        // would leave `text/markdown;profile="a` with no `q`, i.e. q=1, and turn
+        // this client's exclusion of Markdown into a request for it.
+        assert_eq!(
+            negotiate(Some(r#"text/markdown;profile="a,b";q=0, text/html;q=1"#)).resolve(),
+            Resolution::Html,
+        );
+        // The same inside the entry: a quoted `;` is not a parameter boundary,
+        // so the `q` here is the real one.
+        assert_eq!(
+            negotiate(Some(r#"text/markdown;profile="a;q=1";q=0, text/html"#)).resolve(),
+            Resolution::Html,
+        );
+        // And a quoted delimiter must not hide a genuine preference either.
+        assert_eq!(
+            negotiate(Some(r#"text/markdown;profile="a,b", text/html;q=0.5"#)).representation(),
+            Representation::Markdown,
+        );
+    }
+
+    #[test]
+    fn a_backslash_escapes_the_quote_it_precedes() {
+        // `"a\",b"` is one quoted value holding a quote and a comma; reading the
+        // escaped quote as the end of the string would split the entry there.
+        assert_eq!(
+            negotiate(Some(r#"text/markdown;profile="a\",b";q=0, text/html"#)).resolve(),
+            Resolution::Html,
         );
     }
 
