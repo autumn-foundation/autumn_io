@@ -1,10 +1,14 @@
 //! Application metrics for the docs site.
 //!
-//! `autumn-web` already exposes its own families on `/actuator/prometheus`, but
-//! the built-in request counter is `autumn_http_requests_total{version="…"}` —
-//! one series, with no route, method or status dimension. It answers "how much
-//! traffic" and nothing else, so it cannot say how much the MCP server is used,
-//! which is the question this site actually has.
+//! `autumn-web` already exposes a lot on `/actuator/prometheus`, and most of
+//! what an application wants is there: `autumn_http_requests_total` for volume,
+//! and `autumn_http_route_requests_total{method,route}` for a per-endpoint
+//! breakdown. Check that list before adding anything here — the families below
+//! are only the ones the framework genuinely cannot express.
+//!
+//! There are two such gaps. Neither built-in family carries a *status* or
+//! outcome dimension, so "how many people searched and found nothing" is not
+//! derivable from either. And nothing at all observes `/mcp`.
 //!
 //! Everything here goes through `autumn_web::metrics`, so it lands on the same
 //! scrape endpoint as the framework's own families with no registration step.
