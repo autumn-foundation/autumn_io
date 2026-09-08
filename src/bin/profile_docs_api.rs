@@ -34,9 +34,11 @@
 //! ```bash
 //! cargo build --profile profiling --bin profile_docs_api
 //!
-//! # Instructions. Attribution needs symbols, which `[profile.release]` now
-//! # strips — build through `[profile.profiling]`, which inherits it and puts
-//! # the symbol table and debug info back, or read hex addresses here.
+//! # Instructions. Attribution needs symbols, which is why this builds
+//! # `--profile profiling` rather than `--release`: the release profile
+//! # strips, and callgrind would report hex addresses. `profiling` inherits
+//! # `release`, so the codegen these numbers describe is still the deployed
+//! # one.
 //! valgrind --tool=callgrind --callgrind-out-file=callgrind.out \
 //!     ./target/profiling/profile_docs_api
 //! callgrind_annotate --threshold=99.9 callgrind.out
