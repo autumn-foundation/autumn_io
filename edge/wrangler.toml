@@ -40,6 +40,18 @@ enabled = true
 # search box loads and that no `static/` directory contains.
 # `no_exported_page_references_a_missing_asset` is what keeps it complete.
 #
+# ⚠ `/static/*` is BLOCKED on #51 — do not uncomment it as written.
+#
+# The namespace has two sources: this repo's `static/` tree, which the export
+# copies, and assets `autumn-web` serves from memory with no file on disk
+# anywhere here (`autumn-widgets.css`, `autumn-widgets.js`, and four more).
+# Giving the whole prefix to a bundle containing only the first group turns the
+# second into CDN 404s — `/_stories` breaks today, and an autumn-web upgrade can
+# add more. #51 has the options; the likely answer is a small fallback Worker so
+# an unbundled path proxies to the origin instead of 404ing.
+#
+# The other four routes are safe to enable on their own.
+#
 # Commented out until the DNS cutover; until then a `workers.dev` subdomain
 # serves the same bundle for checking.
 #

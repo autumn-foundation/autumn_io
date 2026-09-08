@@ -6,8 +6,9 @@ everything that is not a fixed page.
 
 ```
                     ┌─────────── Cloudflare (static) ──────────┐
-  reader ─────────► │  /  /docs/{slug}  /static/*               │
+  reader ─────────► │  /  /docs/{slug}                          │
                     │  /robots.txt  /sitemap.xml                │
+                    │  (/static/* wanted, blocked on #51)       │
                     └──────────────────────────────────────────┘
 
                     ┌─────────────── Fly (origin) ─────────────┐
@@ -82,7 +83,18 @@ bundle has no such constraint and autumn-web's value is a constant, so excusing
 it would have dropped the strongest header in the set for a reason that does not
 apply here.
 
-### Why `/static/*` is routed here too
+### `/static/*` — blocked on #51
+
+> **Not enabled.** The route is written in `wrangler.toml` but commented with a
+> warning, because `/static/*` is a namespace shared with assets `autumn-web`
+> serves from memory (`autumn-widgets.css`, `autumn-widgets.js` and four more)
+> that no file in this repo backs. Routing the whole prefix to a bundle that
+> contains only our own assets turns those into CDN 404s and breaks
+> `/_stories`. See #51; the likely answer is a small fallback Worker.
+>
+> The reasoning below is why the route is wanted, and stands once #51 lands.
+
+### Why `/static/*` is wanted here
 
 Every exported page links `/static/css/site.css`, which is render-blocking.
 Serving the pages from the CDN but their assets from Fly would mean a docs visit
