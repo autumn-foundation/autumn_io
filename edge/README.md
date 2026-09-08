@@ -30,6 +30,7 @@ speaks the NDJSON dialogue on its stdio, and forwards declines upstream.
 | Path | What it is |
 | --- | --- |
 | `build-capsule.sh` | builds the capsule and stages it for wrangler |
+| `compute-version.sh` | the deployment version: a hash of everything that decides a served byte |
 | `worker/src/wire.js` | wire protocol v1: frames, base64, header canonicalization |
 | `worker/src/wasi.js` | a minimal `wasi_snapshot_preview1` host over in-memory stdio |
 | `worker/src/capsule.js` | the dialogue driver — request in, outcome out, runtime-agnostic |
@@ -108,25 +109,46 @@ The edge lane is not viable at all without the lazy render.
 The Cache API is what makes the numbers above a per-page-per-colo cost rather
 than a per-request one. The content changes only on deploy.
 
-### Cache keys are versioned by the artifact
+### Cache keys are versioned by the deployment
 
 `caches.default` survives Worker deployments. An entry keyed on the request URL
-alone would let a warmed colo serve the previous deploy's HTML indefinitely —
-and a cached 404 would hide a newly published guide from every colo that had
+alone would let a warmed colo serve the previous deploy's response indefinitely
+— and a cached 404 would hide a newly published guide from every colo that had
 already answered for that slug.
 
-So every entry is keyed on the capsule's own SHA-256, which `build-capsule.sh`
-writes to `worker/build/capsule-version.js`. Hashing the artifact rather than
-stamping a timestamp is what makes it exact: the guides are embedded in the
-capsule, so those bytes change if and only if what the edge lane renders can
-change. A deploy makes the old entries unreachable with no purge step to
-remember; a rebuild that produces an identical artifact keeps its warm cache.
+So every entry is keyed on a deployment version, which `compute-version.sh`
+computes and `build-capsule.sh` writes to `worker/build/capsule-version.js`. It
+hashes **everything that decides a served byte**:
 
-The stored copy also carries a one-day `Cache-Control`, so unreachable entries
-age out rather than sitting in the cache forever. It goes on the *stored* copy
-only — the origin sends no `Cache-Control` on a docs page (it revalidates with
-an `ETag`), and the edge lane should not quietly start pinning pages in
-browsers, where no purge can reach them.
+| Input | Why |
+| --- | --- |
+| the capsule | the guides are embedded in it, so it decides the body |
+| `worker/src/*.js` | the shim stamps headers, filters them, and decides what may be cached |
+| `security-headers.json` | the list of headers the shim restores on every response |
+| `wrangler.toml` | the origin a fallthrough goes to, and the routes bound |
+
+The capsule alone was the first version of this, and it left a hole worth
+naming: a deploy changing only `security-headers.json` produces a
+byte-identical `.wasm`, so every warmed colo would have kept serving the
+previous headers with the new Worker logic never running. The headers are the
+case that matters most here, which is exactly why the version cannot be blind to
+them.
+
+Hashing inputs rather than stamping a timestamp is what makes it exact in both
+directions: a rebuild that changes nothing keeps its warm cache, and any change
+that can alter a served byte invalidates it. Contents are hashed, never paths,
+so a laptop and CI agree. `test/version.test.js` drives each of those four
+inputs.
+
+The stored copy also carries a one-day `s-maxage`, so unreachable entries age
+out rather than sitting in the cache forever. Keeping that off the reader's
+response takes two things, because `cache.match()` returns what was *stored*,
+header included: `withoutStorageTtl` strips it on the way out so a hit and a
+miss serve identical headers, and `s-maxage` rather than `max-age` means that
+even if some future path forgot to strip it, browsers would ignore it. The
+origin sends no `Cache-Control` on a docs page — it revalidates with an `ETag` —
+and the edge lane must not quietly start pinning pages in browsers, where no
+purge can reach them.
 
 ### `HEAD` is served from the cache but never stored
 
@@ -175,9 +197,13 @@ in-memory:
 - **`routes.test.js`** checks the Worker's path pre-filter against the capsule's
   actual router, one path at a time. It has already caught one bug — `/docs/`
   with an empty slug, which the filter accepted and `matchit` does not match.
-- **`cache.test.js`** pins the cache policy. Neither behaviour it covers is
-  visible from a single request: the versioned key needs two deployments to go
-  wrong, and the `HEAD` corruption needs a `HEAD` followed by a `GET`.
+- **`cache.test.js`** pins the cache policy. None of what it covers is visible
+  from a single request: the versioned key needs two deployments to go wrong,
+  the `HEAD` corruption needs a `HEAD` followed by a `GET`, and the leaked
+  storage TTL needs a cache hit.
+- **`version.test.js`** drives `compute-version.sh` over a throwaway copy of
+  `edge/`, asserting the version moves for a change to any of its four inputs
+  and stays put when nothing changes.
 
 On the Rust side, [`tests/edge_conformance.rs`](../tests/edge_conformance.rs) is
 the byte-identity proof, and [`tests/port_parity.rs`](../tests/port_parity.rs)

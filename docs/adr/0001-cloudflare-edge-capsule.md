@@ -110,11 +110,23 @@ Both of these came out of review, and both are invisible from any single
 request.
 
 `caches.default` survives Worker deployments. Keyed on the request URL alone, a
-warmed colo would go on serving the previous deploy's HTML — and a cached 404
-would hide a newly published guide. Every entry is therefore keyed on the
-capsule's own SHA-256, which the build script emits. Hashing the artifact rather
-than stamping a timestamp makes it exact: the guides are embedded in the
-capsule, so those bytes change if and only if what the edge lane renders can.
+warmed colo would go on serving the previous deploy's response — and a cached
+404 would hide a newly published guide. Every entry is therefore keyed on a
+deployment version.
+
+Getting the *scope* of that version right took a second round. Hashing the
+capsule alone still left a warmed colo serving stale headers after a deploy that
+changed only `security-headers.json`, because that produces a byte-identical
+`.wasm`. The version now covers everything that decides a served byte — the
+capsule, the Worker sources, the header list and `wrangler.toml`
+(`edge/compute-version.sh`). Hashing inputs rather than stamping a timestamp
+keeps it exact in both directions: a rebuild that changes nothing keeps its warm
+cache.
+
+The stored copy carries a one-day `s-maxage`, stripped again on the way out so a
+hit serves exactly what a miss serves — `cache.match()` returns the response as
+stored, so without that a cache hit would have told browsers to hold the page,
+cached 404s included, for a day no purge could shorten.
 
 `HEAD` is not stored at all. Cloudflare's Cache API is `GET`-only, but the real
 hazard is upstream of that: axum routes `HEAD` to the `GET` handler and strips

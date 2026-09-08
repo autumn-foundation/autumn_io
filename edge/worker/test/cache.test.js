@@ -1,9 +1,10 @@
 // Colo cache policy.
 //
-// Both behaviours pinned here were bugs in the first version of the Worker, and
-// neither is visible from a single request: one needs two deployments, the
-// other needs a HEAD followed by a GET. They are exactly the cases a unit test
-// is for.
+// Every behaviour pinned here was a bug at some point in this Worker's short
+// life, and none of them is visible from a single request: the versioned key
+// needs two deployments to go wrong, the HEAD corruption needs a HEAD followed
+// by a GET, and the leaked storage TTL needs a cache hit. They are exactly the
+// cases a unit test is for.
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -16,6 +17,7 @@ import {
   capsuleCacheKey,
   isCacheable,
   storedCopy,
+  withoutStorageTtl,
 } from "../src/cache.js";
 
 describe("the cache key", () => {
@@ -155,5 +157,44 @@ describe("the generated version module", () => {
     const match = source.match(/export const CAPSULE_VERSION = "([0-9a-f]+)"/);
     assert.ok(match, `no CAPSULE_VERSION export in:\n${source}`);
     assert.equal(match[1].length, 16);
+  });
+});
+
+describe("the storage TTL never reaches the reader", () => {
+  test("a hit serves exactly what a miss serves", () => {
+    // `cache.match()` returns the response as *stored*, TTL header included, so
+    // forwarding a hit unchanged told the browser to hold the page — a cached
+    // 404 included — for a day no purge could shorten, while a miss said
+    // nothing. A hit and a miss must be indistinguishable.
+    const served = new Response("page", {
+      status: 200,
+      headers: { "content-type": "text/html" },
+    });
+    const fromCache = storedCopy(served.clone());
+
+    const hit = withoutStorageTtl(fromCache);
+
+    assert.deepEqual([...hit.headers].sort(), [...served.headers].sort());
+    assert.equal(hit.headers.get("cache-control"), null);
+  });
+
+  test("a Cache-Control the handler set is left alone", () => {
+    const deliberate = new Response("page", {
+      status: 200,
+      headers: { "cache-control": "public, max-age=60" },
+    });
+
+    assert.equal(
+      withoutStorageTtl(deliberate).headers.get("cache-control"),
+      "public, max-age=60",
+    );
+  });
+
+  test("the stored TTL is shared-cache-only", () => {
+    // Defence in depth behind the strip above: browsers ignore `s-maxage`, so a
+    // future path that forgets to strip it leaves a stale colo rather than a day
+    // of un-purgeable copies in readers' browsers.
+    assert.match(STORED_CACHE_CONTROL, /^s-maxage=/);
+    assert.doesNotMatch(STORED_CACHE_CONTROL, /(^|[^-])max-age=/);
   });
 });

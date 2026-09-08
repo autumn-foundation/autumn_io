@@ -29,6 +29,7 @@ import {
   capsuleCacheKey,
   isCacheable,
   storedCopy,
+  withoutStorageTtl,
 } from "./cache.js";
 import { serveFromCapsule, unexpectedImports } from "./capsule.js";
 import { FALLTHROUGH_SENTINEL } from "./wire.js";
@@ -77,7 +78,11 @@ export default {
     const cache = caches.default;
     const cacheKey = capsuleCacheKey(url, CAPSULE_VERSION);
     const cached = await cache.match(cacheKey);
-    if (cached) return bodilessForHead(request.method, cached);
+    if (cached) {
+      // `withoutStorageTtl` first: `match` returns the response as stored, TTL
+      // header and all, and a hit must serve exactly what a miss serves.
+      return bodilessForHead(request.method, withoutStorageTtl(cached));
+    }
 
     let kv;
     try {
