@@ -170,7 +170,13 @@ pub fn render_docs_search_page(query: &str, hits: Option<&[SearchHit]>) -> Strin
     let _ = writeln!(out, "# Search the guides\n");
 
     let Some(hits) = hits else {
-        let _ = writeln!(out, "Search is unavailable right now.");
+        // The index is absent only because the bundled content failed to parse,
+        // so this is a server failure and the handler answers it with a `500`.
+        // Say which, rather than leaving a caller to infer an empty corpus.
+        let _ = writeln!(
+            out,
+            "Search is unavailable: the bundled Markdown content could not be parsed.",
+        );
         return out;
     };
 

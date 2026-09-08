@@ -350,11 +350,21 @@ async fn only_a_named_markdown_media_type_produces_markdown() {
         );
     }
 
-    app.get("/docs/getting-started")
+    // Refusing HTML without naming Markdown is served HTML, not a 406: the edge
+    // cannot see that refusal — the header names no Markdown, so nothing
+    // bypasses the cache — and a colo holding the page would answer it with
+    // cached HTML however the origin ruled. RFC 7231 §6.5.6 permits
+    // disregarding `Accept` rather than promising a 406 that never arrives.
+    let refused = app
+        .get("/docs/getting-started")
         .header("accept", "text/html;q=0")
         .send()
-        .await
-        .assert_status(406);
+        .await;
+    refused.assert_status(200);
+    assert_eq!(
+        refused.header("content-type"),
+        Some("text/html; charset=utf-8"),
+    );
 
     let named = app
         .get("/docs/getting-started")
@@ -425,7 +435,10 @@ async fn a_revalidated_markdown_response_is_still_uncacheable() {
 }
 
 #[tokio::test]
-async fn forbidding_both_representations_is_a_406() {
+async fn forbidding_both_representations_by_name_is_a_406() {
+    // The one refusal that reaches the origin reliably: naming `text/markdown`
+    // is what trips the edge's bypass rule, so this 406 is a promise the
+    // deployment can keep.
     let response = app()
         .get("/docs/getting-started")
         .header("accept", "text/html;q=0, text/markdown;q=0")

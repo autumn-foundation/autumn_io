@@ -38,8 +38,9 @@
 //!   range would allow it;
 //! * among the rest, the higher positive q wins, ties broken by the earlier
 //!   entry in the header;
-//! * if both are forbidden — or HTML is forbidden and Markdown was never named
-//!   — the response is `406 Not Acceptable`.
+//! * if both are forbidden *and the request named `text/markdown`*, the
+//!   response is `406 Not Acceptable`; a request that refused everything
+//!   without ever mentioning Markdown gets HTML (see below).
 //!
 //! Note that `text/*` is the subtype wildcard for *both* candidates, so
 //! `Accept: text/*` expresses no preference between them and gets HTML.
@@ -61,7 +62,21 @@
 //! entry that ignores `Accept`. Nothing an agent or a browser actually sends is
 //! affected: `text/markdown` and `text/markdown, */*;q=0.1` still resolve to
 //! Markdown, and every browser header still resolves to HTML.
-//! `docs/adr/0002-markdown-for-agents.md` records the trade.
+//!
+//! The same argument decides the `406`. `Accept: text/html;q=0` and
+//! `Accept: */*;q=0` refuse everything, but a colo holding the page cannot see
+//! that — the header names no Markdown, so the bypass rule does not fire and
+//! the cached HTML is served whatever the origin would have said. Promising a
+//! `406` the edge swallows is worse than not promising it, and RFC 7231 §6.5.6
+//! permits the alternative in as many words: send `406` **or** "disregard the
+//! Accept header field by treating the response as if it is not subject to
+//! content negotiation". So the `406` is kept for the one shape that reaches
+//! the origin reliably — a request that named `text/markdown` and forbade both
+//! representations — and every other refusal is served HTML.
+//!
+//! What that buys is a single invariant: **the origin's answer depends only on
+//! whether the header names `text/markdown`**, which is exactly what the edge
+//! rule tests. `docs/adr/0002-markdown-for-agents.md` records the trade.
 //!
 //! # Caching
 //!
@@ -291,7 +306,18 @@ impl MarkdownNegotiate {
         let markdown_forbidden = matches!(markdown, Some((quality, _)) if quality <= 0.0);
 
         if html_forbidden && markdown_forbidden {
-            return Resolution::NotAcceptable;
+            // A `406` only when the client named `text/markdown` itself. If it
+            // refused everything through a wildcard without ever mentioning
+            // Markdown, the edge cannot tell this request from an ordinary one
+            // and would answer it from the HTML cache — so the origin serves
+            // what the edge would, and RFC 7231 §6.5.6 allows exactly that
+            // ("disregard the Accept header field") as the alternative to a
+            // `406`. See the module docs.
+            return if self.qualities.markdown.is_some() {
+                Resolution::NotAcceptable
+            } else {
+                Resolution::Html
+            };
         }
 
         let html = html.filter(|&(quality, _)| quality > 0.0);
@@ -322,17 +348,11 @@ impl MarkdownNegotiate {
             (Some(_), None) => Resolution::Html,
             // Markdown was named and HTML is forbidden or unmentioned.
             (None, Some(_)) => Resolution::Markdown,
-            // Neither is a candidate. HTML unmentioned is HTML by default;
-            // HTML *forbidden* with no Markdown named leaves nothing this
-            // resource is willing to serve, and the `406` says which two
-            // representations exist.
-            (None, None) => {
-                if html_forbidden {
-                    Resolution::NotAcceptable
-                } else {
-                    Resolution::Html
-                }
-            }
+            // Neither is a candidate: HTML unmentioned, or refused by a
+            // concrete `text/html;q=0` that never mentioned Markdown. Both are
+            // HTML, for the reason above — a refusal the edge cannot see is a
+            // refusal the origin cannot honour consistently.
+            (None, None) => Resolution::Html,
         }
     }
 
@@ -657,20 +677,27 @@ mod tests {
     }
 
     #[test]
-    fn refusing_html_without_naming_markdown_is_not_acceptable() {
-        // The client has refused the only representation it named, and a
-        // wildcard does not elect the other one. Answering `406` says so;
-        // answering HTML would serve what was explicitly refused, and answering
-        // Markdown would be a decision the edge cannot mirror.
-        assert_eq!(
-            negotiate(Some("text/html;q=0")).resolve(),
-            Resolution::NotAcceptable,
-        );
-        assert_eq!(
-            negotiate(Some("text/html;q=0, */*;q=1")).resolve(),
-            Resolution::NotAcceptable,
-        );
-        // Naming it is all it takes.
+    fn a_refusal_that_never_names_markdown_still_gets_html() {
+        // These refuse everything, but the edge cannot see that: the header
+        // names no Markdown, so the bypass rule does not fire and a colo
+        // holding the page serves cached HTML whatever the origin decides.
+        // RFC 7231 §6.5.6 allows disregarding `Accept` instead of answering
+        // `406`, so the origin serves what the edge would.
+        for accept in [
+            "text/html;q=0",
+            "text/html;q=0, */*;q=1",
+            "*/*;q=0",
+            "text/*;q=0",
+        ] {
+            assert_eq!(
+                negotiate(Some(accept)).resolve(),
+                Resolution::Html,
+                "{accept} names no Markdown, so it must resolve the way a cached \
+                 colo would answer it",
+            );
+        }
+
+        // Naming Markdown is all it takes to be served it.
         assert_eq!(
             negotiate(Some("text/html;q=0, text/markdown")).resolve(),
             Resolution::Markdown,
@@ -678,20 +705,19 @@ mod tests {
     }
 
     #[test]
-    fn forbidding_every_representation_is_not_acceptable() {
+    fn forbidding_every_representation_by_name_is_not_acceptable() {
+        // The one refusal the edge does deliver to the origin, because the
+        // header names `text/markdown` and so trips the bypass rule. A `406`
+        // here is a promise that can actually be kept.
         assert_eq!(
             negotiate(Some("text/html;q=0, text/markdown;q=0")).resolve(),
             Resolution::NotAcceptable,
         );
         assert_eq!(
-            negotiate(Some("*/*;q=0")).resolve(),
+            negotiate(Some("text/markdown;q=0, text/*;q=0")).resolve(),
             Resolution::NotAcceptable,
-            "a blanket exclusion forbids both representations",
-        );
-        assert_eq!(
-            negotiate(Some("text/*;q=0")).resolve(),
-            Resolution::NotAcceptable,
-            "the subtype wildcard covers both, so excluding it excludes both",
+            "the subtype wildcard forbids HTML and the concrete range forbids \
+             Markdown, which was named",
         );
     }
 

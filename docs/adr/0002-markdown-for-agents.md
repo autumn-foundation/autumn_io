@@ -66,22 +66,30 @@ exclusion rather than a demotion, ties to the earlier entry, `406` when
 everything is forbidden — so the site does not answer `Accept` two different
 ways depending on the route.
 
-The departure: **a wildcard can forbid Markdown but never elect it.** Under a
-strict effective-q reading, `Accept: text/html;q=0.1, */*;q=1` lifts Markdown
-above HTML through the wildcard, and `Accept: text/html;q=0` leaves Markdown as
-the only representation not refused. Here the first is served HTML and the
-second is a `406`.
+The departure: **the origin's answer depends only on whether the header names
+`text/markdown`.** A wildcard can forbid Markdown but never elect it, and a
+refusal that never mentions Markdown is served HTML rather than `406`:
+
+| `Accept` | Strict effective-q reading | Served |
+| --- | --- | --- |
+| `text/html;q=0.1, */*;q=1` | Markdown, lifted by the wildcard | HTML |
+| `text/html;q=0` | Markdown, the only one not refused | HTML |
+| `*/*;q=0` | `406`, everything refused | HTML |
+| `text/html;q=0, text/markdown;q=0` | `406` | `406` |
 
 That is a concession to the edge, and it is the reason the bypass rule below can
 be trusted. Cloudflare cannot evaluate "the effective q of `text/markdown`
-exceeds that of `text/html`"; a cache rule matches the header as a string. If
-the origin elected Markdown on header shapes the rule cannot recognise, exactly
-those requests would be answered from an HTML cache entry that ignores `Accept`
-— the feature failing precisely where it is hardest to notice. Restricting
-election to the literal media type makes the origin's condition and the edge's
-condition the same condition. What it costs is a `406` on headers nobody sends:
-`text/markdown`, `text/markdown, */*;q=0.1`, and every browser and `curl`
-default are unaffected.
+exceeds that of `text/html`"; a cache rule matches the header as a string. Any
+origin decision the rule cannot recognise is a decision a warm colo overrides
+with cached HTML — so the origin only makes decisions the rule can see. The
+rows above are that principle applied twice: Markdown is elected only by name,
+and a `406` is promised only where naming `text/markdown` has already tripped
+the bypass, so the request actually arrives. RFC 7231 §6.5.6 permits the other
+rows in as many words — send `406` **or** "disregard the Accept header field by
+treating the response as if it is not subject to content negotiation".
+
+What it costs is honouring `q=0` on headers nobody sends. `text/markdown`,
+`text/markdown, */*;q=0.1`, and every browser and `curl` default are unaffected.
 
 The practical effect is that nothing changes for anyone who was not asking: a
 browser sends `text/html,…,*/*;q=0.8` and a bare `curl` sends `*/*`, and both
@@ -140,6 +148,13 @@ more permissive than a substring match:
   reason RFC 7230 §3.2.2 gives. Matching only `[0]` would disagree with the
   origin about a request a proxy had split across two `Accept` fields.
 
+The rule is a *superset* of what the origin answers in Markdown, which is the
+safe direction: a header naming `text/markdown` but ranking HTML above it
+bypasses the cache and is then served HTML, costing an origin hit and nothing
+else. The reverse — a request the origin would answer in Markdown, or with a
+`406`, that this rule fails to match — is what the election and refusal rules
+above rule out.
+
 A custom cache key that includes `Accept` is the other shape this can take
 (Enterprise), and is strictly better: agents get cached Markdown instead of
 always reaching the origin. Bypass is the version available on every plan, and
@@ -181,12 +196,11 @@ carried an HTML-to-Markdown converter to reproduce a string it already has.
   estimate from body length, deliberately: an exact count is model-specific and
   would cost a tokenizer pass per request.
 - **One more Cloudflare rule to configure**, and it is not optional — without
-  it, cached pages defeat negotiation at the edge for the most-read guides. It
-  is a *superset* of what the origin answers in Markdown, by construction: a
-  header naming `text/markdown` but ranking HTML above it bypasses the cache and
-  is then served HTML, which costs an origin hit and nothing else. The reverse —
-  a Markdown-electing request the rule fails to match — is what the election
-  rule above rules out.
+  it, cached pages defeat negotiation at the edge for the most-read guides.
+- **`q=0` is honoured only when Markdown is named.** The price of the invariant
+  above: `Accept: text/html;q=0` is served the HTML page it refused. No client
+  in the wild sends it, and the alternative was a `406` a cached colo would have
+  replaced with the same page anyway.
 - Relative links inside a guide (`tutorial/index.md`, `../examples/todo-app`)
   are served as authored. The HTML render rewrites them; the Markdown does not,
   because it hands over the source unmodified and because that is already what

@@ -533,10 +533,22 @@ pub async fn docs_search(
     negotiate.respond(
         || search_html_response(hx.is_htmx, term, hits.as_deref()),
         || {
-            MarkdownPage::new(site::markdown::render_docs_search_page(
-                term,
-                hits.as_deref(),
-            ))
+            // `hits: None` has one cause — `site_search_index()` is built from
+            // `site_docs()`, so an absent index means the bundled content failed
+            // to parse. That is the same `500` the other pages answer with, and
+            // the full-page HTML arm below reaches it through `site_docs()` for
+            // the same reason. A `200` whose body says "unavailable" would tell
+            // an agent the server is fine and the corpus is empty.
+            let status = if hits.is_some() {
+                StatusCode::OK
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+
+            MarkdownPage::with_status(
+                status,
+                site::markdown::render_docs_search_page(term, hits.as_deref()),
+            )
         },
     )
 }
