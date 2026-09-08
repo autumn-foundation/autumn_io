@@ -29,6 +29,14 @@ dynamic routes never arrive there and there is nothing to forward.
 Everything else is in the Rust crate: `src/export.rs` renders the bundle and
 `src/bin/build_site.rs` is the entry point.
 
+`security-headers.json` is deploy configuration that is also a **compile
+input** — `src/export.rs` embeds it with `include_str!`, so the crate does not
+build without it. That is why the `Dockerfile` builder stage copies it even
+though nothing in the running image reads it, and why
+`embedded_files_are_inside_the_docker_build_context` fails if a future embedded
+file is added outside the builder's context. Moving or renaming this file means
+editing the `Dockerfile` too.
+
 ## Deploying
 
 ```sh

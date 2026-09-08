@@ -24,6 +24,13 @@ COPY content ./content
 COPY src ./src
 COPY static ./static
 COPY migrations ./migrations
+# `src/export.rs` embeds this with `include_str!`, so it is a compile input, not
+# just deploy config — the build fails outright without it, and the release-build
+# CI job cannot catch that because it works from a full checkout. Only the file
+# is copied, not the whole `edge/` directory: `wrangler.toml` and the runbook are
+# not build inputs and have no business in the image.
+# `embedded_files_are_inside_the_docker_build_context` guards the general case.
+COPY edge/security-headers.json ./edge/security-headers.json
 
 # Serialize compilation so concurrent rustc processes cannot stack their peaks.
 # This trades build time for lower peak memory and does not affect the runtime
