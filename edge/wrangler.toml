@@ -29,6 +29,17 @@ enabled = true
 # and `/health` are dynamic and reach the Fly origin directly — there is no
 # fallthrough to configure because they are never sent here in the first place.
 #
+# `/static/*` is in the list and has to be. Every exported page links
+# `/static/css/site.css`, which is render-blocking, plus images and scripts.
+# Routing the pages here but not their assets would mean a docs visit still
+# woke the scale-to-zero origin — and waited on its cold start before the page
+# was styled — which is most of what this change exists to avoid.
+#
+# That works only because the bundle is complete: `export_site` copies this
+# repo's `static/` tree *and* writes out the framework-embedded htmx that the
+# search box loads and that no `static/` directory contains.
+# `no_exported_page_references_a_missing_asset` is what keeps it complete.
+#
 # Commented out until the DNS cutover; until then a `workers.dev` subdomain
 # serves the same bundle for checking.
 #
@@ -37,6 +48,9 @@ enabled = true
 # zone_name = "autumn-web.app"
 # [[routes]]
 # pattern = "autumn-web.app/docs*"
+# zone_name = "autumn-web.app"
+# [[routes]]
+# pattern = "autumn-web.app/static/*"
 # zone_name = "autumn-web.app"
 # [[routes]]
 # pattern = "autumn-web.app/robots.txt"

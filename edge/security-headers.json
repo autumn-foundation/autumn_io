@@ -2,24 +2,32 @@
   "_comment": [
     "Security headers autumn-web's middleware stamps on every origin response.",
     "",
-    "The edge capsule serves exactly what the handler produced — the origin's",
-    "middleware stack does not run there — so without this list an edge-served",
-    "page would carry fewer protections than the same page from the origin.",
-    "That is a security regression, not a cosmetic difference, so the Cloudflare",
-    "shim restores them on every response it serves.",
+    "A CDN serving files from dist/ runs none of that middleware, so without",
+    "restoring them here every statically served page would carry fewer",
+    "protections than the same page from the origin. That is a security",
+    "regression, not a cosmetic difference.",
     "",
-    "This file is the single source of truth for that list. Both sides read it:",
-    "  edge/worker/src/index.js   stamps these on every edge-served response",
-    "  tests/edge_conformance.rs  asserts the origin emits exactly these and no",
-    "                             others beyond what the handler itself sets",
+    "This file is the single source of truth. Both sides read it:",
+    "  src/export.rs             writes these into dist/_headers",
+    "  tests/static_export.rs    asserts the origin emits exactly these and no",
+    "                            others beyond the per-response ones",
     "",
-    "So a framework upgrade that adds a fifth header fails the Rust test and",
-    "names the file to edit, rather than quietly shipping a weaker edge lane."
+    "So a framework upgrade that adds a fifth header fails the test and names",
+    "the file to edit, rather than quietly shipping a weaker bundle.",
+    "",
+    "content-security-policy is in the list because autumn-web's value is a",
+    "constant, not a per-request nonce. It was briefly excluded as 'volatile',",
+    "an exception inherited from autumn_edge::conformance::VOLATILE_HEADERS \u2014",
+    "where it belongs, because a wasm capsule structurally cannot emit it. A",
+    "static bundle has no such constraint, and dropping the strongest header in",
+    "the set for a reason that does not apply is exactly what this file exists",
+    "to prevent."
   ],
   "headers": {
     "referrer-policy": "strict-origin-when-cross-origin",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
-    "x-xss-protection": "1; mode=block"
+    "x-xss-protection": "1; mode=block",
+    "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'"
   }
 }

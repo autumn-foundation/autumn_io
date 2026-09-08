@@ -15,6 +15,7 @@
 //! | `autumn-web`'s security middleware | a `_headers` file |
 //! | the `docs_index` handler's 307 | a `_redirects` file |
 //! | `docs_page`'s not-found arm | a pre-rendered `404.html` |
+//! | the framework serving htmx from memory | that file written into the bundle |
 //!
 //! Each of those is asserted below against the origin's own behaviour, so the
 //! bundle cannot quietly lose a protection or a route that the origin has.
@@ -89,7 +90,7 @@ fn every_exported_page_is_what_the_origin_renders() {
 async fn the_headers_file_carries_exactly_what_the_origin_adds() {
     // The replacement for the edge lane's conformance check, and the reason it
     // still exists after the capsule was dropped: a CDN runs no middleware, so
-    // without `_headers` every statically served page would carry four fewer
+    // without `_headers` every statically served page would carry five fewer
     // protections than the same page from the origin.
     //
     // Asserted in both directions. A header the origin adds and the file omits
@@ -101,20 +102,23 @@ async fn the_headers_file_carries_exactly_what_the_origin_adds() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
     let response = app.get("/docs/getting-started").send().await;
 
-    // Headers the origin sends that are not part of the rendered response
-    // itself — i.e. the ones its middleware stamps on.
-    let body_headers = ["content-type", "content-length", "etag", "vary"];
-    let volatile = [
-        "date",
-        "x-request-id",
-        "server-timing",
-        "content-security-policy",
-    ];
+    // Per-response headers, which a static host computes for itself from the
+    // file it is serving, and genuinely volatile ones the origin stamps per
+    // request. Everything else is policy and must survive into `_headers`.
+    //
+    // `content-security-policy` is deliberately NOT excused here. It looks
+    // volatile — it is on `autumn_edge::conformance::VOLATILE_HEADERS`, which
+    // this list was first copied from — but that list exists for a wasm capsule
+    // that structurally cannot emit it. autumn-web's CSP is a constant, and a
+    // static bundle can carry it verbatim, so excusing it would have dropped
+    // the strongest header in the set for a reason that does not apply.
+    let per_response = ["content-type", "content-length", "etag", "vary"];
+    let volatile = ["date", "x-request-id", "server-timing"];
 
     let mut unaccounted = Vec::new();
     for (name, value) in &response.headers {
         let name = name.to_ascii_lowercase();
-        if body_headers.contains(&name.as_str()) || volatile.contains(&name.as_str()) {
+        if per_response.contains(&name.as_str()) || volatile.contains(&name.as_str()) {
             continue;
         }
         if !headers_file.contains(&format!("{name}: {value}")) {
@@ -175,4 +179,76 @@ fn the_missing_page_is_the_site_own_404_not_a_bare_one() {
     );
 
     std::fs::remove_dir_all(&workspace).expect("cleanup");
+}
+
+#[test]
+fn no_exported_page_references_a_missing_asset() {
+    // The general form of a bug Codex caught in review: every docs page has a
+    // `<script src="/static/js/htmx.min.js">`, but htmx is not in this repo's
+    // `static/` tree — the framework embeds it and serves it from memory. The
+    // bundle therefore shipped without it, and the moment `/static/*` is served
+    // by the CDN rather than the origin, the docs search box would have been
+    // dead on every page.
+    //
+    // Checking references rather than a hand-listed set is what makes this
+    // durable: any future page that links something the export does not write
+    // fails here, whatever it is.
+    let workspace = temp_dir("export-assets");
+    let dist = export_to(&workspace);
+
+    let mut missing: Vec<String> = Vec::new();
+    let mut checked = 0;
+
+    for page in ["index.html", "docs/getting-started/index.html", "404.html"] {
+        let html = read(&dist, page);
+        for reference in asset_references(&html) {
+            checked += 1;
+            // Strip the cache-busting `?v=…` that `site::versioned_asset_path`
+            // adds; the file on disk has no query.
+            let relative = reference.trim_start_matches('/');
+            if !dist.join(relative).exists() {
+                missing.push(format!("{page} references /{relative}"));
+            }
+        }
+    }
+
+    assert!(
+        checked > 0,
+        "the extractor found no asset references at all"
+    );
+    assert!(
+        missing.is_empty(),
+        "the bundle is missing files its own pages link to:\n  {}",
+        missing.join("\n  "),
+    );
+
+    std::fs::remove_dir_all(&workspace).expect("cleanup");
+}
+
+/// Every same-origin `href`/`src` an exported page points at, query stripped.
+///
+/// Attribute values only — a `/static/...` path mentioned inside a `<code>`
+/// block is prose, not a reference, and the guides are full of those.
+fn asset_references(html: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for (attribute, _) in [("href=\"", ()), ("src=\"", ())] {
+        let mut rest = html;
+        while let Some(start) = rest.find(attribute) {
+            rest = &rest[start + attribute.len()..];
+            let Some(end) = rest.find('"') else { break };
+            let value = &rest[..end];
+            rest = &rest[end..];
+
+            // Same-origin asset paths only: skip absolute URLs, fragments, and
+            // the rendered pages themselves (which are directories, not files).
+            if !value.starts_with("/static/") {
+                continue;
+            }
+            let path = value.split('?').next().unwrap_or(value);
+            found.push(path.to_owned());
+        }
+    }
+    found.sort();
+    found.dedup();
+    found
 }

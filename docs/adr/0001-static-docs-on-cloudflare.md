@@ -32,22 +32,46 @@ in code: `404.html`, `_headers`, and `_redirects`. All three are generated from
 the same sources the origin uses and asserted against the origin's own behaviour
 in `tests/static_export.rs`, so none of them is hand-maintained.
 
-### What the CDN has to be told, because no middleware runs
+### What the CDN has to be told, because no middleware and no router run
 
 This is the part worth writing down, because getting it wrong is silent.
 
 `autumn-web`'s middleware stamps `x-frame-options`, `x-content-type-options`,
-`referrer-policy` and `x-xss-protection` on every origin response. A CDN serving
-files runs none of it. Left alone, **every statically served page would carry
-four fewer protections than the same page from the origin** — a security
-regression, not a cosmetic difference.
+`referrer-policy`, `x-xss-protection` and a `content-security-policy` on every
+origin response. A CDN serving files runs none of it. Left alone, **every
+statically served page would carry five fewer protections than the same page
+from the origin** — a security regression, not a cosmetic difference.
+
+The CSP nearly did get dropped, and how is worth recording. It was excused as
+"volatile", an exception copied from
+`autumn_edge::conformance::VOLATILE_HEADERS` — where it belongs, because a wasm
+capsule structurally cannot emit one. A static bundle has no such constraint and
+autumn-web's value is a constant with no per-request nonce, so the exception was
+inherited reasoning that had stopped applying the moment the capsule was
+dropped.
 
 `edge/security-headers.json` is the single source of truth. The exporter writes
 it into `_headers`, and the test asserts it is exactly what the origin emits: no
-more (a fifth header from a framework upgrade would go unrestored) and no fewer
+more (a sixth header from a framework upgrade would go unrestored) and no fewer
 (the bundle would be inventing policy of its own). The same reasoning covers
 `/docs`, which the origin answers with a 307 from a handler and the CDN answers
 from `_redirects` — matched on target *and* status.
+
+### And the assets have to come too
+
+`/static/*` is routed to the CDN alongside the pages. It has to be: every page
+links `/static/css/site.css`, which is render-blocking, so serving pages from
+the CDN and assets from Fly would still wake the scale-to-zero origin on a docs
+visit and still block the render on its cold start.
+
+That is only safe if the bundle is complete, and it briefly was not. htmx is
+referenced by every docs page and exists nowhere in this repo — `autumn-web`
+embeds it with `include_bytes!` and serves it from memory, which works fine
+while the origin serves `/static/*` and breaks silently the moment the CDN does.
+The exporter now writes it out, and
+`no_exported_page_references_a_missing_asset` checks the `href`/`src` attributes
+of exported pages against the bundle so the next such asset fails a test rather
+than a page.
 
 ## What we tried first, and why it lost
 
@@ -126,7 +150,10 @@ there is nothing to diverge, and the whole apparatus is unnecessary.
 - A new *route type* needs a line in the exporter. New guides do not — they come
   from the registry automatically.
 - Two places serve autumn-web.app, so the routing split has to stay correct. It
-  is four route patterns and they are in one file.
+  is five route patterns and they are in one file.
+- The bundle must contain every asset its pages link, including ones the
+  framework serves from memory rather than from disk. That is a test rather
+  than a convention.
 
 ## Also in this change, and independent of it
 

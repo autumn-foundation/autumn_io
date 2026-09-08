@@ -55,6 +55,16 @@ fn headers_file() -> String {
     file
 }
 
+/// Where the framework-embedded htmx bundle is written, derived from the path
+/// the pages actually reference so the two cannot drift apart.
+fn htmx_output_path() -> PathBuf {
+    PathBuf::from_iter(
+        autumn_web::prelude::HTMX_JS_PATH
+            .trim_start_matches('/')
+            .split('/'),
+    )
+}
+
 /// The `_redirects` file.
 ///
 /// One entry, for the one route that is a redirect rather than a page. The
@@ -234,7 +244,17 @@ pub fn export_site(
     write_text(&output_dir, Path::new("_headers"), headers_file())?;
     write_text(&output_dir, Path::new("_redirects"), redirects_file())?;
 
-    let static_assets = copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?;
+    let mut static_assets =
+        copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?;
+
+    // htmx is not in this repo's `static/` tree — the framework embeds it and
+    // serves it from memory at `HTMX_JS_PATH`. Every docs page has a
+    // `<script src>` pointing at it, so a bundle without it is a bundle whose
+    // search box is dead the moment `/static/*` is served by the CDN rather
+    // than by the origin. `no_exported_page_references_a_missing_asset` is the
+    // general guard; this is the one asset it caught.
+    write_bytes(&output_dir, &htmx_output_path(), autumn_web::htmx::HTMX_JS)?;
+    static_assets += 1;
     write_manifest(&output_dir, Path::new("manifest.json"), routes.clone())?;
 
     Ok(ExportSummary {
@@ -318,7 +338,14 @@ fn write_html(output_dir: &Path, path: &Path, html: String) -> Result<(), Export
 }
 
 fn write_text(output_dir: &Path, path: &Path, contents: String) -> Result<(), ExportError> {
+    write_bytes(output_dir, path, contents.as_bytes())
+}
+
+fn write_bytes(output_dir: &Path, path: &Path, contents: &[u8]) -> Result<(), ExportError> {
     let path = output_path_for_write(output_dir, path)?;
+    if let Some(parent) = path.parent() {
+        create_dir(parent)?;
+    }
 
     fs::write(&path, contents).map_err(|source| ExportError::Io { path, source })
 }

@@ -6,7 +6,8 @@ everything that is not a fixed page.
 
 ```
                     ┌─────────── Cloudflare (static) ──────────┐
-  reader ─────────► │  /  /docs/{slug}  /robots.txt  /sitemap  │
+  reader ─────────► │  /  /docs/{slug}  /static/*               │
+                    │  /robots.txt  /sitemap.xml                │
                     └──────────────────────────────────────────┘
 
                     ┌─────────────── Fly (origin) ─────────────┐
@@ -53,23 +54,48 @@ hand-maintenance:
 | `index.html`, `docs/{slug}/index.html` | the `index` and `docs_page` handlers |
 | `robots.txt`, `sitemap.xml` | their handlers |
 | `404.html` | `docs_page`'s not-found arm |
+| `static/**` | this repo's `static/` tree, plus the framework-embedded htmx |
 | `_headers` | `autumn-web`'s security middleware |
 | `_redirects` | the `docs_index` handler's 307 to the first guide |
 | `manifest.json` | route → file map, for anything that wants to inspect the bundle |
 
 ### Why `_headers` exists
 
+**A CDN serving files runs none of the origin's middleware.** Without
+`_headers`, every statically served page would carry fewer protections than the
+same page from the origin — a security regression, not a cosmetic difference.
+
 `autumn-web`'s middleware stamps `x-frame-options`, `x-content-type-options`,
-`referrer-policy` and `x-xss-protection` on every origin response. **A CDN
-serving files runs none of that.** Without `_headers`, every statically served
-page would carry four fewer protections than the same page from the origin — a
-security regression, not a cosmetic difference.
+`referrer-policy`, `x-xss-protection` and a `content-security-policy` on every
+origin response.
 
 `security-headers.json` is the single source of truth. `export_site` writes it
 into `_headers`, and `the_headers_file_carries_exactly_what_the_origin_adds`
 asserts it is exactly what the origin sends: no more (a fifth header added by a
 framework upgrade would go unrestored) and no fewer (the bundle would be
 inventing policy of its own).
+
+The CSP is in that list and nearly was not. It was briefly excused as
+"volatile" — an exception inherited from `autumn_edge::conformance::VOLATILE_HEADERS`,
+where it belongs, because a wasm capsule structurally cannot emit one. A static
+bundle has no such constraint and autumn-web's value is a constant, so excusing
+it would have dropped the strongest header in the set for a reason that does not
+apply here.
+
+### Why `/static/*` is routed here too
+
+Every exported page links `/static/css/site.css`, which is render-blocking.
+Serving the pages from the CDN but their assets from Fly would mean a docs visit
+still woke the scale-to-zero origin, and still waited on its cold start before
+the page was styled — most of what this change exists to avoid.
+
+That only works because the bundle is complete, and it briefly was not: htmx is
+referenced by every docs page but lives nowhere in this repo's `static/` tree —
+`autumn-web` embeds it with `include_bytes!` and serves it from memory. The
+exporter now writes it out alongside the copied assets, and
+`no_exported_page_references_a_missing_asset` walks the `href`/`src` attributes
+of exported pages and fails on anything the bundle does not contain, whatever it
+turns out to be next time.
 
 ### Why the bodies cannot drift
 
