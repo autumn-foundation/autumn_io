@@ -358,16 +358,25 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
     let is_search = path == DOCS_SEARCH_PATH;
     let versioned = has_asset_version_query(request.uri().query());
 
+    // Which representation this is has to be read from the *request*. A repeat
+    // visit that revalidates is answered by `EtagLayer` with a `304` built from
+    // scratch — `ETag` and nothing else — so the response no longer says
+    // `text/markdown` anywhere, and a `304` is a `3xx`, so the page policy below
+    // would claim it and mark a revalidated Markdown response cacheable for an
+    // hour. The `Accept` header still says what was asked for.
+    let wants_markdown = negotiate::prefers_markdown(request.headers());
+
     let mut response = next.run(request).await;
     let status = response.status();
 
-    // Resolved from the response, not the request: which representation a
-    // negotiated page produced is only known once the handler has run.
-    let is_markdown = response
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with(negotiate::MARKDOWN_MEDIA_TYPE));
+    // The response's own type is still consulted, as a backstop for any
+    // Markdown this site might serve outside the negotiated read path.
+    let is_markdown = wants_markdown
+        || response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.starts_with(negotiate::MARKDOWN_MEDIA_TYPE));
 
     let cache_control = if is_markdown {
         Some(UNCACHEABLE)

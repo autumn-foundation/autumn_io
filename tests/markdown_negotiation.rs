@@ -366,6 +366,65 @@ async fn only_a_named_markdown_media_type_produces_markdown() {
 }
 
 #[tokio::test]
+async fn a_revalidated_markdown_response_is_still_uncacheable() {
+    // `EtagLayer` answers a repeat visit with a `304` built from scratch,
+    // carrying `ETag` and nothing else — no `Content-Type` to recognise Markdown
+    // by — and a `304` is a `3xx`, which the page policy would otherwise treat
+    // as a cacheable redirect. A shared cache would then hold `s-maxage=3600`
+    // against a Markdown revalidation of a URL whose stored entry is HTML.
+    let app = app();
+
+    let first = app
+        .get("/docs/getting-started")
+        .header("accept", "text/markdown")
+        .send()
+        .await;
+    first.assert_status(200);
+    let etag = first
+        .header("etag")
+        .expect("the layer stack derives a weak ETag from the body")
+        .to_owned();
+
+    let revalidated = app
+        .get("/docs/getting-started")
+        .header("accept", "text/markdown")
+        .header("if-none-match", &etag)
+        .send()
+        .await;
+
+    revalidated.assert_status(304);
+    assert_eq!(
+        revalidated.header("cache-control"),
+        Some("no-store"),
+        "a revalidated Markdown response must not become cacheable by losing \
+         its Content-Type",
+    );
+
+    // The HTML representation of the same URL revalidates too, and keeps the
+    // policy that makes the edge cache worth having.
+    let html = app.get("/docs/getting-started").send().await;
+    let html_etag = html
+        .header("etag")
+        .expect("HTML carries an ETag too")
+        .to_owned();
+    assert_ne!(
+        html_etag, etag,
+        "two representations of one URL must not share a validator",
+    );
+
+    let html_revalidated = app
+        .get("/docs/getting-started")
+        .header("if-none-match", &html_etag)
+        .send()
+        .await;
+    html_revalidated.assert_status(304);
+    assert_eq!(
+        html_revalidated.header("cache-control"),
+        Some("public, max-age=0, s-maxage=3600, must-revalidate"),
+    );
+}
+
+#[tokio::test]
 async fn forbidding_both_representations_is_a_406() {
     let response = app()
         .get("/docs/getting-started")

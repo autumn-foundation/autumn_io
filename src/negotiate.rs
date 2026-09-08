@@ -371,6 +371,30 @@ impl MarkdownNegotiate {
     }
 }
 
+/// Whether this request's `Accept` resolves to the Markdown representation.
+///
+/// For code that has the request headers but not the extractor — the
+/// `Cache-Control` middleware, which must know which representation a response
+/// belongs to *without* reading the response. A `304 Not Modified` from
+/// [`EtagLayer`] is built fresh, carrying only `ETag`, so by the time it reaches
+/// the middleware there is no `Content-Type` left to recognise Markdown by; and
+/// a `304` is a `3xx`, so the page policy would otherwise claim it and mark a
+/// revalidated Markdown response cacheable for an hour. The request is the one
+/// thing that still says what was asked for.
+///
+/// Collapses `406` onto HTML like [`MarkdownNegotiate::representation`] does,
+/// which is harmless here: the middleware gives a `406` no policy either way.
+///
+/// [`EtagLayer`]: autumn_web::etag::EtagLayer
+#[must_use]
+pub fn prefers_markdown(headers: &HeaderMap) -> bool {
+    MarkdownNegotiate {
+        qualities: accept_qualities(headers),
+    }
+    .representation()
+        == Representation::Markdown
+}
+
 impl<S> FromRequestParts<S> for MarkdownNegotiate
 where
     S: Send + Sync,
@@ -457,6 +481,10 @@ pub fn estimate_tokens(markdown: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What Chrome sends.
+    const BROWSER_ACCEPT: &str =
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8";
 
     /// Build a [`MarkdownNegotiate`] as the extractor would, from an optional
     /// `Accept` header.
@@ -731,6 +759,37 @@ mod tests {
             ))
             .representation(),
             Representation::Markdown,
+        );
+    }
+
+    #[test]
+    fn the_middlewares_view_of_a_request_matches_the_extractors() {
+        // `prefers_markdown` decides the cache policy of responses whose
+        // `Content-Type` is gone (a 304), so it must not drift from the
+        // resolution the handler used to build the body in the first place.
+        for accept in [
+            "text/markdown",
+            "text/markdown, */*;q=0.1",
+            "text/html, text/markdown",
+            "text/html;q=0.5, text/markdown",
+            "text/html;q=0",
+            "*/*",
+            "text/*",
+            BROWSER_ACCEPT,
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::ACCEPT, HeaderValue::from_str(accept).unwrap());
+
+            assert_eq!(
+                prefers_markdown(&headers),
+                negotiate(Some(accept)).representation() == Representation::Markdown,
+                "the middleware and the extractor disagree about {accept}",
+            );
+        }
+
+        assert!(
+            !prefers_markdown(&HeaderMap::new()),
+            "a request with no Accept is an HTML request",
         );
     }
 

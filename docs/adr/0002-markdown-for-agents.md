@@ -102,7 +102,10 @@ So:
 - The **Markdown** representation is additionally `no-store`. A stored Markdown
   entry under a key that ignores `Accept` would be served to browsers for an
   hour; a browser that has to re-fetch is a cost worth paying to make that
-  impossible.
+  impossible. That policy is chosen from the *request*, because a revalidated
+  Markdown response is a `304` that `EtagLayer` builds from scratch — `ETag` and
+  nothing else, no `Content-Type` to recognise it by, and a `3xx` that the page
+  policy would otherwise claim.
 - The **HTML** representation keeps `public, max-age=0, s-maxage=3600,
   must-revalidate`. The reader-facing cache win of ADR-0001 is untouched.
 
