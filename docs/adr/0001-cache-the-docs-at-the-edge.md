@@ -201,9 +201,19 @@ and none should be answered by loosening the CSP.
 | Injection | What it does here | Disposition |
 | --- | --- | --- |
 | **Rocket Loader** | Rewrites every `<script>` to a bogus MIME type so the browser skips it, then executes them itself | **Turn off** (Speed → Optimization → Content Optimization) |
-| **Bot-detection beacon** | Adds an inline script (`__CF$cv$params` → `/cdn-cgi/challenge-platform/…`) | Blocked by the CSP; harmless |
+| **Bot-detection beacon** (JavaScript Detections) | Adds an inline script that builds a hidden iframe and pulls `/cdn-cgi/challenge-platform/scripts/jsd/main.js` | **Turn off** (Security → Bots) — it is already inert, see below |
 | **Web Analytics** | Adds `static.cloudflareinsights.com/beacon.min.js` | Left off — see below |
 | **WebMCP bridge** | Adds `<script type="module" src="/.webmcp/bridge.js">` | Deliberate — mirrors this site's own `/mcp` server to the emerging WebMCP standard. Same-origin, so the CSP allows it as-is |
+
+**The bot beacon is already dead, so turning it off costs nothing.** Its
+bootstrap is inline and the CSP carries no `'unsafe-inline'`, so it never runs
+and `main.js` is never fetched — Cloudflare gets no JavaScript-detection signal
+from this site today, whatever the dashboard says. Disabling it does not lose a
+protection; it stops a console error on every page load and makes the dashboard
+agree with reality. Cloudflare's other bot signals (IP reputation, HTTP
+fingerprinting) are unaffected because they need no script. Getting the signal
+back would mean putting `'unsafe-inline'` into `script-src`, which is a poor
+trade for a site with no login, no forms and no writes.
 
 **Rocket Loader is the one that matters**, because it does not fail loudly — it
 succeeds at taking ownership. It rewrites `htmx.min.js`, `copy-code.js` and
