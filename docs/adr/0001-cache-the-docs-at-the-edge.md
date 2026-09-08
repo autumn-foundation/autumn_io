@@ -183,12 +183,22 @@ extensions by default, and the origin marks versioned asset URLs
 `public, max-age=31536000, immutable`. Adding a rule for them is not
 necessary and gives you a second place to get it wrong.
 
-### 4. The zone-level setting that can silently defeat this
+### 4. The zone-level browser setting, for everything the rule does not match
 
-**Caching → Configuration → Browser Cache TTL.** If this is set to a fixed
-duration it overrides origin headers for browsers zone-wide, regardless of what
-the Cache Rule says. Set it to **Respect Existing Headers**. Otherwise readers
-hold pages for that duration and a purge cannot reach them.
+**Caching → Configuration → Browser Cache TTL.** A fixed duration here overrides
+origin headers for browsers. Set it to **Respect Existing Headers**.
+
+What this governs is everything *outside* the rule above — `/static/*`
+especially, which is deliberately left unmatched (§3). For the paths the rule
+does match, the rule's own **Browser TTL: Respect origin TTL** is the setting
+that decides, and a matching Cache Rule takes precedence over the zone default;
+so on the read path this is a second line rather than the primary control.
+
+Either way the failure it guards against is the one with no remedy: a fixed
+browser TTL pins pages in readers' browsers for that long, where no purge can
+reach them. Worth setting correctly even though the rule already covers the
+pages — the zone value is what applies to every asset request, and to any path
+added later that nobody remembers to put in the rule.
 
 ### 5. Cloudflare's HTML injections vs. this site's CSP
 
