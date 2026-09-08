@@ -8,6 +8,11 @@ use autumn_web::{Markup, PreEscaped, html};
 use crate::docs::{DocPage, DocRegistry, SearchHit, render_highlighted_code_block};
 use crate::{DOCS_SEARCH_PATH, DOCS_START_PATH, seo};
 
+/// The Markdown representation of these same pages, served to agents that ask
+/// for `text/markdown`. A child module so it can build on the page prose and
+/// navigation tables below without making either public.
+pub mod markdown;
+
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
@@ -240,6 +245,17 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
     },
 ];
 
+/// Home-page prose, kept as constants rather than string literals inside
+/// `html!` so [`markdown`] can render the *same* sentences instead of a second
+/// copy that drifts on the next edit.
+const HOME_HEADLINE: &str = "Ship the app, not the plumbing.";
+const HOME_LEDE: &str = "Autumn gives Rust teams the batteries they expect from mature app \
+     frameworks: typed routes, Maud views, Postgres persistence, background work, health checks, \
+     and production defaults in one server-rendered path.";
+const HARVEST_LEDE: &str = "Harvest adds Postgres-backed durable workflows to Autumn: activities, \
+     timers, signals, child workflows, DAG schedules, replay, dead letters, and a management API \
+     without operating a separate workflow server.";
+
 const HOME_ROUTE_EXAMPLE: &str = r#"use autumn_web::prelude::*;
 
 #[get("/")]
@@ -267,10 +283,8 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                     section class="home-hero" {
                         div class="hero-copy" {
                             p class="eyebrow" { (VERSION_LABEL) }
-                            h1 id="page-title" { "Ship the app, not the plumbing." }
-                            p class="hero-lede" {
-                                "Autumn gives Rust teams the batteries they expect from mature app frameworks: typed routes, Maud views, Postgres persistence, background work, health checks, and production defaults in one server-rendered path."
-                            }
+                            h1 id="page-title" { (HOME_HEADLINE) }
+                            p class="hero-lede" { (HOME_LEDE) }
                             div class="hero-actions" {
                                 a class="button button-primary" href=(DOCS_START_PATH) { "Get started" }
                                 a class="button button-secondary" href="/docs/what-happens-when" { "Read the docs" }
@@ -320,9 +334,7 @@ fn home_harvest_release() -> Markup {
             div class="home-harvest-copy" {
                 p class="eyebrow" { "Companion release" }
                 h2 id="harvest-release-title" { "Autumn Harvest " (seo::HARVEST_VERSION) }
-                p {
-                    "Harvest adds Postgres-backed durable workflows to Autumn: activities, timers, signals, child workflows, DAG schedules, replay, dead letters, and a management API without operating a separate workflow server."
-                }
+                p { (HARVEST_LEDE) }
             }
             div class="home-harvest-actions" {
                 a class="button button-primary" href=(HARVEST_DOC_PATH) { "Read Harvest overview" }
@@ -353,6 +365,15 @@ fn home_mcp_endpoint() -> Markup {
                     (VERSION_LABEL)
                     " docs that are deployed rather than from whatever it remembers. "
                     "No key, no account — it is a public read-only endpoint."
+                }
+                // An agent that cannot speak MCP — a crawler, a `curl` in a
+                // shell tool — still has a way in, and this is the only place
+                // on the site that says so.
+                p {
+                    "An agent that does not speak MCP can ask any page here for its Markdown "
+                    "instead of scraping the HTML: send "
+                    code { "Accept: text/markdown" }
+                    " and the same URL answers with the guide's source."
                 }
             }
             div class="home-mcp-example" {
