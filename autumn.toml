@@ -32,6 +32,39 @@ enabled = true
 [security.trusted_hosts]
 hosts = ["autumn-web.app", "www.autumn-web.app", "autumn-io.fly.dev"]
 
+# CSRF is disabled, deliberately, and this must stay explicit.
+#
+# Autumn's prod profile turns CSRF on as a smart default. The CSRF layer then
+# issues `Set-Cookie: autumn-csrf=...` on any response whose request arrived
+# without that cookie — which is every request Cloudflare makes to fill its
+# cache, because a CDN does not send a browser's cookies on its own fetches.
+#
+# Cloudflare never stores a response carrying `Set-Cookie`. So with CSRF on,
+# every page came back `cf-cache-status: BYPASS` and nothing on the read path
+# could be cached, ever. That silently defeats the whole reason this site sends
+# `s-maxage` (see docs/adr/0001-cache-the-docs-at-the-edge.md), and it is
+# invisible from the browser: the pages look right, they are just always
+# rendered by a scale-to-zero machine in `ord`.
+#
+# Turning it off costs nothing here, because there is nothing for a CSRF token
+# to protect:
+#
+#   * No sessions and no authentication — `autumn-web` is compiled without the
+#     `db` and session features, so none of that machinery is even present.
+#   * Every route this app declares is a GET (`src/lib.rs`, `src/api.rs`).
+#   * The one POST surface is the framework's `/mcp` mount, deliberately
+#     unauthenticated public documentation exposing three read-only tools.
+#
+# CSRF defends authenticated state-changing requests. With no authentication
+# and no state to change, a forged cross-site request can do exactly what any
+# visitor can: read published documentation.
+#
+# `csrf_cookie_stays_disabled_so_the_read_path_can_be_cached` in
+# `tests/fly_deploy_config.rs` pins this, because the failure mode is silent —
+# re-enabling it breaks caching without breaking a page.
+[security.csrf]
+enabled = false
+
 [log]
 level = "info"
 # format = "Auto"  # Auto | Pretty | Json
