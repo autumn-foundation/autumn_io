@@ -203,7 +203,7 @@ and none should be answered by loosening the CSP.
 | **Rocket Loader** | Rewrites every `<script>` to a bogus MIME type so the browser skips it, then executes them itself | **Turn off** (Speed → Optimization → Content Optimization) |
 | **Bot-detection beacon** | Adds an inline script (`__CF$cv$params` → `/cdn-cgi/challenge-platform/…`) | Blocked by the CSP; harmless |
 | **Web Analytics** | Adds `static.cloudflareinsights.com/beacon.min.js` | Left off — see below |
-| **WebMCP bridge** | Adds `<script type="module" src="/.webmcp/bridge.js">` | Same-origin, so allowed; enabled by Cloudflare rather than by this repo |
+| **WebMCP bridge** | Adds `<script type="module" src="/.webmcp/bridge.js">` | Deliberate — mirrors this site's own `/mcp` server to the emerging WebMCP standard. Same-origin, so the CSP allows it as-is |
 
 **Rocket Loader is the one that matters**, because it does not fail loudly — it
 succeeds at taking ownership. It rewrites `htmx.min.js`, `copy-code.js` and
@@ -282,8 +282,11 @@ so they would have been re-fetched anyway.
 curl -sI https://autumn-web.app/docs/getting-started | grep -iE 'cf-cache-status|cache-control'
 curl -sI https://autumn-web.app/docs/getting-started | grep -i cf-cache-status
 
-# The entry-point redirect — 307, with a policy, and cacheable.
-curl -sI https://autumn-web.app/docs | grep -iE 'cf-cache-status|location|cache-control'
+# The entry-point redirect. Twice, for the same reason as the negative probes
+# below: one request cannot tell a stored redirect from an unstored one, and
+# whether the 307 caches is the whole question here.
+curl -sI https://autumn-web.app/docs | grep -iE 'location|cache-control'
+curl -sI https://autumn-web.app/docs | grep -i cf-cache-status
 
 # These must stay out of the cache entirely. Ask twice, and read the second
 # answer: the first request for a URL Cloudflare has not seen reports MISS even
@@ -296,7 +299,23 @@ for path in '/search?q=router' /api/docs /actuator/prometheus; do
 done
 ```
 
-On that second request each must report `DYNAMIC` (never eligible) or `BYPASS`
+`/docs` should report `HIT` on that second request. Two other answers each mean
+something specific, and this is worth checking rather than assuming — on this
+site it read `BYPASS` on both requests while `/docs/getting-started` read `HIT`
+with byte-identical `Cache-Control`, which is what a rule that matches `/docs/`
+but not the bare `/docs` looks like:
+
+- **`BYPASS`** — something declined it. The header is not the suspect if a guide
+  under `/docs/` is caching with the same one; check that the expression
+  actually lists `http.request.uri.path eq "/docs"`. It is a separate clause
+  precisely because prefix-matching `/docs/` misses it.
+- **`DYNAMIC`** — Cloudflare judged it ineligible rather than being told to skip
+  it, so the rule is matching but the response is not being stored.
+
+Either way the entry point to the guides is reaching the origin on every visit,
+which is the one URL least worth paying for.
+
+The last three must report `DYNAMIC` (never eligible) or `BYPASS`
 (a rule declined it). **`MISS` is already a failure** — it means Cloudflare
 judged the response cacheable and stored it — and a `HIT` on the next request
 merely confirms what the `MISS` already said.
