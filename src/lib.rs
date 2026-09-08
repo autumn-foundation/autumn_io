@@ -430,32 +430,49 @@ pub async fn docs_page(negotiate: MarkdownNegotiate, Path(slug): Path<String>) -
         Err(error) => return docs_load_error_response(negotiate, error),
     };
 
+    // Counted inside the arm that renders, not before it: the two
+    // representations are different populations. An HTML render is a cache miss
+    // or a revalidation, while a Markdown one deliberately bypasses the cache
+    // and always reaches the origin — summed together, an agent crawling the
+    // guides would read as the edge cache degrading. A `406` renders neither and
+    // counts as neither.
     match registry.page(&slug) {
-        Some(page) => {
-            metrics::record_page_render(metrics::outcome::FOUND);
-            negotiate.respond(
-                || site::render_docs_page(registry, page).into_response(),
-                || MarkdownPage::new(site::markdown::render_docs_page(registry, page)),
-            )
-        }
-        None => {
-            metrics::record_page_render(metrics::outcome::MISSING);
-            negotiate.respond(
-                || {
-                    (
-                        StatusCode::NOT_FOUND,
-                        site::render_missing_docs_page(registry, &slug),
-                    )
-                        .into_response()
-                },
-                || {
-                    MarkdownPage::with_status(
-                        StatusCode::NOT_FOUND,
-                        site::markdown::render_missing_docs_page(registry, &slug),
-                    )
-                },
-            )
-        }
+        Some(page) => negotiate.respond(
+            || {
+                metrics::record_page_render(metrics::outcome::FOUND, metrics::representation::HTML);
+                site::render_docs_page(registry, page).into_response()
+            },
+            || {
+                metrics::record_page_render(
+                    metrics::outcome::FOUND,
+                    metrics::representation::MARKDOWN,
+                );
+                MarkdownPage::new(site::markdown::render_docs_page(registry, page))
+            },
+        ),
+        None => negotiate.respond(
+            || {
+                metrics::record_page_render(
+                    metrics::outcome::MISSING,
+                    metrics::representation::HTML,
+                );
+                (
+                    StatusCode::NOT_FOUND,
+                    site::render_missing_docs_page(registry, &slug),
+                )
+                    .into_response()
+            },
+            || {
+                metrics::record_page_render(
+                    metrics::outcome::MISSING,
+                    metrics::representation::MARKDOWN,
+                );
+                MarkdownPage::with_status(
+                    StatusCode::NOT_FOUND,
+                    site::markdown::render_missing_docs_page(registry, &slug),
+                )
+            },
+        ),
     }
 }
 

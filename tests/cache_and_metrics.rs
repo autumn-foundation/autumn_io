@@ -211,6 +211,69 @@ async fn a_docs_page_render_is_counted_by_outcome() {
         "a bad slug should be counted separately — it is how a stale inbound \
          link becomes visible",
     );
+    assert!(
+        series(
+            &scrape,
+            metrics::DOCS_PAGE_RENDERS,
+            r#"representation="html""#,
+        )
+        .is_some(),
+        "an ordinary page request is an HTML render, and only the HTML series \
+         measures the edge cache",
+    );
+}
+
+#[tokio::test]
+async fn markdown_renders_are_counted_apart_from_html_ones() {
+    // The HTML series is the cache-miss count the edge caching is judged by.
+    // Markdown responses are `no-store` and the edge bypasses cache for them, so
+    // they are *supposed* to reach the origin: folded into the same series, an
+    // agent crawling the guides would read as the cache degrading.
+    //
+    // Only the Markdown series is asserted on, and only as a delta. The registry
+    // is process-global and the tests in this binary run concurrently, so the
+    // HTML series moves under this test's feet — its label is pinned in
+    // `a_docs_page_render_is_counted_by_outcome` instead, where the request that
+    // produces it is the one under test.
+    let app = app();
+
+    let markdown_before = renders(&scrape(&app).await, r#"representation="markdown""#);
+
+    for _ in 0..3 {
+        app.get("/docs/getting-started")
+            .header("accept", "text/markdown")
+            .send()
+            .await
+            .assert_status(200);
+    }
+
+    assert_eq!(
+        renders(&scrape(&app).await, r#"representation="markdown""#),
+        markdown_before + 3.0,
+        "three Markdown requests should be three Markdown renders, in their own \
+         series",
+    );
+
+    // A 406 renders nothing in either representation, and must count as nothing
+    // rather than as a page the origin served.
+    app.get("/docs/getting-started")
+        .header("accept", "text/html;q=0, text/markdown;q=0")
+        .send()
+        .await
+        .assert_status(406);
+
+    assert_eq!(
+        renders(&scrape(&app).await, r#"representation="markdown""#),
+        markdown_before + 3.0,
+        "a 406 produced no page, so it should have counted as none",
+    );
+}
+
+/// The `docs_site_page_renders_total` series matching `label_fragment`, or zero
+/// when it has not been recorded yet — an absent counter and one sitting at
+/// zero mean the same thing to this test.
+fn renders(scrape: &str, label_fragment: &str) -> f64 {
+    series(scrape, metrics::DOCS_PAGE_RENDERS, label_fragment).unwrap_or(0.0)
 }
 
 #[tokio::test]
