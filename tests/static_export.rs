@@ -252,3 +252,51 @@ fn asset_references(html: &str) -> Vec<String> {
     found.dedup();
     found
 }
+
+#[test]
+fn exported_urls_are_slashless() {
+    // What `html_handling = "drop-trailing-slash"` in `edge/wrangler.toml` is
+    // built on. Pages are stored as `docs/{slug}/index.html`, so a static host
+    // has to be told which URL shape to serve them at — and Cloudflare's
+    // default is the other one, which would redirect every guide navigation to
+    // a trailing-slash URL that the page's own canonical tag contradicts.
+    //
+    // If this site ever starts generating trailing-slash URLs, that setting
+    // becomes wrong, and this fails rather than the redirect quietly reversing.
+    let workspace = temp_dir("export-urls");
+    let dist = export_to(&workspace);
+    let registry = autumn_io::site_docs().expect("the bundled guides parse");
+
+    let page = read(&dist, "docs/getting-started/index.html");
+    assert!(
+        page.contains(
+            r#"<link rel="canonical" href="https://autumn-web.app/docs/getting-started">"#
+        ),
+        "the canonical URL should be slashless",
+    );
+
+    let sitemap = read(&dist, "sitemap.xml");
+    let mut trailing: Vec<&str> = Vec::new();
+    for entry in sitemap.split("<loc>").skip(1) {
+        let url = entry.split("</loc>").next().unwrap_or_default();
+        // The site root is the one URL that legitimately ends in a slash.
+        if url.ends_with('/') && url != "https://autumn-web.app/" {
+            trailing.push(url);
+        }
+    }
+    assert!(
+        trailing.is_empty(),
+        "sitemap entries should be slashless, found {trailing:?}",
+    );
+
+    for page in registry.pages().iter().take(20) {
+        let html = read(&dist, &format!("docs/{}/index.html", page.slug));
+        assert!(
+            !html.contains(&format!(r#"href="/docs/{}/""#, page.slug)),
+            "/docs/{} links to itself with a trailing slash",
+            page.slug,
+        );
+    }
+
+    std::fs::remove_dir_all(&workspace).expect("cleanup");
+}

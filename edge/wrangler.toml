@@ -22,6 +22,19 @@ compatibility_date = "2026-09-01"
 directory = "../dist"
 not_found_handling = "404-page"
 
+# Serve `docs/{slug}/index.html` at `/docs/{slug}`, with no trailing slash.
+#
+# Not a preference — the default (`auto-trailing-slash`) would redirect
+# `/docs/getting-started` to `/docs/getting-started/` because that is how the
+# file is stored, and every URL this site generates is slashless: the `<link
+# rel="canonical">` on the page itself, every sidebar and body link, every
+# `<loc>` in the sitemap, and every key in `manifest.json`. The default would
+# put an extra redirect in front of ordinary navigation and land the reader on
+# a URL the page's own canonical tag disagrees with.
+#
+# `exported_urls_are_slashless` pins the assumption this setting is built on.
+html_handling = "drop-trailing-slash"
+
 [observability]
 enabled = true
 
