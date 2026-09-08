@@ -221,13 +221,25 @@ curl -sI https://autumn-web.app/docs/getting-started | grep -i cf-cache-status
 # The entry-point redirect — 307, with a policy, and cacheable.
 curl -sI https://autumn-web.app/docs | grep -iE 'cf-cache-status|location|cache-control'
 
-# These must never report HIT.
+# These must stay out of the cache entirely. Ask twice, and read the second
+# answer: the first request for a URL Cloudflare has not seen reports MISS even
+# when a rule has wrongly made it cacheable, so one probe cannot tell "never
+# cached" apart from "about to be cached".
 for path in '/search?q=router' /api/docs /actuator/prometheus; do
+  curl -sI "https://autumn-web.app$path" > /dev/null   # warm, ignore
   printf '%s: ' "$path"
   curl -sI "https://autumn-web.app$path" | grep -i cf-cache-status
 done
 ```
 
-`DYNAMIC` or `BYPASS` on the last three is correct. A `HIT` on any of them means
-the rule is matching more than it should — check for a broader "Cache
-Everything" rule sitting above this one, since Cache Rules apply in order.
+On that second request each must report `DYNAMIC` (never eligible) or `BYPASS`
+(a rule declined it). **`MISS` is already a failure** — it means Cloudflare
+judged the response cacheable and stored it — and a `HIT` on the next request
+merely confirms what the `MISS` already said.
+
+Either result means some rule is matching a path this one does not. The
+allow-list above cannot match any of these three, so look for **another rule
+that does — anywhere in the list, not just above this one.** Rule order is
+irrelevant to this particular diagnosis: with no competing match on these paths
+there is nothing for precedence to protect, so a "Cache Everything" rule takes
+effect from wherever it sits.
