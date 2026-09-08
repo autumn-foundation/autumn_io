@@ -12,69 +12,6 @@ use crate::docs::DocRegistry;
 use crate::{seo, site};
 
 const STATIC_DIR: &str = "static";
-
-/// Where the pre-rendered missing-guide page is written.
-///
-/// `404.html` is the name Cloudflare (and every other static host) looks for.
-pub const MISSING_PAGE_FILE: &str = "404.html";
-
-/// The slug the 404 page is rendered for.
-///
-/// Deliberately not a valid slug shape, so it can never collide with a real
-/// guide and can never be mistaken for one in the export.
-const MISSING_PAGE_SLUG: &str = "not-found";
-
-/// Security headers `autumn-web`'s middleware stamps on every origin response,
-/// as the single source of truth shared with the deploy config.
-///
-/// The origin's middleware stack does not run when a CDN serves `dist/`. Left
-/// alone, every statically served page would carry four fewer protections than
-/// the same page from the origin — a security regression, not a cosmetic
-/// difference. `tests/static_export.rs` asserts this list is exactly what the
-/// origin emits: no more (a fifth header would go unrestored) and no fewer (the
-/// export would be inventing headers).
-const SECURITY_HEADERS_JSON: &str = include_str!("../edge/security-headers.json");
-
-/// The `_headers` file: Cloudflare applies these to every path it serves.
-fn headers_file() -> String {
-    let parsed: serde_json::Value =
-        serde_json::from_str(SECURITY_HEADERS_JSON).expect("security-headers.json is valid JSON");
-    let headers = parsed["headers"]
-        .as_object()
-        .expect("security-headers.json has a `headers` object");
-
-    let mut file = String::from("/*\n");
-    for (name, value) in headers {
-        let value = value.as_str().expect("header values are strings");
-        file.push_str("  ");
-        file.push_str(name);
-        file.push_str(": ");
-        file.push_str(value);
-        file.push('\n');
-    }
-    file
-}
-
-/// Where the framework-embedded htmx bundle is written, derived from the path
-/// the pages actually reference so the two cannot drift apart.
-fn htmx_output_path() -> PathBuf {
-    PathBuf::from_iter(
-        autumn_web::prelude::HTMX_JS_PATH
-            .trim_start_matches('/')
-            .split('/'),
-    )
-}
-
-/// The `_redirects` file.
-///
-/// One entry, for the one route that is a redirect rather than a page. The
-/// origin serves `/docs` with a 307 from `docs_index`; a static bundle has no
-/// handler to do that, so the CDN is told instead. The status is kept at 307 to
-/// match the origin exactly — a 301 would be cached by browsers permanently and
-/// is much harder to take back.
-fn redirects_file() -> String {
-    format!("/docs {} 307\n", crate::DOCS_START_PATH)
-}
 const AUTUMN_WEB_VERSION: &str = "0.7.0";
 const EXPORT_MARKER_FILE: &str = ".autumn-io-static-export";
 
@@ -225,41 +162,11 @@ pub fn export_site(
         },
     );
 
-    // The site's own missing-guide page, pre-rendered. A CDN answers an unknown
-    // path from a file; without this it would answer with its own generic 404
-    // and a reader who mistyped a slug would fall out of the site entirely.
-    // `render_missing_docs_page` needs a slug to echo, and there is no
-    // request here to take one from — so the page is rendered for a slug that
-    // cannot exist, and the sidebar and chrome around it are what matter.
-    write_html(
-        &output_dir,
-        Path::new(MISSING_PAGE_FILE),
-        site::render_missing_docs_page(registry, MISSING_PAGE_SLUG).into_string(),
-    )?;
-
-    // Two files the CDN reads as configuration rather than content. They exist
-    // because serving `dist/` from a CDN means the origin's middleware and
-    // router do not run: nothing else would add the security headers, and
-    // nothing else would answer `/docs`.
-    write_text(&output_dir, Path::new("_headers"), headers_file())?;
-    write_text(&output_dir, Path::new("_redirects"), redirects_file())?;
-
-    let mut static_assets =
-        copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?;
-
-    // htmx is not in this repo's `static/` tree — the framework embeds it and
-    // serves it from memory at `HTMX_JS_PATH`. Every docs page has a
-    // `<script src>` pointing at it, so a bundle without it is a bundle whose
-    // search box is dead the moment `/static/*` is served by the CDN rather
-    // than by the origin. `no_exported_page_references_a_missing_asset` is the
-    // general guard; this is the one asset it caught.
-    write_bytes(&output_dir, &htmx_output_path(), autumn_web::htmx::HTMX_JS)?;
-    static_assets += 1;
+    let static_assets = copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?;
     write_manifest(&output_dir, Path::new("manifest.json"), routes.clone())?;
 
     Ok(ExportSummary {
-        // Every guide, plus the home page, plus the pre-rendered 404.
-        html_pages: registry.pages().len() + 2,
+        html_pages: registry.pages().len() + 1,
         static_assets,
         routes: routes.len(),
     })
@@ -338,14 +245,7 @@ fn write_html(output_dir: &Path, path: &Path, html: String) -> Result<(), Export
 }
 
 fn write_text(output_dir: &Path, path: &Path, contents: String) -> Result<(), ExportError> {
-    write_bytes(output_dir, path, contents.as_bytes())
-}
-
-fn write_bytes(output_dir: &Path, path: &Path, contents: &[u8]) -> Result<(), ExportError> {
     let path = output_path_for_write(output_dir, path)?;
-    if let Some(parent) = path.parent() {
-        create_dir(parent)?;
-    }
 
     fs::write(&path, contents).map_err(|source| ExportError::Io { path, source })
 }

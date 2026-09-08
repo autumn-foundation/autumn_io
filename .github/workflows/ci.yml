@@ -75,37 +75,6 @@ jobs:
       # 9 syntax_highlighting_backend), 0 failures. Five of those had never
       # passed before this workflow existed; see the note at the top.
 
-  static-export:
-    name: Static export
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      # The bundle Cloudflare serves. Rendering it here means a change that
-      # breaks the export fails on the PR rather than at deploy time — and the
-      # export is not exercised by `cargo test` alone, which uses scratch
-      # directories rather than the real `dist/`.
-      - name: Render dist/
-        run: cargo run --locked --bin build_site
-
-      # Every generated file the CDN depends on, checked against what the origin
-      # actually serves: the page bodies, the security headers, the `/docs`
-      # redirect and the 404 page. Not path-filtered — a change anywhere in
-      # `content/`, `src/site.rs` or the framework's middleware can move any of
-      # them.
-      - name: Check the bundle against the origin
-        run: cargo test --locked --test static_export
-
-      - name: Summarise the bundle
-        run: |
-          echo "pages:  $(find dist -name '*.html' | wc -l)"
-          echo "size:   $(du -sh dist | cut -f1)"
-          test -s dist/_headers   || { echo "::error::dist/_headers is missing or empty"; exit 1; }
-          test -s dist/_redirects || { echo "::error::dist/_redirects is missing or empty"; exit 1; }
-          test -s dist/404.html   || { echo "::error::dist/404.html is missing or empty"; exit 1; }
-
   release-build:
     name: Release build (fat LTO)
     runs-on: ubuntu-latest

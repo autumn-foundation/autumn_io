@@ -1154,9 +1154,16 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
         .layer(autumn_io::response_compression_layer())
         .build();
 
+    // The home page is a page, not an asset: it lives at a stable URL that
+    // cannot carry a version query, so it is cached by the shared cache only
+    // and browsers revalidate. It used to carry no policy at all, which meant
+    // no CDN in front of the origin would hold it.
     let home = app.get("/").send().await;
     home.assert_status(200);
-    assert_eq!(home.header("cache-control"), None);
+    assert_eq!(
+        home.header("cache-control"),
+        Some("public, max-age=0, s-maxage=3600, must-revalidate"),
+    );
 
     // Versioned URLs change whenever the bytes do, so they cache permanently.
     for path in [
@@ -1237,13 +1244,10 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     let summary = export_site(registry, &ExportConfig::new(&dist)).expect("site should export");
 
-    // Every guide, plus the home page, plus the pre-rendered 404 the CDN serves
-    // for an unknown path (`export::MISSING_PAGE_FILE`).
-    assert_eq!(summary.html_pages, registry.pages().len() + 2);
+    // Every guide, plus the home page.
+    assert_eq!(summary.html_pages, registry.pages().len() + 1);
     assert!(summary.static_assets >= 4);
-    // `/`, `/robots.txt`, `/sitemap.xml`, and one per guide. The 404, `_headers`
-    // and `_redirects` are not routes — they are what the CDN reads instead of
-    // running a router.
+    // `/`, `/robots.txt`, `/sitemap.xml`, and one per guide.
     assert_eq!(summary.routes, registry.pages().len() + 3);
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");

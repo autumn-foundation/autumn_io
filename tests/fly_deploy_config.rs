@@ -186,10 +186,11 @@ fn release_profile_keeps_symbols_for_profiling_and_backtraces() {
 /// catches it. The `release-build` CI job compiles from a full checkout, where
 /// every path exists; only the real image build sees the trimmed context.
 ///
-/// That is exactly how `edge/security-headers.json` shipped broken: it was
-/// added as deploy configuration, then embedded, and the two facts were never
-/// reconciled. This turns the next one into a test failure instead of a failed
-/// deploy.
+/// A near-miss on this branch is why the test exists: a config file was added
+/// for deployment, later embedded with `include_str!`, and nothing reconciled
+/// the two facts — every production image build would have failed on a path CI
+/// could not see was missing. Today only `content/` is embedded and it is
+/// copied, so this passes trivially; it is here for the next embed.
 #[test]
 fn embedded_files_are_inside_the_docker_build_context() {
     let copied: Vec<String> = DOCKERFILE

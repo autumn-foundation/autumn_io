@@ -308,11 +308,22 @@ pub async fn search_autumn_docs(
         .clamp(1, MAX_SEARCH_LIMIT);
 
     let hits = match crate::site_search_index() {
-        Some(index) if !term.is_empty() => index.search(term, limit),
+        Some(index) if !term.is_empty() => {
+            let hits = index.search(term, limit);
+            crate::metrics::record_search(if hits.is_empty() {
+                crate::metrics::outcome::EMPTY
+            } else {
+                crate::metrics::outcome::HIT
+            });
+            hits
+        }
         // An empty query is a caller mistake rather than a server fault, and an
         // empty result set says so without costing a round-trip to an error.
         Some(_) => Vec::new(),
-        None => return Err(DocsUnavailable),
+        None => {
+            crate::metrics::record_search(crate::metrics::outcome::UNAVAILABLE);
+            return Err(DocsUnavailable);
+        }
     };
 
     let results: Vec<GuideSearchHit> = hits
