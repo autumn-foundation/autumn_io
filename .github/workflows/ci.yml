@@ -75,50 +75,36 @@ jobs:
       # 9 syntax_highlighting_backend), 0 failures. Five of those had never
       # passed before this workflow existed; see the note at the top.
 
-  edge-capsule:
-    name: Edge capsule + conformance
+  static-export:
+    name: Static export
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-wasip1
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
 
-      - name: Build the capsule
-        run: ./edge/build-capsule.sh
+      # The bundle Cloudflare serves. Rendering it here means a change that
+      # breaks the export fails on the PR rather than at deploy time — and the
+      # export is not exercised by `cargo test` alone, which uses scratch
+      # directories rather than the real `dist/`.
+      - name: Render dist/
+        run: cargo run --locked --bin build_site
 
-      # The capsule's whole security posture is "no ambient authority": no
-      # tokio, no hyper, and — because Oniguruma is C and there is no
-      # `wasm32-wasip1` sysroot for it — no `onig` either. A default feature
-      # flipped on somewhere in the graph would reintroduce one of these with an
-      # error three levels down, so assert it here where the message is clear.
-      - name: The capsule links no native runtime
+      # Every generated file the CDN depends on, checked against what the origin
+      # actually serves: the page bodies, the security headers, the `/docs`
+      # redirect and the 404 page. Not path-filtered — a change anywhere in
+      # `content/`, `src/site.rs` or the framework's middleware can move any of
+      # them.
+      - name: Check the bundle against the origin
+        run: cargo test --locked --test static_export
+
+      - name: Summarise the bundle
         run: |
-          tree="$(cargo tree --target wasm32-wasip1 --edges normal)"
-          if echo "$tree" | grep -Eiq 'tokio|hyper|(^| )mio |autumn-web|onig'; then
-            echo "::error::the capsule's dependency graph gained a native-only crate:"
-            echo "$tree" | grep -Ei 'tokio|hyper|(^| )mio |autumn-web|onig'
-            exit 1
-          fi
-
-      # The Cloudflare shim, driven against the artifact just built: every
-      # route, every fallthrough channel, the WASI import allowlist, credential
-      # stripping, and determinism. No wrangler and no network — the protocol is
-      # NDJSON over stdio and the WASI host is in-memory.
-      - name: Drive the artifact through the Cloudflare shim
-        working-directory: edge/worker
-        run: npm test
-
-      # Byte-identity between the two lanes. Not path-filtered, and it should
-      # not be: the origin renders through `onig` and the capsule through
-      # `fancy-regex`, so a syntect release, a grammar change or a new code
-      # fence anywhere in `content/` could make them disagree.
-      - name: Origin/edge conformance
-        run: cargo test --locked --test edge_conformance --test port_parity
+          echo "pages:  $(find dist -name '*.html' | wc -l)"
+          echo "size:   $(du -sh dist | cut -f1)"
+          test -s dist/_headers   || { echo "::error::dist/_headers is missing or empty"; exit 1; }
+          test -s dist/_redirects || { echo "::error::dist/_redirects is missing or empty"; exit 1; }
+          test -s dist/404.html   || { echo "::error::dist/404.html is missing or empty"; exit 1; }
 
   release-build:
     name: Release build (fat LTO)

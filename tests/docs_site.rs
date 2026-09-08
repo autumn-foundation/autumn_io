@@ -1237,8 +1237,13 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     let summary = export_site(registry, &ExportConfig::new(&dist)).expect("site should export");
 
-    assert_eq!(summary.html_pages, registry.pages().len() + 1);
+    // Every guide, plus the home page, plus the pre-rendered 404 the CDN serves
+    // for an unknown path (`export::MISSING_PAGE_FILE`).
+    assert_eq!(summary.html_pages, registry.pages().len() + 2);
     assert!(summary.static_assets >= 4);
+    // `/`, `/robots.txt`, `/sitemap.xml`, and one per guide. The 404, `_headers`
+    // and `_redirects` are not routes — they are what the CDN reads instead of
+    // running a router.
     assert_eq!(summary.routes, registry.pages().len() + 3);
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");

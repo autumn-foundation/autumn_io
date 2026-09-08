@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use maud::{Markup, PreEscaped, html};
-
-use crate::widgets::{ActiveSearchConfig, HTMX_JS_PATH, active_search, active_search_empty_state};
+use autumn_web::prelude::HTMX_JS_PATH;
+use autumn_web::widgets::{ActiveSearchConfig, active_search, active_search_empty_state};
+use autumn_web::{Markup, PreEscaped, html};
 
 use crate::docs::{DocPage, DocRegistry, SearchHit, render_highlighted_code_block};
 use crate::{DOCS_SEARCH_PATH, DOCS_START_PATH, seo};

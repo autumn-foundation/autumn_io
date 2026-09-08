@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::{LazyLock, OnceLock};
 
+use autumn_web::markdown::{MarkdownError, MarkdownPage, MarkdownRegistry, MarkdownSource};
 use memchr::memmem;
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use syntect::easy::HighlightLines;
@@ -10,8 +11,6 @@ use syntect::highlighting::{Theme, ThemeSet};
 use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
-
-use crate::frontmatter::{self, FrontmatterError, ParsedPage};
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
@@ -39,23 +38,20 @@ impl<'a> DocSource<'a> {
 /// # Why the render is lazy
 ///
 /// Rendering every guide costs about 3.4 billion instructions (see the
-/// `[profile.release]` note in `Cargo.toml`). At the origin that is a one-off
-/// startup cost amortised over a machine's whole lifetime, and paying it up
-/// front is what makes a request a HashMap lookup.
+/// `[profile.release]` note in `Cargo.toml`), and this used to happen the first
+/// time anything touched the registry — which, on a machine that scales to
+/// zero, is during the very first request after a cold start. A reader who
+/// arrives on a cold machine paid for all 140 guides to render in order to be
+/// shown one.
 ///
-/// The edge capsule has no such lifetime. A CDN host instantiates the
-/// `wasm32-wasip1` artifact, serves one request, and drops it — and the
-/// reference host meters each request against a fuel budget of 10⁹
-/// instructions (`autumn_edge::host::FUEL_BUDGET`). A capsule that rendered
-/// the whole corpus to answer `/docs/jobs` would exhaust that budget on every
-/// single request, trap, and fall through to the origin — which is to say the
-/// edge lane would never serve anything at all.
+/// Now the corpus-wide work is just frontmatter parsing — which is what the
+/// sidebar, the sitemap and the page ordering actually need, and is cheap — and
+/// a page's HTML is rendered the first time somebody asks for it, then kept.
+/// The total is the same; it is spread across the first request to each guide
+/// instead of landing entirely on the first request to *any* guide.
 ///
-/// So the corpus-wide work is now just frontmatter parsing — which is what the
-/// sidebar, the sitemap and the page ordering actually need — and a page's HTML
-/// is rendered the first time somebody asks for it, then kept. The origin pays
-/// the same total, spread across the first request to each guide instead of
-/// startup; the capsule pays for exactly the one page it was asked for.
+/// The static export (`crate::export`) renders every page anyway, so it is
+/// unaffected: it walks the whole registry and pays the same total either way.
 #[derive(Debug)]
 pub struct DocPage {
     pub slug: String,
@@ -63,7 +59,7 @@ pub struct DocPage {
     pub description: String,
     pub order: u32,
     /// The page's Markdown source, as the renderer and [`DocPage::toc`] see it:
-    /// frontmatter stripped by [`crate::frontmatter`], then the redundant
+    /// frontmatter stripped by the framework registry, then the redundant
     /// leading `# Title` removed by [`strip_redundant_title_heading`].
     ///
     /// Kept alongside the rendered HTML so the JSON docs API — and through it
@@ -293,30 +289,29 @@ impl DocRegistry {
     pub fn from_sources(
         sources: impl IntoIterator<Item = DocSource<'static>>,
     ) -> Result<Self, DocsError> {
-        // Path safety is checked here rather than in the parser: a slug becomes
-        // a route segment and an export directory name, and neither
-        // `crate::frontmatter` nor the framework registry it replaced guards
-        // against one that could escape either.
-        let mut parsed: Vec<ParsedPage> = Vec::new();
+        // Path-safety validation stays on this side: `MarkdownRegistry` does not
+        // guard against slugs that could escape routes or export paths.
+        let mut markdown_sources = Vec::new();
         for source in sources {
             if !is_valid_doc_slug(source.slug) {
                 return Err(DocsError::InvalidSlug(source.slug.to_owned()));
             }
-            let page = frontmatter::parse_page(source.slug, source.markdown)
-                .map_err(map_frontmatter_error)?;
-            if parsed.iter().any(|existing| existing.slug == page.slug) {
-                return Err(DocsError::DuplicateSlug(page.slug));
-            }
-            parsed.push(page);
+            markdown_sources.push(MarkdownSource {
+                slug: source.slug,
+                content: source.markdown,
+            });
         }
 
-        // Ordering (by `order`, then `slug`) is what the sidebar, the sitemap
-        // and prev/next navigation all read.
-        frontmatter::sort_pages(&mut parsed, |page| {
-            (page.frontmatter.order, page.slug.as_str())
-        });
+        // The framework registry owns frontmatter parsing, deduplication, and
+        // ordering (by `order`, then `slug`).
+        let registry =
+            MarkdownRegistry::from_embedded(&markdown_sources).map_err(map_markdown_error)?;
 
-        let pages: Vec<DocPage> = parsed.iter().map(prepare_doc_page).collect();
+        let pages: Vec<DocPage> = registry
+            .all_sorted()
+            .into_iter()
+            .map(prepare_doc_page)
+            .collect();
 
         let index_by_slug = pages
             .iter()
@@ -853,13 +848,21 @@ impl Display for DocsError {
 
 impl Error for DocsError {}
 
-/// Translate a [`FrontmatterError`] into this site's [`DocsError`].
-fn map_frontmatter_error(error: FrontmatterError) -> DocsError {
+/// Translate a framework [`MarkdownError`] into this site's [`DocsError`].
+fn map_markdown_error(error: MarkdownError) -> DocsError {
     match error {
-        FrontmatterError::Missing { slug } => DocsError::MissingFrontmatter { slug },
-        FrontmatterError::Invalid { slug, message } => {
-            DocsError::InvalidFrontmatter { slug, message }
-        }
+        MarkdownError::FrontmatterMissing { slug } => DocsError::MissingFrontmatter { slug },
+        MarkdownError::FrontmatterInvalid { slug, source } => DocsError::InvalidFrontmatter {
+            slug,
+            message: source.to_string(),
+        },
+        MarkdownError::DuplicateSlug { slug } => DocsError::DuplicateSlug(slug),
+        // `Io` and `InvalidFileName` only arise from `MarkdownRegistry::from_dir`,
+        // which this site never calls; map defensively so the enum stays covered.
+        other => DocsError::InvalidFrontmatter {
+            slug: String::new(),
+            message: other.to_string(),
+        },
     }
 }
 
@@ -870,14 +873,14 @@ struct RenderedMarkdown {
     heading_offsets: Vec<usize>,
 }
 
-/// Turn a parsed guide into a [`DocPage`], ready to render.
+/// Turn a framework-parsed [`MarkdownPage`] into a [`DocPage`], ready to render.
 ///
 /// The expensive half — Markdown rendering, syntect highlighting, link
 /// rewriting — is deliberately *not* done here; see [`DocPage`] for why. What
 /// happens eagerly is the frontmatter-derived metadata and the
 /// redundant-title strip, because the stripped Markdown is what both the
 /// renderer and the JSON docs API read.
-fn prepare_doc_page(page: &ParsedPage) -> DocPage {
+fn prepare_doc_page(page: &MarkdownPage) -> DocPage {
     let title = page.frontmatter.title.clone();
     let markdown = strip_redundant_title_heading(&page.body, &title);
 
