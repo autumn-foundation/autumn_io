@@ -60,10 +60,11 @@
 //!
 //! ## Cardinality
 //!
-//! Both families carry exactly one label, `outcome`, drawn from a fixed set of
-//! five. Nothing is labelled with a slug, a search term or anything else a
-//! visitor controls: a Prometheus label with unbounded values is a memory leak
-//! with a metrics API in front of it, and one crawler is enough to fill it.
+//! Labels are drawn from fixed sets and nothing else: `outcome` from five
+//! values, and on page renders a `representation` from two. Nothing is labelled
+//! with a slug, a search term or anything else a visitor controls: a Prometheus
+//! label with unbounded values is a memory leak with a metrics API in front of
+//! it, and one crawler is enough to fill it.
 
 use autumn_web::metrics;
 
@@ -75,26 +76,32 @@ use autumn_web::metrics;
 /// why this counter exists at all.
 pub const DOCS_SEARCHES: &str = "docs_site_searches_total";
 
-/// Guide pages **rendered by the origin**, split by whether the slug existed.
+/// Guide pages **rendered by the origin**, split by whether the slug existed
+/// and which representation was served.
 ///
-/// Not page views, and deliberately not named as though it were. Pages are
-/// cached at the edge, so this handler runs only on a cache miss or a
-/// revalidation; every hit is served without the origin hearing about it. The
-/// gap between this and real traffic is the cache hit rate, which is the whole
-/// point of the caching — so the better this site performs, the further this
-/// counter falls below the number of readers. Real page views would have to
-/// come from CDN analytics, which this process cannot see.
+/// Not page views, and deliberately not named as though it were. **Read the
+/// two `representation` series separately — they measure different things:**
 ///
-/// What it does measure is worth having on its own: how much rendering the
-/// origin is still doing. That is the number this PR set out to reduce, and it
-/// is what says whether the cache is working.
+/// - `representation="html"` is the cache-miss-and-revalidation count the
+///   caching work is judged by. Pages are cached at the edge, so this arm runs
+///   only when a colo has nothing fresh; every hit is served without the origin
+///   hearing about it. The gap between this and real traffic is the hit rate,
+///   which is the whole point — so the better this site performs, the further
+///   this series falls below the number of readers. Real page views would have
+///   to come from CDN analytics, which this process cannot see.
+/// - `representation="markdown"` is exact, and is not a cache miss. The
+///   Markdown representation is `no-store` and the edge is configured to bypass
+///   cache for it (`docs/adr/0002-markdown-for-agents.md`), so every such
+///   request is *supposed* to reach the origin. Summed into the HTML series it
+///   would read as the cache degrading whenever an agent crawls the guides.
 ///
-/// `outcome="missing"` is a floor rather than a count. A 404 is cached for only
-/// a minute, so a bad inbound link still surfaces here — just under-counted by
-/// however many colos absorbed it. Rising is meaningful; the magnitude is not.
+/// `outcome="missing"` is a floor rather than a count on the HTML side. A 404
+/// is cached for only a minute, so a bad inbound link still surfaces here —
+/// just under-counted by however many colos absorbed it. Rising is meaningful;
+/// the magnitude is not.
 ///
-/// [`DOCS_SEARCHES`] has no such caveat: `/search` is `no-store`, so every
-/// search reaches the origin and that counter is exact.
+/// [`DOCS_SEARCHES`] has no such caveat either: `/search` is `no-store`, so
+/// every search reaches the origin and that counter is exact.
 pub const DOCS_PAGE_RENDERS: &str = "docs_site_page_renders_total";
 
 /// Registers the `# HELP` text for every family this crate records.
@@ -113,8 +120,10 @@ pub fn describe() {
     );
     metrics::describe_counter(
         DOCS_PAGE_RENDERS,
-        "Guide pages rendered by the origin (cache misses and revalidations, \
-         not page views), by whether the requested slug exists",
+        "Guide pages rendered by the origin, by whether the requested slug \
+         exists and which representation was served; representation=html is \
+         cache misses and revalidations rather than page views, \
+         representation=markdown bypasses the cache and is exact",
     );
 }
 
@@ -125,11 +134,25 @@ pub fn record_search(outcome: &'static str) {
         .increment(1);
 }
 
-/// Records one guide page render at the origin.
-pub fn record_page_render(outcome: &'static str) {
+/// Records one guide page render at the origin, in the representation the
+/// request negotiated.
+pub fn record_page_render(outcome: &'static str, representation: &'static str) {
     metrics::counter(DOCS_PAGE_RENDERS)
         .with_label("outcome", outcome)
+        .with_label("representation", representation)
         .increment(1);
+}
+
+/// Representation labels for [`DOCS_PAGE_RENDERS`], named once so a handler and
+/// its test cannot disagree.
+///
+/// Recorded from inside the arm that actually rendered, which is also why a
+/// `406` increments nothing: it produced no page in either representation.
+pub mod representation {
+    /// The rendered HTML page, served from behind the edge cache.
+    pub const HTML: &str = "html";
+    /// The Markdown representation, which deliberately bypasses that cache.
+    pub const MARKDOWN: &str = "markdown";
 }
 
 /// Outcome labels, named once so a handler and its test cannot disagree.

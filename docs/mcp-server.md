@@ -86,6 +86,35 @@ Section ids are the anchors the rendered page already uses, so
 `https://autumn-web.app/docs/deployment#prerequisites` is a working deep link to
 the same text — an agent's citation lands where it says it does.
 
+## Reading a page as Markdown, without MCP
+
+Not every agent speaks MCP. One with a shell tool, a crawler, or a framework
+that fetches whatever URL its user pasted can ask any page on this site for its
+Markdown instead, with the header the convention uses:
+
+```bash
+curl -H 'Accept: text/markdown' https://autumn-web.app/docs/getting-started
+```
+
+The response is `Content-Type: text/markdown; charset=utf-8` and carries
+`x-markdown-tokens`, an estimate of what the body costs to read. HTML remains
+the default: a browser's `Accept`, a bare `*/*`, and a missing header all still
+get the page.
+
+It works on every page in the read path, and each answers with what an agent
+would otherwise have to scrape it for:
+
+| URL | Markdown representation |
+|---|---|
+| `/` | What Autumn is, plus **every guide** — linked, described, under the sidebar's own headings. The one call that maps the site. |
+| `/docs/{slug}` | The guide's own Markdown source, the same string `get_autumn_doc` returns, with previous/next links. |
+| `/docs/{unknown}` | A `404` that lists the guides that do exist. |
+| `/search?q=…` | The hits as a linked list. |
+
+Two representations at one URL is a caching problem as much as a rendering one;
+`docs/adr/0002-markdown-for-agents.md` records how it is resolved, including the
+Cloudflare rule the deployment needs.
+
 ## How it is wired
 
 There is no second app and no hand-written protocol code. `src/api.rs` holds
