@@ -55,7 +55,7 @@ hand-maintenance:
 | `index.html`, `docs/{slug}/index.html` | the `index` and `docs_page` handlers |
 | `robots.txt`, `sitemap.xml` | their handlers |
 | `404.html` | `docs_page`'s not-found arm |
-| `static/**` | this repo's `static/` tree, plus the framework-embedded htmx |
+| `static/**` | nothing yet — built and ready, but `/static/*` is not routed here until #51 |
 | `_headers` | `autumn-web`'s security middleware |
 | `_redirects` | the `docs_index` handler's 307 to the first guide |
 | `manifest.json` | route → file map, for anything that wants to inspect the bundle |

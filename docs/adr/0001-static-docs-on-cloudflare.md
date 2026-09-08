@@ -57,21 +57,37 @@ more (a sixth header from a framework upgrade would go unrestored) and no fewer
 `/docs`, which the origin answers with a 307 from a handler and the CDN answers
 from `_redirects` — matched on target *and* status.
 
-### And the assets have to come too
+### And the assets should come too — but not yet (#51)
 
-`/static/*` is routed to the CDN alongside the pages. It has to be: every page
-links `/static/css/site.css`, which is render-blocking, so serving pages from
-the CDN and assets from Fly would still wake the scale-to-zero origin on a docs
-visit and still block the render on its cold start.
+`/static/*` is **not** routed to the CDN in this decision, and the route in
+`edge/wrangler.toml` is commented with a warning rather than merely commented
+out. This section records why it is wanted and why it is deferred, because the
+two are easy to conflate at cutover time.
 
-That is only safe if the bundle is complete, and it briefly was not. htmx is
-referenced by every docs page and exists nowhere in this repo — `autumn-web`
-embeds it with `include_bytes!` and serves it from memory, which works fine
-while the origin serves `/static/*` and breaks silently the moment the CDN does.
-The exporter now writes it out, and
-`no_exported_page_references_a_missing_asset` checks the `href`/`src` attributes
-of exported pages against the bundle so the next such asset fails a test rather
-than a page.
+Wanted: every page links `/static/css/site.css`, which is render-blocking. With
+the pages on the CDN and the assets on Fly, a docs visit still wakes the
+scale-to-zero origin and still blocks the render on its cold start — which is
+most of what this decision exists to avoid.
+
+Deferred: `/static/` is a namespace with two owners. This repo's `static/` tree
+is one; `autumn-web` is the other, serving seven paths from memory with no file
+on disk anywhere here. The bundle contains exactly one of those seven — htmx,
+and only because a docs page links it, so
+`no_exported_page_references_a_missing_asset` caught it. Handing the whole
+prefix to that bundle turns the other six into CDN 404s and breaks `/_stories`,
+which `autumn.toml` deliberately exposes publicly.
+
+Exporting the missing six would close the instance and leave the cause: the set
+is owned by a dependency and moves with its feature flags and version, so a
+hand-list is a future outage rather than a fix. **#51** carries the options; the
+likely answer is a small fallback script on the assets deployment, so a bundled
+path is served from the CDN and anything else proxies to the origin — safe by
+construction rather than by enumeration, and it demotes the missing-asset guard
+from a correctness check to a performance one.
+
+Until then the four page routes stand on their own, and the assets keep being
+served by Fly exactly as they are today. The deferral costs the asset half of
+the latency win, not correctness.
 
 ## What we tried first, and why it lost
 
@@ -134,9 +150,12 @@ there is nothing to diverge, and the whole apparatus is unnecessary.
 
 **Good.**
 
-- Zero CPU per request, so the read path is faster everywhere — including for
-  readers near `ord`, where the capsule was not.
-- The origin sees only dynamic routes and scales to zero more often.
+- Zero CPU per request, so the pages are faster everywhere — including for
+  readers near `ord`, where the capsule was not. Their assets still come from
+  Fly until #51; see above.
+- The origin sees only dynamic routes *and static assets*, so it still scales to
+  zero more often than before, though not as often as it will once #51 moves
+  `/static/*` across.
 - Substantially less to own: no 5.2 MB wasm artifact, no ~700-line WASI shim and
   Worker, no ports, no parity or conformance suites, no dependency on an upstream
   surface that is explicitly outside the stability policy.
@@ -150,7 +169,7 @@ there is nothing to diverge, and the whole apparatus is unnecessary.
 - A new *route type* needs a line in the exporter. New guides do not — they come
   from the registry automatically.
 - Two places serve autumn-web.app, so the routing split has to stay correct. It
-  is five route patterns and they are in one file.
+  is four route patterns today — five once #51 lands — and they are in one file.
 - The bundle must contain every asset its pages link, including ones the
   framework serves from memory rather than from disk. That is a test rather
   than a convention.
