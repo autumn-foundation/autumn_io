@@ -12,14 +12,14 @@
 //! the exact function the deployed handler runs on every request.
 //!
 //! ```bash
-//! cargo build --release --bin profile_docs_page_render
+//! cargo build --profile profiling --bin profile_docs_page_render
 //!
 //! valgrind --tool=callgrind --callgrind-out-file=callgrind.out \
-//!     ./target/release/profile_docs_page_render
+//!     ./target/profiling/profile_docs_page_render
 //! callgrind_annotate --threshold=99.9 callgrind.out
 //!
 //! valgrind --tool=dhat --dhat-out-file=dhat.out.json \
-//!     ./target/release/profile_docs_page_render
+//!     ./target/profiling/profile_docs_page_render
 //! ```
 
 fn main() {

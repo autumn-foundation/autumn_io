@@ -28,22 +28,23 @@
 //! easy and invisible way to measure nothing.
 //!
 //! ```bash
-//! cargo build --release --bin profile_docs_search
+//! cargo build --profile profiling --bin profile_docs_search
 //!
-//! # Instructions. Attribution needs symbols, so do not add `strip` to
-//! # `[profile.release]` without expecting hex addresses here.
+//! # Instructions. Attribution needs symbols, which `[profile.release]` now
+//! # strips — build through `[profile.profiling]`, which inherits it and puts
+//! # the symbol table and debug info back, or read hex addresses here.
 //! valgrind --tool=callgrind --callgrind-out-file=callgrind.out \
-//!     ./target/release/profile_docs_search
+//!     ./target/profiling/profile_docs_search
 //! callgrind_annotate --threshold=95 callgrind.out
 //!
 //! # The build-only baseline to subtract.
 //! SEARCH_REQUESTS_PER_QUERY=1 valgrind --tool=callgrind \
 //!     --callgrind-out-file=callgrind.build.out \
-//!     ./target/release/profile_docs_search
+//!     ./target/profiling/profile_docs_search
 //!
 //! # Allocations and memory traffic.
 //! valgrind --tool=dhat --dhat-out-file=dhat.out.json \
-//!     ./target/release/profile_docs_search
+//!     ./target/profiling/profile_docs_search
 //! ```
 //!
 //! Figures quoted in `docs/plans/2026-09-03-aho-corasick-docs-search.md` were

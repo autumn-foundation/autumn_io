@@ -110,6 +110,21 @@ fn release_profile() -> String {
         .join("\n")
 }
 
+/// The `[profile.profiling]` section, read the same way.
+fn profiling_profile() -> String {
+    let (_, profile) = CARGO_TOML
+        .split_once("[profile.profiling]")
+        .expect("Cargo.toml should declare a profiling profile");
+
+    profile
+        .split_once("\n[")
+        .map_or(profile, |(section, _)| section)
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The binary is built once per deploy and then serves until the next one, so
 /// the profile is tuned for what runs rather than for build time.
 ///
@@ -165,17 +180,37 @@ fn fly_toml_exposes_the_prometheus_scrape_endpoint() {
     assert!(FLY_TOML.contains(r#"path = "/actuator/prometheus""#));
 }
 
-/// Stripping is the largest remaining size lever and it is declined.
+/// Symbols are what the performance work in this repo runs on, and the
+/// deployed binary no longer carries them — so the profile that does must.
 ///
-/// `src/bin/profile_docs_search.rs` already warns about it in prose —
-/// callgrind attributes by symbol, and the figures in the last three plan
-/// documents were taken that way — and it also turns production panic
-/// backtraces into bare addresses. The image is not size-constrained.
+/// `release` strips: the image is built and shipped on every deploy, and the
+/// symbol table is the largest thing in it that production never reads. That
+/// would have cost the measurements `src/bin/profile_docs_*.rs` exist to take
+/// (callgrind attributes by symbol, and the figures in the last three plan
+/// documents were taken that way), which is why `[profile.profiling]` inherits
+/// the release profile and puts the symbols back. Profile through it —
+/// `cargo build --profile profiling --bin profile_docs_render` — not through
+/// `--release`.
 #[test]
-fn release_profile_keeps_symbols_for_profiling_and_backtraces() {
+fn the_profiling_profile_keeps_the_symbols_release_now_strips() {
+    let profiling = profiling_profile();
+
     assert!(
-        !release_profile().contains("strip"),
-        "callgrind attribution and panic backtraces both need the symbol table"
+        profiling.contains(r#"inherits = "release""#),
+        "profiling must measure the binary that ships, not a different build"
+    );
+    assert!(
+        profiling.contains(r#"strip = "none""#),
+        "callgrind attribution needs the symbol table release drops"
+    );
+    assert!(
+        profiling.contains("debug = true"),
+        "and line-level attribution needs the debug info with it"
+    );
+    assert!(
+        profiling.contains(r#"panic = "unwind""#),
+        "restated because inheriting it silently is the kind of thing a later \
+         edit to the release profile takes away"
     );
 }
 

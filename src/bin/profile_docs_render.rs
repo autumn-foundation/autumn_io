@@ -6,12 +6,13 @@
 //! scale-to-zero cold boot pays can be profiled directly.
 //!
 //! ```bash
-//! cargo build --release --bin profile_docs_render
+//! cargo build --profile profiling --bin profile_docs_render
 //!
-//! # Instructions. Attribution needs symbols, so do not add `strip` to
-//! # `[profile.release]` without expecting hex addresses here.
+//! # Instructions. Attribution needs symbols, which `[profile.release]` now
+//! # strips — build through `[profile.profiling]`, which inherits it and puts
+//! # the symbol table and debug info back, or read hex addresses here.
 //! valgrind --tool=callgrind --callgrind-out-file=callgrind.out \
-//!     ./target/release/profile_docs_render
+//!     ./target/profiling/profile_docs_render
 //! callgrind_annotate --threshold=99.9 callgrind.out
 //!
 //! # Allocations. Read the totals off valgrind's own summary, or sum `tb`
@@ -19,13 +20,13 @@
 //! # `ftbl` resolves the frames. `dh_view.html` from the valgrind install
 //! # loads the same file.
 //! valgrind --tool=dhat --dhat-out-file=dhat.out.json \
-//!     ./target/release/profile_docs_render
+//!     ./target/profiling/profile_docs_render
 //!
 //! # Wall clock and peak RSS, five runs, take the median. `/usr/bin/time -v`
 //! # does the same job where it exists.
 //! for i in $(seq 5); do python3 -c "import subprocess,resource,time; \
 //!     t=time.perf_counter(); \
-//!     subprocess.run(['./target/release/profile_docs_render'],check=True); \
+//!     subprocess.run(['./target/profiling/profile_docs_render'],check=True); \
 //!     print(time.perf_counter()-t, \
 //!           resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)"; done
 //! ```

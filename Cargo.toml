@@ -52,6 +52,16 @@ strip = true
 panic = "unwind"
 debug = false
 
+# The deployed binary is stripped, and the performance work in this repo is not:
+# callgrind attributes by symbol, and every figure quoted in `docs/plans/` and in
+# the `src/bin/profile_docs_*.rs` headers was taken that way. This profile is the
+# release build with the symbol table and debug info put back, so a measurement
+# is of the binary that ships rather than of a differently-optimised one:
+#
+#   cargo build --profile profiling --bin profile_docs_render
+#   valgrind --tool=callgrind ./target/profiling/profile_docs_render
+#
+# `tests/fly_deploy_config.rs` guards the three lines that make that true.
 [profile.profiling]
 inherits = "release"
 strip = "none"

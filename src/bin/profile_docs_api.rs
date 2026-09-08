@@ -32,12 +32,13 @@
 //!   reading either guide triggers it on its very first follow-up call.
 //!
 //! ```bash
-//! cargo build --release --bin profile_docs_api
+//! cargo build --profile profiling --bin profile_docs_api
 //!
-//! # Instructions. Attribution needs symbols, so do not add `strip` to
-//! # `[profile.release]` without expecting hex addresses here.
+//! # Instructions. Attribution needs symbols, which `[profile.release]` now
+//! # strips — build through `[profile.profiling]`, which inherits it and puts
+//! # the symbol table and debug info back, or read hex addresses here.
 //! valgrind --tool=callgrind --callgrind-out-file=callgrind.out \
-//!     ./target/release/profile_docs_api
+//!     ./target/profiling/profile_docs_api
 //! callgrind_annotate --threshold=99.9 callgrind.out
 //!
 //! # The build-only baseline to subtract, same method as issue #19/#41:
@@ -45,11 +46,11 @@
 //! # isolate this harness's own loop from the one-time registry build both
 //! # binaries pay.
 //! valgrind --tool=callgrind --callgrind-out-file=callgrind.build.out \
-//!     ./target/release/profile_docs_render
+//!     ./target/profiling/profile_docs_render
 //!
 //! # Allocations and memory traffic.
 //! valgrind --tool=dhat --dhat-out-file=dhat.out.json \
-//!     ./target/release/profile_docs_api
+//!     ./target/profiling/profile_docs_api
 //! ```
 
 use std::future::Future;
