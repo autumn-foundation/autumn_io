@@ -100,23 +100,249 @@ only because of it.
 
 ## Configuring Cloudflare
 
-Two settings, both in the dashboard; neither can be committed here.
+**Until the Cache Rule below exists, everything above is inert.** Cloudflare's
+default cache level decides eligibility by file extension and bypasses HTML no
+matter what the origin sends, so the `s-maxage` this change adds is read by
+nobody. The code is necessary and not sufficient; this section is the rest.
 
-1. **A Cache Rule making the read path eligible for cache.** Cloudflare's
-   default cache level caches by file extension and bypasses HTML no matter
-   what the origin sends, so `s-maxage` alone does nothing. Match
-   `http.request.uri.path eq "/" or http.request.uri.path matches "^/docs"`
-   plus `/robots.txt` and `/sitemap.xml`, set *Cache eligibility: Eligible for
-   cache*, and *Edge TTL: Use cache-control header from origin* so the policy
-   stays in this repo rather than splitting across two places.
+Neither step can be committed here, which is exactly why they are written down
+in this much detail.
 
-   Do **not** write a rule that caches everything: `/search`, `/api/*`, `/mcp`
-   and `/actuator/*` must keep reaching the origin. `/search` sends `no-store`,
-   but an "ignore origin cache-control" TTL override would defeat that.
+### 1. The Cache Rule
 
-2. **A purge on deploy.** One authenticated `POST` to the zone's
-   `purge_cache` endpoint after a successful release, so new guides appear
-   immediately instead of within the hour.
+**Caching → Cache Rules → Create rule.** Build a custom rule rather than
+starting from a template — the templates are shaped around bypassing cache for
+admin panels and carts, and none of them fits "cache this handful of paths on
+the origin's terms".
 
-Verify with `curl -sI https://autumn-web.app/docs/getting-started` and look for
-`cf-cache-status: HIT` on the second request.
+Name it something a stranger can act on: `Docs read path — cacheable`.
+
+**Expression.** Use *Edit expression* and paste this rather than assembling it
+in the visual builder:
+
+```
+(http.request.uri.path eq "/")
+or (http.request.uri.path eq "/docs")
+or (starts_with(http.request.uri.path, "/docs/"))
+or (http.request.uri.path eq "/robots.txt")
+or (http.request.uri.path eq "/sitemap.xml")
+```
+
+It is an **allow-list of exact paths plus one prefix**, deliberately. `/docs`
+appears on its own line because it is the 307 to the first guide, which is a
+different response from anything under `/docs/`. And it is `starts_with(…,
+"/docs/")` rather than `matches "^/docs"` because the regex form would also
+match a future `/docsearch` — there is no such route today, but an allow-list
+that can accidentally widen is not an allow-list.
+
+**Then the settings.** The form offers a long list of them. **Three decide
+whether this works. Leave every other one at its default.**
+
+| Setting | Set it to | Why |
+| --- | --- | --- |
+| Cache eligibility | **Eligible for cache** | The whole point. This is what overrides the default "bypass HTML" behaviour. |
+| Edge TTL | **Use cache-control header if present, bypass cache if not** | Makes the origin's `s-maxage=3600` the source of truth, so the policy stays in this repo. The *bypass if not* half is a fail-safe: if a response ever arrives with no policy, Cloudflare declines to cache rather than inventing a TTL. |
+| Browser TTL | **Respect origin TTL** | Keeps `max-age=0, must-revalidate` intact so browsers revalidate against the `ETag`. An override here would pin pages in readers' browsers, where no purge can reach them — the one failure mode with no remedy. |
+
+Dashboard labels shift between Cloudflare UI revisions; match on meaning rather
+than exact wording. Anything not named above — Cache Reserve, Cache Deception
+Armor, cache-key components, origin error handling — is already correct at its
+default for this site, and changing one is more likely to break the rule than
+improve it. Two worth understanding rather than touching:
+
+- **Cache key / query string.** The default includes the query string, which is
+  what makes `?v=` asset fingerprinting work. This rule does not match
+  `/static/*` anyway (see below), but do not switch on "ignore query string" at
+  the zone level for the same reason.
+- **Serve stale while revalidating.** Optional, and defensible here: it would
+  keep serving a guide during an origin cold start. The trade is that a reader
+  can get a page one revalidation-cycle out of date. The default (off) is the
+  conservative choice; turning it on is a preference, not a fix.
+
+### 2. What the rule must not match
+
+`/search`, `/api/*`, `/mcp`, `/actuator/*`, `/health` and `/_stories` all have
+to keep reaching the origin. The expression above cannot match them, which is
+the reason it is written as an allow-list.
+
+The specific thing not to do is a **"Cache Everything" rule scoped to the whole
+zone**. Two of those paths break loudly under one:
+
+- `/search` returns a different body for the same URL depending on the
+  `HX-Request` header, which is not in any cache key. It sends `no-store` to
+  say so, but an **"Ignore cache-control header and use this TTL"** Edge TTL
+  setting overrides exactly that, and a cached htmx fragment then gets served
+  into a full page load.
+- `/actuator/prometheus` would report a frozen snapshot as though it were
+  current.
+
+### 3. `/static/*` needs no rule at all
+
+It is already cached, and was before this change. Cloudflare caches those
+extensions by default, and the origin marks versioned asset URLs
+`public, max-age=31536000, immutable`. Adding a rule for them is not
+necessary and gives you a second place to get it wrong.
+
+### 4. The zone-level browser setting, for everything the rule does not match
+
+**Caching → Configuration → Browser Cache TTL.** A fixed duration here overrides
+origin headers for browsers. Set it to **Respect Existing Headers**.
+
+What this governs is everything *outside* the rule above — `/static/*`
+especially, which is deliberately left unmatched (§3). For the paths the rule
+does match, the rule's own **Browser TTL: Respect origin TTL** is the setting
+that decides, and a matching Cache Rule takes precedence over the zone default;
+so on the read path this is a second line rather than the primary control.
+
+Either way the failure it guards against is the one with no remedy: a fixed
+browser TTL pins pages in readers' browsers for that long, where no purge can
+reach them. Worth setting correctly even though the rule already covers the
+pages — the zone value is what applies to every asset request, and to any path
+added later that nobody remembers to put in the rule.
+
+### 5. Cloudflare's HTML injections vs. this site's CSP
+
+Several Cloudflare features work by **rewriting HTML in flight**, and this site
+sends `script-src 'self'` with no `'unsafe-inline'`. Every one of them therefore
+either gets blocked, or quietly takes over something the origin was already
+doing. Turning the proxy on surfaced four at once. None is a bug in the site,
+and none should be answered by loosening the CSP.
+
+| Injection | What it does here | Disposition |
+| --- | --- | --- |
+| **Rocket Loader** | Rewrites every `<script>` to a bogus MIME type so the browser skips it, then executes them itself | **Turn off** (Speed → Optimization → Content Optimization) |
+| **Bot-detection beacon** (JavaScript Detections) | Adds an inline script that builds a hidden iframe and pulls `/cdn-cgi/challenge-platform/scripts/jsd/main.js` | **Turn off** (Security → Bots) — it is already inert, see below |
+| **Web Analytics** | Adds `static.cloudflareinsights.com/beacon.min.js` | Left off — see below |
+| **WebMCP bridge** | Adds `<script type="module" src="/.webmcp/bridge.js">` | Deliberate — mirrors this site's own `/mcp` server to the emerging WebMCP standard. Same-origin, so the CSP allows it as-is |
+
+**The bot beacon is already dead, so turning it off costs nothing.** Its
+bootstrap is inline and the CSP carries no `'unsafe-inline'`, so it never runs
+and `main.js` is never fetched — Cloudflare gets no JavaScript-detection signal
+from this site today, whatever the dashboard says. Disabling it does not lose a
+protection; it stops a console error on every page load and makes the dashboard
+agree with reality. Cloudflare's other bot signals (IP reputation, HTTP
+fingerprinting) are unaffected because they need no script. Getting the signal
+back would mean putting `'unsafe-inline'` into `script-src`, which is a poor
+trade for a site with no login, no forms and no writes.
+
+**Rocket Loader is the one that matters**, because it does not fail loudly — it
+succeeds at taking ownership. It rewrites `htmx.min.js`, `copy-code.js` and
+`docs-nav-disclosure.js` to `type="<token>-text/javascript"`, which no browser
+executes, and relies on its own script to run them later. It is same-origin, so
+the CSP permits it and the page probably works. That is the problem: every
+script on the site becomes contingent on one Cloudflare script behaving, the
+`defer` already on those tags is defeated, and the assets this ADR is about
+serving cleanly are rewritten in transit. For three small deferred scripts it
+buys nothing.
+
+Two notes for anyone debugging this from a browser console. The origin sends
+**exactly one** CSP header and no `<meta>` CSP — so a *report-only* violation
+mentioning `'unsafe-inline' 'unsafe-eval'` is coming from a browser extension,
+not from this site; check with `curl -sI` before chasing it. And a blocked
+inline script is far more likely to be one of Cloudflare's injections than
+anything in `src/`, because this site ships no inline scripts at all.
+
+#### Web Analytics specifically
+
+**Analytics & Logs → Web Analytics.** Cloudflare's automatic setup injects a
+beacon script into every HTML response as it passes through the proxy. The
+origin sends `script-src 'self'`, so the browser refuses it and every page load
+logs a console error:
+
+```
+Loading the script 'https://static.cloudflareinsights.com/beacon.min.js/…'
+violates the following Content Security Policy directive: "script-src 'self'".
+```
+
+This is the CSP working, not failing — an injected third-party script is exactly
+what it exists to stop. It is left disabled, because the numbers that matter for
+*this* decision do not come from the beacon: requests, cache hit ratio and
+bandwidth are **zone analytics**, measured server-side by the proxy, and they
+arrive whether or not any script runs in the browser. The beacon adds Core Web
+Vitals and page views on top of that.
+
+Enabling it means overriding `security.headers.content_security_policy` in
+`autumn.toml` to allow `static.cloudflareinsights.com` in `script-src`, plus
+whatever host the beacon reports to in `connect-src` — widening only `script-src`
+silences the console error while the beacon still collects nothing. The real cost
+is not the trust (Cloudflare terminates TLS for this zone and can already inject
+anything into the page) but the pinning: `autumn.toml` has no "append a host", so
+overriding means writing the whole policy here and no longer inheriting
+improvements to the framework's default.
+
+If that trade is ever taken, add a test asserting the policy still denies
+everything else. Nothing guards the CSP today, because it is the framework
+default and there was nothing to guard.
+
+### 6. Purge on deploy
+
+Without this, a new guide takes up to an hour to appear. One call after a
+successful release:
+
+```sh
+curl -fsS -X POST \
+  "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/purge_cache" \
+  -H "Authorization: Bearer $CLOUDFLARE_PURGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{"purge_everything":true}'
+```
+
+The token needs exactly one permission — **Zone → Cache Purge → Purge** — and
+should be scoped to this zone alone. Store it as a deploy secret; it is not a
+build input and must not be committed.
+
+`purge_everything` also drops the `immutable` asset entries, which is harmless:
+their URLs carry `?v=<hash>` and change on any deploy that changes their bytes,
+so they would have been re-fetched anyway.
+
+### 7. Verify
+
+```sh
+# A guide: MISS on the first request, HIT on the second.
+curl -sI https://autumn-web.app/docs/getting-started | grep -iE 'cf-cache-status|cache-control'
+curl -sI https://autumn-web.app/docs/getting-started | grep -i cf-cache-status
+
+# The entry-point redirect. Twice, for the same reason as the negative probes
+# below: one request cannot tell a stored redirect from an unstored one, and
+# whether the 307 caches is the whole question here.
+curl -sI https://autumn-web.app/docs | grep -iE 'location|cache-control'
+curl -sI https://autumn-web.app/docs | grep -i cf-cache-status
+
+# These must stay out of the cache entirely. Ask twice, and read the second
+# answer: the first request for a URL Cloudflare has not seen reports MISS even
+# when a rule has wrongly made it cacheable, so one probe cannot tell "never
+# cached" apart from "about to be cached".
+for path in '/search?q=router' /api/docs /actuator/prometheus; do
+  curl -sI "https://autumn-web.app$path" > /dev/null   # warm, ignore
+  printf '%s: ' "$path"
+  curl -sI "https://autumn-web.app$path" | grep -i cf-cache-status
+done
+```
+
+`/docs` should report `HIT` on that second request. Two other answers each mean
+something specific, and this is worth checking rather than assuming — on this
+site it read `BYPASS` on both requests while `/docs/getting-started` read `HIT`
+with byte-identical `Cache-Control`, which is what a rule that matches `/docs/`
+but not the bare `/docs` looks like:
+
+- **`BYPASS`** — something declined it. The header is not the suspect if a guide
+  under `/docs/` is caching with the same one; check that the expression
+  actually lists `http.request.uri.path eq "/docs"`. It is a separate clause
+  precisely because prefix-matching `/docs/` misses it.
+- **`DYNAMIC`** — Cloudflare judged it ineligible rather than being told to skip
+  it, so the rule is matching but the response is not being stored.
+
+Either way the entry point to the guides is reaching the origin on every visit,
+which is the one URL least worth paying for.
+
+The last three must report `DYNAMIC` (never eligible) or `BYPASS`
+(a rule declined it). **`MISS` is already a failure** — it means Cloudflare
+judged the response cacheable and stored it — and a `HIT` on the next request
+merely confirms what the `MISS` already said.
+
+Either result means some rule is matching a path this one does not. The
+allow-list above cannot match any of these three, so look for **another rule
+that does — anywhere in the list, not just above this one.** Rule order is
+irrelevant to this particular diagnosis: with no competing match on these paths
+there is nothing for precedence to protect, so a "Cache Everything" rule takes
+effect from wherever it sits.
