@@ -44,7 +44,7 @@
 fn main() {
     let registry = autumn_io::site_docs().expect("embedded guides render");
     let pages = registry.pages().len();
-    let html_bytes: usize = registry.pages().iter().map(|p| p.html.len()).sum();
+    let html_bytes: usize = registry.pages().iter().map(|p| p.html().len()).sum();
     let markdown_bytes: usize = registry.pages().iter().map(|p| p.markdown.len()).sum();
     println!("pages={pages} html_bytes={html_bytes} markdown_bytes={markdown_bytes}");
 }

@@ -83,8 +83,8 @@ fn render(markdown: &str) -> String {
     registry
         .page("fixture")
         .expect("fixture should be registered")
-        .html
-        .clone()
+        .html()
+        .to_owned()
 }
 
 /// The `<pre>…</pre>` of the first code block, which is what the highlighter
@@ -330,7 +330,7 @@ fn the_full_embedded_corpus_renders_and_is_still_highlighted() {
     let scoped_pages = registry
         .pages()
         .iter()
-        .filter(|page| distinct_colors(&page.html).len() > 1)
+        .filter(|page| distinct_colors(page.html()).len() > 1)
         .count();
     assert!(
         scoped_pages > 100,

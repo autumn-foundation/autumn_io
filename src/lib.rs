@@ -9,6 +9,7 @@ use autumn_web::reexports::http::{HeaderValue, StatusCode, header};
 pub mod api;
 pub mod docs;
 pub mod export;
+pub mod metrics;
 pub mod seo;
 pub mod site;
 
@@ -236,8 +237,9 @@ pub fn site_search_index() -> Option<&'static SearchIndex> {
 ///
 /// [`EtagLayer`]: autumn_web::etag::EtagLayer
 pub fn response_compression_layer() -> impl autumn_web::app::IntoAppLayer {
+    metrics::describe();
     tower::ServiceBuilder::new()
-        .layer(middleware::from_fn(cache_static_assets))
+        .layer(middleware::from_fn(apply_cache_control))
         .layer(tower_http::map_response_body::MapResponseBodyLayer::new(
             autumn_web::reexports::axum::body::Body::new,
         ))
@@ -260,6 +262,41 @@ const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
 /// [`EtagLayer`]: autumn_web::etag::EtagLayer
 const REVALIDATED_CACHE_CONTROL: &str = "public, max-age=3600, must-revalidate";
 
+/// `Cache-Control` for a rendered page.
+///
+/// The origin is one scale-to-zero machine in `ord`; a reader far from it pays
+/// a trans-Pacific round trip, and a cold start on top if the machine is
+/// asleep. These pages are the same bytes for every visitor — no `Set-Cookie`,
+/// no `Vary` beyond `accept-encoding` — so a shared cache in front of the
+/// origin can serve them, and that is what this header is for.
+///
+/// `s-maxage` addresses the shared cache only; `max-age=0, must-revalidate`
+/// keeps browsers asking, which is cheap because [`EtagLayer`] answers with a
+/// `304` and never re-renders. An hour bounds how long a missed purge can
+/// serve stale docs — a deploy should purge, but this self-heals if it does
+/// not.
+///
+/// [`EtagLayer`]: autumn_web::etag::EtagLayer
+const PAGE_CACHE_CONTROL: &str = "public, max-age=0, s-maxage=3600, must-revalidate";
+
+/// `Cache-Control` for a page that does not exist.
+///
+/// Worth caching — a bad slug should not wake the origin repeatedly — but for
+/// far less time than a real page: a cached `404` outlives the deploy that
+/// adds the guide it denies, and the shorter window bounds how long a newly
+/// published guide can appear missing.
+const MISSING_PAGE_CACHE_CONTROL: &str = "public, max-age=0, s-maxage=60, must-revalidate";
+
+/// `Cache-Control` for a response that must never be held by a shared cache.
+///
+/// `/search` renders two different bodies at one URL — an htmx fragment for
+/// `HX-Request`, a full page otherwise — and the request header that picks
+/// between them is not part of any CDN cache key. A shared cache holding one
+/// variant would serve a bare fragment to a normal navigation, or a whole page
+/// into a `<div>`. Cloudflare does not honour a custom `Vary` for HTML, so
+/// declaring the variance is not a fix; not storing it is.
+const UNCACHEABLE: &str = "no-store";
+
 /// Whether a static-asset request carries this build's asset-version query
 /// (`?v=…`), which is what makes a URL safe to cache immutably.
 ///
@@ -278,17 +315,61 @@ fn has_asset_version_query(query: Option<&str>) -> bool {
     })
 }
 
-async fn cache_static_assets(request: Request, next: Next) -> Response {
-    let is_static = request.uri().path().starts_with("/static/");
-    let versioned = has_asset_version_query(request.uri().query());
-    let mut response = next.run(request).await;
+/// Whether a path renders a page whose bytes are identical for every visitor.
+///
+/// The read path only. `/search` is excluded deliberately (see [`UNCACHEABLE`]),
+/// and so is everything not listed: `/api/*`, `/mcp`, `/health` and the
+/// framework's own `/actuator/*` and `/_stories` are either request-specific or
+/// nobody's business to cache.
+fn is_cacheable_page(path: &str) -> bool {
+    path == "/"
+        || path == "/robots.txt"
+        || path == "/sitemap.xml"
+        || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
+}
 
-    if is_static && response.status().is_success() {
-        let cache_control = if versioned {
+/// Applies the site's `Cache-Control` policy.
+///
+/// Everything the origin serves falls into one of four buckets — versioned
+/// asset, unversioned asset, cacheable page, or must-not-be-cached — and this
+/// is the single place that decides which. Resolved from the request path
+/// before the response exists, then stamped afterwards once the status is
+/// known, because a `404` is cached differently from a `200`.
+async fn apply_cache_control(request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    let is_static = path.starts_with("/static/");
+    let is_page = is_cacheable_page(path);
+    let is_search = path == DOCS_SEARCH_PATH;
+    let versioned = has_asset_version_query(request.uri().query());
+
+    let mut response = next.run(request).await;
+    let status = response.status();
+
+    let cache_control = if is_static && status.is_success() {
+        Some(if versioned {
             IMMUTABLE_CACHE_CONTROL
         } else {
             REVALIDATED_CACHE_CONTROL
-        };
+        })
+    } else if is_search {
+        Some(UNCACHEABLE)
+    } else if is_page && (status.is_success() || status.is_redirection()) {
+        // Redirects included, for `/docs` — the one read-path URL that answers
+        // with a 307 rather than a body. A 307 is not cacheable by default, so
+        // without an explicit policy the entry point to the guides would be the
+        // single page in the read path that still woke the origin every time.
+        // Its target is a compile-time constant, so it only changes on a deploy,
+        // which is exactly what the purge covers.
+        Some(PAGE_CACHE_CONTROL)
+    } else if is_page && status == StatusCode::NOT_FOUND {
+        Some(MISSING_PAGE_CACHE_CONTROL)
+    } else {
+        // A 5xx must never be cached: the next reader would inherit an outage
+        // that has already been fixed.
+        None
+    };
+
+    if let Some(cache_control) = cache_control {
         response.headers_mut().insert(
             header::CACHE_CONTROL,
             HeaderValue::from_static(cache_control),
@@ -319,12 +400,18 @@ pub async fn docs_page(Path(slug): Path<String>) -> Response {
     };
 
     match registry.page(&slug) {
-        Some(page) => site::render_docs_page(registry, page).into_response(),
-        None => (
-            StatusCode::NOT_FOUND,
-            site::render_missing_docs_page(registry, &slug),
-        )
-            .into_response(),
+        Some(page) => {
+            metrics::record_page_render(metrics::outcome::FOUND);
+            site::render_docs_page(registry, page).into_response()
+        }
+        None => {
+            metrics::record_page_render(metrics::outcome::MISSING);
+            (
+                StatusCode::NOT_FOUND,
+                site::render_missing_docs_page(registry, &slug),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -345,10 +432,20 @@ pub async fn docs_search(hx: HxRequest, Query(query): Query<DocsSearchQuery>) ->
     let results = match site_search_index() {
         Some(index) if !term.is_empty() => {
             let hits = index.search(term, DOCS_SEARCH_RESULT_LIMIT);
+            metrics::record_search(if hits.is_empty() {
+                metrics::outcome::EMPTY
+            } else {
+                metrics::outcome::HIT
+            });
             site::render_docs_search_results(term, &hits)
         }
+        // An empty box is not a search; counting it would drown the signal the
+        // `empty` series exists to carry.
         Some(_) => active_search_empty_state("Type to search the guides."),
-        None => active_search_empty_state("Search is unavailable right now."),
+        None => {
+            metrics::record_search(metrics::outcome::UNAVAILABLE);
+            active_search_empty_state("Search is unavailable right now.")
+        }
     };
 
     if hx.is_htmx {

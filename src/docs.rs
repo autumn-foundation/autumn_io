@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 
 use autumn_web::markdown::{MarkdownError, MarkdownPage, MarkdownRegistry, MarkdownSource};
 use memchr::memmem;
@@ -33,36 +33,68 @@ impl<'a> DocSource<'a> {
     }
 }
 
-/// Rendered docs page with metadata and generated navigation data.
-#[derive(Clone, Debug)]
+/// A docs page: frontmatter parsed eagerly, HTML rendered on first use.
+///
+/// # Why the render is lazy
+///
+/// Rendering every guide costs about 3.4 billion instructions (see the
+/// `[profile.release]` note in `Cargo.toml`), and this used to happen the first
+/// time anything touched the registry — which, on a machine that scales to
+/// zero, is during the very first request after a cold start. A reader who
+/// arrives on a cold machine paid for all 140 guides to render in order to be
+/// shown one.
+///
+/// Now the corpus-wide work is just frontmatter parsing — which is what the
+/// sidebar, the sitemap and the page ordering actually need, and is cheap — and
+/// a page's HTML is rendered the first time somebody asks for it, then kept.
+/// The total is the same; it is spread across the first request to each guide
+/// instead of landing entirely on the first request to *any* guide.
+///
+/// The static export (`crate::export`) renders every page anyway, so it is
+/// unaffected: it walks the whole registry and pays the same total either way.
+#[derive(Debug)]
 pub struct DocPage {
     pub slug: String,
     pub title: String,
     pub description: String,
     pub order: u32,
-    pub html: String,
-    pub toc: Vec<TocItem>,
-    /// The page's Markdown source, as the renderer and [`DocPage::toc`] saw it:
+    /// The page's Markdown source, as the renderer and [`DocPage::toc`] see it:
     /// frontmatter stripped by the framework registry, then the redundant
     /// leading `# Title` removed by [`strip_redundant_title_heading`].
     ///
-    /// Kept alongside the rendered `html` so the JSON docs API — and through it
+    /// Kept alongside the rendered HTML so the JSON docs API — and through it
     /// the MCP server — can hand an agent the Markdown an LLM actually wants to
-    /// read, rather than syntax-highlighted HTML. Retaining it costs roughly the
-    /// size of `content/guide` in resident memory; the rendered HTML already
-    /// costs several times that, so this is the cheaper half of the pair.
+    /// read, rather than syntax-highlighted HTML.
     ///
     /// Because it is the *same* string [`add_heading_ids`] walks, the section
     /// ids [`DocPage::section`] derives from it match the `#anchor` fragments
     /// the site puts on the rendered page.
     pub markdown: String,
-    /// Byte offset into [`markdown`](DocPage::markdown) of each heading in
-    /// [`toc`](DocPage::toc), parallel to it index-for-index. Computed once by
-    /// [`add_heading_ids`] over the same walk that builds `toc`, so
-    /// [`DocPage::section`] and [`DocPage::preamble`] can jump straight to a
-    /// heading instead of re-walking `markdown` from the start and
-    /// recomputing every id before it on every call.
-    heading_offsets: Vec<usize>,
+    /// The render, produced on first access by [`DocPage::rendered`].
+    rendered: OnceLock<RenderedMarkdown>,
+}
+
+impl Clone for DocPage {
+    /// Clones the metadata and the Markdown; a render already paid for comes
+    /// along, and one that has not happened yet stays unpaid in the clone.
+    fn clone(&self) -> Self {
+        Self {
+            slug: self.slug.clone(),
+            title: self.title.clone(),
+            description: self.description.clone(),
+            order: self.order,
+            markdown: self.markdown.clone(),
+            rendered: self
+                .rendered
+                .get()
+                .cloned()
+                .map_or_else(OnceLock::new, |rendered| {
+                    let cell = OnceLock::new();
+                    let _ = cell.set(rendered);
+                    cell
+                }),
+        }
+    }
 }
 
 /// In-page table of contents item generated from Markdown headings.
@@ -94,6 +126,35 @@ pub struct DocSection {
 }
 
 impl DocPage {
+    /// The render, produced on first call and kept for every call after it.
+    fn rendered(&self) -> &RenderedMarkdown {
+        self.rendered
+            .get_or_init(|| render_markdown(&self.markdown))
+    }
+
+    /// The page body as HTML: Markdown rendered, code blocks highlighted, and
+    /// internal links rewritten.
+    #[must_use]
+    pub fn html(&self) -> &str {
+        &self.rendered().html
+    }
+
+    /// In-page table of contents, in document order.
+    #[must_use]
+    pub fn toc(&self) -> &[TocItem] {
+        &self.rendered().toc
+    }
+
+    /// Byte offset into [`markdown`](DocPage::markdown) of each heading in
+    /// [`toc`](DocPage::toc), parallel to it index-for-index. Computed by
+    /// [`add_heading_ids`] over the same walk that builds `toc`, so
+    /// [`DocPage::section`] and [`DocPage::preamble`] can jump straight to a
+    /// heading instead of re-walking `markdown` from the start and
+    /// recomputing every id before it on every call.
+    fn heading_offsets(&self) -> &[usize] {
+        &self.rendered().heading_offsets
+    }
+
     /// Extract the subtree of the heading whose anchor id is `id`, or [`None`]
     /// when the page has no such heading.
     ///
@@ -121,13 +182,13 @@ impl DocPage {
     /// rather than a panic from slicing `markdown` at a stale offset.
     #[must_use]
     pub fn section(&self, id: &str) -> Option<DocSection> {
-        let start_index = self.toc.iter().position(|item| item.id == id)?;
-        let level = self.toc[start_index].level;
+        let start_index = self.toc().iter().position(|item| item.id == id)?;
+        let level = self.toc()[start_index].level;
         let end_index = self.section_end_index(start_index, level);
 
-        let start = *self.heading_offsets.get(start_index)?;
+        let start = *self.heading_offsets().get(start_index)?;
         let end = self
-            .heading_offsets
+            .heading_offsets()
             .get(end_index)
             .copied()
             .unwrap_or(self.markdown.len());
@@ -140,7 +201,7 @@ impl DocPage {
         // ended the section earlier, since `end_index` is the first heading
         // at or above `level`, so everything strictly before it is nested.
         let preamble_len = if start_index + 1 < end_index {
-            self.heading_offsets
+            self.heading_offsets()
                 .get(start_index + 1)
                 .and_then(|&next| next.checked_sub(start))
                 .map_or(markdown.len(), |len| len.min(markdown.len()))
@@ -156,7 +217,7 @@ impl DocPage {
         Some(DocSection {
             id: id.to_owned(),
             level,
-            title: self.toc[start_index].title.clone(),
+            title: self.toc()[start_index].title.clone(),
             markdown,
             preamble,
         })
@@ -172,12 +233,12 @@ impl DocPage {
     /// make when a section is itself too large to return.
     #[must_use]
     pub fn subsections(&self, id: &str) -> &[TocItem] {
-        let Some(start) = self.toc.iter().position(|item| item.id == id) else {
+        let Some(start) = self.toc().iter().position(|item| item.id == id) else {
             return &[];
         };
 
-        let end = self.section_end_index(start, self.toc[start].level);
-        &self.toc[start + 1..end]
+        let end = self.section_end_index(start, self.toc()[start].level);
+        &self.toc()[start + 1..end]
     }
 
     /// Index into [`toc`](DocPage::toc) of the first heading after `start`
@@ -186,10 +247,10 @@ impl DocPage {
     /// [`DocPage::section`] and [`DocPage::subsections`], which both need the
     /// same boundary.
     fn section_end_index(&self, start: usize, level: u8) -> usize {
-        self.toc[start + 1..]
+        self.toc()[start + 1..]
             .iter()
             .position(|item| item.level <= level)
-            .map_or(self.toc.len(), |offset| start + 1 + offset)
+            .map_or(self.toc().len(), |offset| start + 1 + offset)
     }
 
     /// The page's Markdown up to (not including) its first heading — the
@@ -202,7 +263,7 @@ impl DocPage {
     #[must_use]
     pub fn preamble(&self) -> &str {
         match self
-            .heading_offsets
+            .heading_offsets()
             .first()
             .and_then(|&offset| self.markdown.get(..offset))
         {
@@ -249,7 +310,7 @@ impl DocRegistry {
         let pages: Vec<DocPage> = registry
             .all_sorted()
             .into_iter()
-            .map(render_doc_page)
+            .map(prepare_doc_page)
             .collect();
 
         let index_by_slug = pages
@@ -534,12 +595,12 @@ struct SearchEntry {
 impl SearchEntry {
     fn from_page(page: &DocPage) -> Self {
         let headings = page
-            .toc
+            .toc()
             .iter()
             .map(|item| item.title.as_str())
             .collect::<Vec<_>>()
             .join(" ");
-        let text = html_to_plain_text(&page.html);
+        let text = html_to_plain_text(page.html());
         let text_lower = text.to_lowercase();
         let lower_offsets_match = lowercasing_preserves_offsets(&text, &text_lower);
         let offset_checkpoints = if lower_offsets_match {
@@ -805,29 +866,31 @@ fn map_markdown_error(error: MarkdownError) -> DocsError {
     }
 }
 
+#[derive(Clone, Debug)]
 struct RenderedMarkdown {
     html: String,
     toc: Vec<TocItem>,
     heading_offsets: Vec<usize>,
 }
 
-/// Render a framework-parsed [`MarkdownPage`] into a site [`DocPage`], keeping
-/// the syntect highlighting, link-rewriting, and redundant-title-stripping
-/// pipeline that the framework renderer does not provide.
-fn render_doc_page(page: &MarkdownPage) -> DocPage {
+/// Turn a framework-parsed [`MarkdownPage`] into a [`DocPage`], ready to render.
+///
+/// The expensive half — Markdown rendering, syntect highlighting, link
+/// rewriting — is deliberately *not* done here; see [`DocPage`] for why. What
+/// happens eagerly is the frontmatter-derived metadata and the
+/// redundant-title strip, because the stripped Markdown is what both the
+/// renderer and the JSON docs API read.
+fn prepare_doc_page(page: &MarkdownPage) -> DocPage {
     let title = page.frontmatter.title.clone();
     let markdown = strip_redundant_title_heading(&page.body, &title);
-    let rendered = render_markdown(&markdown);
 
     DocPage {
         slug: page.slug.clone(),
         title,
         description: page.frontmatter.description.clone(),
         order: page.frontmatter.order,
-        html: rendered.html,
-        toc: rendered.toc,
-        heading_offsets: rendered.heading_offsets,
         markdown,
+        rendered: OnceLock::new(),
     }
 }
 
@@ -1476,10 +1539,10 @@ mod tests {
         .expect("sample registry builds")
     }
 
-    /// `markdown` and `toc` are both `pub`, so nothing in the type system
-    /// stops a caller from cloning a page and mutating one without the
-    /// other — `heading_offsets` then describes a string that no longer
-    /// exists. `section`/`preamble` must degrade to `None`/the whole
+    /// `markdown` is `pub` and the render is memoized, so nothing in the type
+    /// system stops a caller from rendering a page and then mutating the
+    /// Markdown underneath it — `heading_offsets` then describes a string that
+    /// no longer exists. `section`/`preamble` must degrade to `None`/the whole
     /// trimmed string rather than panic by indexing `markdown` at a stale
     /// offset, since a caller that does this gets to see a wrong answer,
     /// not a crash.
@@ -1490,9 +1553,9 @@ mod tests {
             .page("widgets")
             .expect("fixture page exists")
             .clone();
-        let original_id = page.toc[0].id.clone();
+        let original_id = page.toc()[0].id.clone();
         assert!(
-            page.heading_offsets[0] > 0,
+            page.heading_offsets()[0] > 0,
             "fixture's first heading should not start at byte 0"
         );
 

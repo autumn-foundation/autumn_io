@@ -444,7 +444,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                                 }
                             }
                             div class="article-body" {
-                                (PreEscaped(&page.html))
+                                (PreEscaped(page.html()))
                             }
                         }
                         nav class="docs-pagination" aria-label="Docs pagination" {
@@ -469,7 +469,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                     aside class="docs-toc" aria-label="On this page" {
                         p class="toc-label" { "On this page" }
                         nav aria-label="On this page" {
-                            @for item in &page.toc {
+                            @for item in page.toc() {
                                 a class=(format!("toc-link depth-{}", item.level)) href=(format!("#{}", item.id)) {
                                     (&item.title)
                                 }

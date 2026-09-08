@@ -541,7 +541,7 @@ async fn no_response_ever_exceeds_the_size_cap() {
         assert_body_within_cap(&doc, &page.slug, "");
         checked += 1;
 
-        for item in &page.toc {
+        for item in page.toc() {
             let section = call_tool(
                 &app,
                 "get_autumn_doc",
@@ -758,7 +758,7 @@ fn section_ids_are_the_toc_ids() {
         .expect("valid source");
     let page = registry.page("sectioned").expect("registered");
 
-    for item in &page.toc {
+    for item in page.toc() {
         let section = page
             .section(&item.id)
             .unwrap_or_else(|| panic!("toc id {:?} should resolve to a section", item.id));
@@ -817,7 +817,7 @@ fn every_bundled_guide_is_retrievable() {
         }
 
         // An oversized guide is only usable if it has sections to ask for.
-        let sections: Vec<_> = page.toc.iter().filter(|item| item.level <= 3).collect();
+        let sections: Vec<_> = page.toc().iter().filter(|item| item.level <= 3).collect();
         assert!(
             !sections.is_empty(),
             "{} is too large to inline and has no sections to fall back on",

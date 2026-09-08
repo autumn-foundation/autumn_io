@@ -178,3 +178,80 @@ fn release_profile_keeps_symbols_for_profiling_and_backtraces() {
         "callgrind attribution and panic backtraces both need the symbol table"
     );
 }
+
+/// Every file the crate embeds must be inside the Docker builder's context.
+///
+/// `include_str!`/`include_bytes!` resolve while compiling, so an embedded path
+/// the Dockerfile does not `COPY` fails the production build — and nothing else
+/// catches it. The `release-build` CI job compiles from a full checkout, where
+/// every path exists; only the real image build sees the trimmed context.
+///
+/// A near-miss on this branch is why the test exists: a config file was added
+/// for deployment, later embedded with `include_str!`, and nothing reconciled
+/// the two facts — every production image build would have failed on a path CI
+/// could not see was missing. Today only `content/` is embedded and it is
+/// copied, so this passes trivially; it is here for the next embed.
+#[test]
+fn embedded_files_are_inside_the_docker_build_context() {
+    let copied: Vec<String> = DOCKERFILE
+        .lines()
+        .map(str::trim)
+        // Builder-stage copies only: a `COPY --from=builder` line assembles the
+        // runtime image from build output, long after `cargo build` needed the
+        // sources.
+        .filter(|line| !line.contains("--from="))
+        .filter_map(|line| line.strip_prefix("COPY "))
+        // `COPY <sources...> <destination>` — every argument but the last.
+        .flat_map(|line| {
+            let mut parts: Vec<&str> = line.split_whitespace().collect();
+            parts.pop();
+            parts
+        })
+        .map(str::to_owned)
+        .collect();
+
+    let mut missing = Vec::new();
+    for entry in std::fs::read_dir("src").expect("src is readable") {
+        let path = entry.expect("directory entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let source = std::fs::read_to_string(&path).expect("source is readable");
+
+        for macro_name in ["include_str!(", "include_bytes!("] {
+            for fragment in source.split(macro_name).skip(1) {
+                // Both `include_str!("path")` and the `include_str!(concat!(
+                // "prefix/", $var, ".md"))` form the guide macro uses: in the
+                // latter the first literal carries the directory, which is the
+                // part a `COPY` has to cover.
+                let argument = fragment.trim_start();
+                let argument = argument.strip_prefix("concat!(").unwrap_or(argument);
+                let Some(literal) = argument.trim_start().strip_prefix('"') else {
+                    continue;
+                };
+                let Some(relative) = literal.split('"').next() else {
+                    continue;
+                };
+                // Embedded paths are written relative to `src/`.
+                let from_root = relative.trim_start_matches("../");
+                let top_level = from_root.split('/').next().unwrap_or(from_root);
+
+                let is_copied = copied.iter().any(|copy| {
+                    copy == top_level
+                        || copy == from_root
+                        || copy.starts_with(&format!("{top_level}/"))
+                });
+                if !is_copied {
+                    missing.push(format!("{} embeds {relative}", path.display()));
+                }
+            }
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "the Dockerfile builder does not COPY these embedded files, so the \
+         production image build would fail on them:\n  {}",
+        missing.join("\n  "),
+    );
+}
