@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use autumn_web::prelude::HTMX_JS_PATH;
@@ -500,27 +500,38 @@ fn docs_navigation_neighbors<'a>(
     (previous, next)
 }
 
+/// Ordered pagination list for [`docs_navigation_neighbors`]: every
+/// [`DOCS_NAV_GROUPS`] slug in group order, then any remaining guide, each
+/// slug kept once.
+///
+/// `seen_slugs` used to be a `Vec` deduped with `.contains`, an O(seen so
+/// far) scan per slug — the same shape as the linear scans #47 replaced in
+/// `doc_group_label`/`is_grouped_doc_slug`, just not caught by that pass
+/// since it lives in a different function over the same table. Measured at
+/// 18,960,830 instructions (mean of two callgrind runs), ~19% of
+/// `profile_docs_page_render`'s isolated per-request loop; a `HashSet` gives
+/// each slug an O(1) amortized membership check instead, which measured
+/// -46.4% on the same harness. `#[inline(never)]` kept for the same
+/// attribution reason #47 gives.
 #[inline(never)]
 fn docs_navigation_pages(registry: &DocRegistry) -> Vec<&DocPage> {
     let mut pages = Vec::new();
-    let mut seen_slugs = Vec::new();
+    let mut seen_slugs = HashSet::new();
 
     for group in DOCS_NAV_GROUPS {
         for slug in group.slugs {
-            if seen_slugs.contains(slug) {
+            if !seen_slugs.insert(*slug) {
                 continue;
             }
 
             if let Some(page) = registry.page(slug) {
-                seen_slugs.push(page.slug.as_str());
                 pages.push(page);
             }
         }
     }
 
     for page in registry.pages() {
-        if !seen_slugs.contains(&page.slug.as_str()) {
-            seen_slugs.push(page.slug.as_str());
+        if seen_slugs.insert(page.slug.as_str()) {
             pages.push(page);
         }
     }
