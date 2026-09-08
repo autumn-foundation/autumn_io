@@ -100,23 +100,134 @@ only because of it.
 
 ## Configuring Cloudflare
 
-Two settings, both in the dashboard; neither can be committed here.
+**Until the Cache Rule below exists, everything above is inert.** Cloudflare's
+default cache level decides eligibility by file extension and bypasses HTML no
+matter what the origin sends, so the `s-maxage` this change adds is read by
+nobody. The code is necessary and not sufficient; this section is the rest.
 
-1. **A Cache Rule making the read path eligible for cache.** Cloudflare's
-   default cache level caches by file extension and bypasses HTML no matter
-   what the origin sends, so `s-maxage` alone does nothing. Match
-   `http.request.uri.path eq "/" or http.request.uri.path matches "^/docs"`
-   plus `/robots.txt` and `/sitemap.xml`, set *Cache eligibility: Eligible for
-   cache*, and *Edge TTL: Use cache-control header from origin* so the policy
-   stays in this repo rather than splitting across two places.
+Neither step can be committed here, which is exactly why they are written down
+in this much detail.
 
-   Do **not** write a rule that caches everything: `/search`, `/api/*`, `/mcp`
-   and `/actuator/*` must keep reaching the origin. `/search` sends `no-store`,
-   but an "ignore origin cache-control" TTL override would defeat that.
+### 1. The Cache Rule
 
-2. **A purge on deploy.** One authenticated `POST` to the zone's
-   `purge_cache` endpoint after a successful release, so new guides appear
-   immediately instead of within the hour.
+**Caching → Cache Rules → Create rule.** Build a custom rule rather than
+starting from a template — the templates are shaped around bypassing cache for
+admin panels and carts, and none of them fits "cache this handful of paths on
+the origin's terms".
 
-Verify with `curl -sI https://autumn-web.app/docs/getting-started` and look for
-`cf-cache-status: HIT` on the second request.
+Name it something a stranger can act on: `Docs read path — cacheable`.
+
+**Expression.** Use *Edit expression* and paste this rather than assembling it
+in the visual builder:
+
+```
+(http.request.uri.path eq "/")
+or (http.request.uri.path eq "/docs")
+or (starts_with(http.request.uri.path, "/docs/"))
+or (http.request.uri.path eq "/robots.txt")
+or (http.request.uri.path eq "/sitemap.xml")
+```
+
+It is an **allow-list of exact paths plus one prefix**, deliberately. `/docs`
+appears on its own line because it is the 307 to the first guide, which is a
+different response from anything under `/docs/`. And it is `starts_with(…,
+"/docs/")` rather than `matches "^/docs"` because the regex form would also
+match a future `/docsearch` — there is no such route today, but an allow-list
+that can accidentally widen is not an allow-list.
+
+**Then the settings.** The form offers a long list of them. **Three decide
+whether this works. Leave every other one at its default.**
+
+| Setting | Set it to | Why |
+| --- | --- | --- |
+| Cache eligibility | **Eligible for cache** | The whole point. This is what overrides the default "bypass HTML" behaviour. |
+| Edge TTL | **Use cache-control header if present, bypass cache if not** | Makes the origin's `s-maxage=3600` the source of truth, so the policy stays in this repo. The *bypass if not* half is a fail-safe: if a response ever arrives with no policy, Cloudflare declines to cache rather than inventing a TTL. |
+| Browser TTL | **Respect origin TTL** | Keeps `max-age=0, must-revalidate` intact so browsers revalidate against the `ETag`. An override here would pin pages in readers' browsers, where no purge can reach them — the one failure mode with no remedy. |
+
+Dashboard labels shift between Cloudflare UI revisions; match on meaning rather
+than exact wording. Anything not named above — Cache Reserve, Cache Deception
+Armor, cache-key components, origin error handling — is already correct at its
+default for this site, and changing one is more likely to break the rule than
+improve it. Two worth understanding rather than touching:
+
+- **Cache key / query string.** The default includes the query string, which is
+  what makes `?v=` asset fingerprinting work. This rule does not match
+  `/static/*` anyway (see below), but do not switch on "ignore query string" at
+  the zone level for the same reason.
+- **Serve stale while revalidating.** Optional, and defensible here: it would
+  keep serving a guide during an origin cold start. The trade is that a reader
+  can get a page one revalidation-cycle out of date. The default (off) is the
+  conservative choice; turning it on is a preference, not a fix.
+
+### 2. What the rule must not match
+
+`/search`, `/api/*`, `/mcp`, `/actuator/*`, `/health` and `/_stories` all have
+to keep reaching the origin. The expression above cannot match them, which is
+the reason it is written as an allow-list.
+
+The specific thing not to do is a **"Cache Everything" rule scoped to the whole
+zone**. Two of those paths break loudly under one:
+
+- `/search` returns a different body for the same URL depending on the
+  `HX-Request` header, which is not in any cache key. It sends `no-store` to
+  say so, but an **"Ignore cache-control header and use this TTL"** Edge TTL
+  setting overrides exactly that, and a cached htmx fragment then gets served
+  into a full page load.
+- `/actuator/prometheus` would report a frozen snapshot as though it were
+  current.
+
+### 3. `/static/*` needs no rule at all
+
+It is already cached, and was before this change. Cloudflare caches those
+extensions by default, and the origin marks versioned asset URLs
+`public, max-age=31536000, immutable`. Adding a rule for them is not
+necessary and gives you a second place to get it wrong.
+
+### 4. The zone-level setting that can silently defeat this
+
+**Caching → Configuration → Browser Cache TTL.** If this is set to a fixed
+duration it overrides origin headers for browsers zone-wide, regardless of what
+the Cache Rule says. Set it to **Respect Existing Headers**. Otherwise readers
+hold pages for that duration and a purge cannot reach them.
+
+### 5. Purge on deploy
+
+Without this, a new guide takes up to an hour to appear. One call after a
+successful release:
+
+```sh
+curl -fsS -X POST \
+  "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/purge_cache" \
+  -H "Authorization: Bearer $CLOUDFLARE_PURGE_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data '{"purge_everything":true}'
+```
+
+The token needs exactly one permission — **Zone → Cache Purge → Purge** — and
+should be scoped to this zone alone. Store it as a deploy secret; it is not a
+build input and must not be committed.
+
+`purge_everything` also drops the `immutable` asset entries, which is harmless:
+their URLs carry `?v=<hash>` and change on any deploy that changes their bytes,
+so they would have been re-fetched anyway.
+
+### 6. Verify
+
+```sh
+# A guide: MISS on the first request, HIT on the second.
+curl -sI https://autumn-web.app/docs/getting-started | grep -iE 'cf-cache-status|cache-control'
+curl -sI https://autumn-web.app/docs/getting-started | grep -i cf-cache-status
+
+# The entry-point redirect — 307, with a policy, and cacheable.
+curl -sI https://autumn-web.app/docs | grep -iE 'cf-cache-status|location|cache-control'
+
+# These must never report HIT.
+for path in '/search?q=router' /api/docs /actuator/prometheus; do
+  printf '%s: ' "$path"
+  curl -sI "https://autumn-web.app$path" | grep -i cf-cache-status
+done
+```
+
+`DYNAMIC` or `BYPASS` on the last three is correct. A `HIT` on any of them means
+the rule is matching more than it should — check for a broader "Cache
+Everything" rule sitting above this one, since Cache Rules apply in order.
