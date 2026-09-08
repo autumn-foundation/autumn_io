@@ -353,7 +353,13 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
         })
     } else if is_search {
         Some(UNCACHEABLE)
-    } else if is_page && status.is_success() {
+    } else if is_page && (status.is_success() || status.is_redirection()) {
+        // Redirects included, for `/docs` — the one read-path URL that answers
+        // with a 307 rather than a body. A 307 is not cacheable by default, so
+        // without an explicit policy the entry point to the guides would be the
+        // single page in the read path that still woke the origin every time.
+        // Its target is a compile-time constant, so it only changes on a deploy,
+        // which is exactly what the purge covers.
         Some(PAGE_CACHE_CONTROL)
     } else if is_page && status == StatusCode::NOT_FOUND {
         Some(MISSING_PAGE_CACHE_CONTROL)

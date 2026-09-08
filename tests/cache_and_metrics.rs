@@ -51,6 +51,26 @@ async fn every_read_path_page_is_cacheable_by_a_shared_cache() {
 }
 
 #[tokio::test]
+async fn the_docs_entry_point_redirect_is_cacheable() {
+    // `/docs` answers with a 307 to the first guide rather than a body, and a
+    // 307 is not cacheable by default. Without an explicit policy it was the
+    // one read-path URL that still reached the origin on every visit — the
+    // entry point to the guides, so plausibly the most-hit of them.
+    let app = app();
+
+    let response = app.get("/docs").send().await;
+    assert!(
+        response.status.is_redirection(),
+        "/docs should redirect to the first guide",
+    );
+    assert_eq!(
+        response.header("cache-control"),
+        Some(PAGE_POLICY),
+        "the redirect should be held by the shared cache like any other page",
+    );
+}
+
+#[tokio::test]
 async fn a_page_still_revalidates_with_a_browser() {
     // `max-age=0` costs nothing because `EtagLayer` answers the revalidation
     // with a `304` and never re-renders. If the ETag ever stopped being sent,
