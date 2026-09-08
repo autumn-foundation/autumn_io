@@ -274,7 +274,39 @@ If that trade is ever taken, add a test asserting the policy still denies
 everything else. Nothing guards the CSP today, because it is the framework
 default and there was nothing to guard.
 
-### 6. Purge on deploy
+### 6. Nothing may set a cookie on the read path
+
+This is the one that actually broke, and it broke silently for the entire life
+of the change before anyone noticed.
+
+**No CDN stores a response carrying `Set-Cookie`** — doing so would hand one
+visitor's cookie to the next, so it is a safety rule rather than a setting. Any
+response on the read path that carries one is uncacheable, whatever
+`Cache-Control` says.
+
+Autumn's prod profile enables CSRF as a smart default, and the CSRF layer issues
+`Set-Cookie: autumn-csrf=…` on any response whose request arrived without that
+cookie. **Every cache-fill request a CDN makes is exactly that**, because it
+sends none of a browser's cookies on its own fetches. So every page came back
+`cf-cache-status: BYPASS`, and the `s-maxage` above was read and discarded on
+every request.
+
+`autumn.toml` disables CSRF explicitly, with the reasoning recorded beside the
+setting — no sessions or authentication compiled in, every declared route a GET,
+and the sole POST surface an unauthenticated read-only `/mcp`.
+
+**Why this went unnoticed is the part worth keeping.** It changes no rendered
+byte. The pages are correct, the headers look right, and `curl -sI` shows a
+plausible `Cache-Control`; the only symptom is a `cf-cache-status` nobody reads
+by hand and a Fly machine that never gets to sleep. A cached response from
+before the cookie appeared can even report `HIT` for an hour afterwards, which
+is exactly how it was first misread here.
+
+So `curl -sI` on the read path should be checked for **two** things, not one:
+`cf-cache-status`, and the absence of `set-cookie`. The second is the one that
+explains the first.
+
+### 7. Purge on deploy
 
 Without this, a new guide takes up to an hour to appear. One call after a
 successful release:
@@ -295,12 +327,14 @@ build input and must not be committed.
 their URLs carry `?v=<hash>` and change on any deploy that changes their bytes,
 so they would have been re-fetched anyway.
 
-### 7. Verify
+### 8. Verify
 
 ```sh
-# A guide: MISS on the first request, HIT on the second.
-curl -sI https://autumn-web.app/docs/getting-started | grep -iE 'cf-cache-status|cache-control'
-curl -sI https://autumn-web.app/docs/getting-started | grep -i cf-cache-status
+# A guide: MISS on the first request, HIT on the second — and NO set-cookie on
+# either. A cookie makes the response uncacheable no matter what else is right
+# (§6), so check for its absence first; it is what explains a stubborn BYPASS.
+curl -sI https://autumn-web.app/docs/getting-started | grep -iE 'cf-cache-status|cache-control|set-cookie'
+curl -sI https://autumn-web.app/docs/getting-started | grep -iE 'cf-cache-status|set-cookie'
 
 # The entry-point redirect. Twice, for the same reason as the negative probes
 # below: one request cannot tell a stored redirect from an unstored one, and
