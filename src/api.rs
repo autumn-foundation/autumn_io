@@ -383,7 +383,7 @@ pub async fn get_autumn_doc(
         }
         None => (
             page.markdown.clone(),
-            page.toc.as_slice(),
+            page.toc(),
             page.preamble().to_owned(),
         ),
     };

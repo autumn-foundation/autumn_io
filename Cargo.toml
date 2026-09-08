@@ -4,31 +4,48 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# `db` is autumn-web's biggest default feature (diesel, diesel-async,
-# libsqlite3-sys, pq-sys, tokio-postgres, rustls, ...): this site has no
-# database, no models, and no repository usage anywhere in `src/`. Opting out
-# of default features and listing only what's actually used — `maud` (Maud
-# templates), `htmx` (the `HxRequest` extractor and `HTMX_JS_PATH` asset in
-# the docs search widget), `markdown` (the guide-rendering pipeline in
-# `docs.rs`), `mcp` (which pulls in `openapi`, used directly in `api.rs`), and
-# `reporting` (the panic-isolating `ReportingLayer` — a production safety net,
-# not just optional error-sink wiring, so it stays even though nothing here
-# registers a custom `ErrorReporter`) — cuts both compile time and binary
-# size. `cache-moka`, `http-client`, `flash`, and `tailwind` (this app's own
-# `build.rs` shells out to the Tailwind CLI directly; the Cargo feature gates
-# no code at all) are dropped as unused.
-autumn-web = { version = "0.7.0", default-features = false, features = [
-    "maud",
-    "htmx",
-    "markdown",
-    "mcp",
-    "reporting",
-] }
-maud = "0.27.0"
+# Shared by both lanes. Everything here compiles for `wasm32-wasip1` as well as
+# for the host, because `src/edge.rs` and the render pipeline it pulls in
+# (`docs`, `site`, `seo`, `frontmatter`, `widgets`) are compiled into the edge
+# capsule. See `content/guide/edge.md` and `docs/adr/0001-cloudflare-edge-capsule.md`.
+autumn-edge = "0.7.0"
+maud = { version = "0.27.0", features = ["axum"] }
 memchr = "2.8.0"
 pulldown-cmark = "0.13.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
+# Guide frontmatter. This was `autumn_web::markdown::MarkdownRegistry` until the
+# edge lane arrived; `src/frontmatter.rs` is a port of it, because the registry
+# is on the read path both lanes serve and `autumn-web` is not in the capsule's
+# dependency graph. `tests/frontmatter_parity.rs` pins the port natively.
+toml = "1.1"
+
+# ── origin only ──────────────────────────────────────────────────────
+#
+# `db` is autumn-web's biggest default feature (diesel, diesel-async,
+# libsqlite3-sys, pq-sys, tokio-postgres, rustls, ...): this site has no
+# database, no models, and no repository usage anywhere in `src/`. Opting out
+# of default features and listing only what's actually used — `maud` (Maud
+# templates), `htmx` (the `HxRequest` extractor in `origin.rs`), `mcp` (which
+# pulls in `openapi`, used directly in `api.rs`), `reporting` (the
+# panic-isolating `ReportingLayer` — a production safety net, not just optional
+# error-sink wiring, so it stays even though nothing here registers a custom
+# `ErrorReporter`), and `edge` (the origin half of the edge lane) — cuts both
+# compile time and binary size. `cache-moka`, `http-client`, `flash`, and
+# `tailwind` (this app's own `build.rs` shells out to the Tailwind CLI directly;
+# the Cargo feature gates no code at all) are dropped as unused.
+#
+# `markdown` is gone with `MarkdownRegistry`: nothing in `src/` calls the
+# framework's Markdown pipeline any more, and dropping it takes `ammonia` and a
+# second `pulldown-cmark` configuration out of the origin build.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+autumn-web = { version = "0.7.0", default-features = false, features = [
+    "maud",
+    "htmx",
+    "mcp",
+    "reporting",
+    "edge",
+] }
 # Oniguruma (`default-onig`) is syntect's own upstream default and the engine
 # TextMate grammars are written against. Under the pure-Rust `default-fancy`
 # alternative, the regex bucket was 76.81% of the cold-start docs render and
@@ -39,8 +56,33 @@ syntect = { version = "5.3.0", default-features = false, features = ["default-on
 tower = "0.5"
 tower-http = { version = "0.6.10", features = ["compression-gzip", "map-response-body"] }
 
+# ── capsule only ─────────────────────────────────────────────────────
+#
+# `onig_sys` builds bundled C, which needs a `wasm32-wasip1` sysroot no ordinary
+# Rust toolchain ships, so the capsule uses syntect's pure-Rust engine instead.
+# That is only sound because the two engines produce the *same bytes*: every one
+# of the 140 bundled guides renders identically under both, and
+# `tests/edge_conformance.rs` re-checks it on every build by comparing what the
+# two lanes serve. The instruction-count argument above does not apply here —
+# the capsule renders one page per request, not the whole corpus.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
+
 [dev-dependencies]
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
+
+# `tests/port_parity.rs` checks `src/frontmatter.rs` and `src/widgets.rs`
+# against the `autumn-web` pieces they were ported from, so the test build —
+# and only the test build — needs the framework's Markdown registry back.
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+autumn-web = { version = "0.7.0", default-features = false, features = [
+    "maud",
+    "htmx",
+    "markdown",
+    "mcp",
+    "reporting",
+    "edge",
+] }
 
 [workspace]
 

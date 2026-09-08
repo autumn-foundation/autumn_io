@@ -103,7 +103,7 @@ fn main() {
         read_total += whole.markdown.as_deref().map_or(0, str::len);
         read_total += whole.sections.len();
 
-        for item in &page.toc {
+        for item in page.toc() {
             let section = block_on(get_autumn_doc(
                 Path(page.slug.clone()),
                 Query(GetDocQuery {

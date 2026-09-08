@@ -65,30 +65,30 @@ fn parses_frontmatter_and_generates_article_metadata() {
     assert_eq!(page.order, 10);
     assert_eq!(page.slug, "quickstart");
     assert!(
-        page.html.contains("<h2 id=\"create-an-app\">"),
+        page.html().contains("<h2 id=\"create-an-app\">"),
         "heading IDs should be generated from Markdown headings"
     );
     assert!(
-        page.html
+        page.html()
             .contains("<pre tabindex=\"0\"><code class=\"language-rust\">"),
         "Rust code blocks should keep language metadata for copy controls, \
          and stay keyboard-focusable so their horizontal scroll is reachable"
     );
     assert!(
-        page.html.contains("<span style=\"color:"),
+        page.html().contains("<span style=\"color:"),
         "code blocks should include server-rendered syntax highlight spans"
     );
     assert!(
-        page.html.contains("autumn_web::prelude")
-            && page.html.contains("autumn-web")
-            && page.html.contains("language-toml"),
+        page.html().contains("autumn_web::prelude")
+            && page.html().contains("autumn-web")
+            && page.html().contains("language-toml"),
         "highlighting should preserve Rust and TOML code text and language classes"
     );
     assert!(
-        !page.html.contains("<h1 id=\"quickstart\">"),
+        !page.html().contains("<h1 id=\"quickstart\">"),
         "page title should be owned by the document template, not duplicated from Markdown"
     );
-    assert_eq!(page.toc[0].id, "create-an-app");
+    assert_eq!(page.toc()[0].id, "create-an-app");
 }
 
 #[test]
@@ -230,14 +230,14 @@ fn markdown_raw_html_is_escaped_before_preescaped_page_rendering() {
         .expect("valid docs source should parse");
     let page = registry.page("raw-html").expect("raw html page exists");
 
-    assert!(!page.html.contains("<script>"));
-    assert!(!page.html.contains("<em>HTML</em>"));
+    assert!(!page.html().contains("<script>"));
+    assert!(!page.html().contains("<em>HTML</em>"));
     assert!(
-        page.html
+        page.html()
             .contains("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;")
     );
     assert!(
-        page.html
+        page.html()
             .contains("Inline &lt;em&gt;HTML&lt;/em&gt; should render as text.")
     );
 }
@@ -482,18 +482,18 @@ fn bundled_site_docs_use_vendored_autumn_guide_snapshot() {
     assert!(registry.pages().len() >= 20);
     assert_eq!(registry.pages()[0].slug, GUIDE_START_SLUG);
     assert_eq!(page.title, "Getting Started with Autumn");
-    assert!(page.html.contains("autumn doctor"));
-    assert!(page.html.contains("autumn_web::prelude"));
+    assert!(page.html().contains("autumn doctor"));
+    assert!(page.html().contains("autumn_web::prelude"));
     let harvest = registry
         .page("autumn-harvest")
         .expect("Harvest release page should be bundled");
     assert_eq!(harvest.title, "Autumn Harvest");
-    assert!(harvest.html.contains("autumn_harvest::prelude"));
-    assert!(harvest.html.contains("HarvestPlugin"));
+    assert!(harvest.html().contains("autumn_harvest::prelude"));
+    assert!(harvest.html().contains("HarvestPlugin"));
     // The intro now points into the on-site Harvest guide rather than upstream.
     assert!(
         harvest
-            .html
+            .html()
             .contains(r#"href="/docs/harvest-project-skeleton""#)
     );
     assert!(
@@ -527,7 +527,7 @@ fn vendored_link_fragments_resolve_to_real_heading_ids() {
     for page in registry.pages() {
         // Code spans can contain literal markup (`<a href="#panel-id">` is prose
         // in the tabs guide, not a link), so scan only real anchors.
-        let prose = strip_code_spans(&page.html);
+        let prose = strip_code_spans(page.html());
         for href in html_hrefs(&prose) {
             let Some((path, fragment)) = href.split_once('#') else {
                 continue;
@@ -546,7 +546,7 @@ fn vendored_link_fragments_resolve_to_real_heading_ids() {
             let Some(target) = registry.page(target_slug) else {
                 continue;
             };
-            if target.toc.iter().any(|item| item.id == fragment) {
+            if target.toc().iter().any(|item| item.id == fragment) {
                 continue;
             }
             unresolved.push(format!("{} -> {href}", page.slug));
@@ -623,7 +623,7 @@ fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
             .page(slug)
             .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
         assert!(!page.title.is_empty(), "{slug} should carry a title");
-        assert!(!page.html.is_empty(), "{slug} should render a body");
+        assert!(!page.html().is_empty(), "{slug} should render a body");
         assert!(
             is_grouped_docs_nav_slug(slug),
             "{slug} should be slotted into a docs sidebar group"
@@ -648,7 +648,7 @@ fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
     assert_eq!(broker_connectors.title, "Broker connectors (Kafka, SQS)");
     assert!(
         broker_connectors
-            .html
+            .html()
             .contains(r#"href="/docs/harvest-webhooks""#)
     );
 }
@@ -680,7 +680,7 @@ fn bundled_guide_rustdoc_fence_modifiers_render_as_rust() {
     let all_docs_html = registry
         .pages()
         .iter()
-        .map(|page| page.html.as_str())
+        .map(|page| page.html())
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -815,22 +815,26 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
         .expect("deployment guide should be bundled");
     assert!(
         deployment
-            .html
+            .html()
             .contains(r#"href="/docs/getting-started#configuration""#)
     );
-    assert!(deployment.html.contains(r#"href="/docs/signing-secrets""#));
-    assert!(!deployment.html.contains(r#"href="getting-started.md"#));
-    assert!(!deployment.html.contains(r#"href="signing-secrets.md"#));
+    assert!(
+        deployment
+            .html()
+            .contains(r#"href="/docs/signing-secrets""#)
+    );
+    assert!(!deployment.html().contains(r#"href="getting-started.md"#));
+    assert!(!deployment.html().contains(r#"href="signing-secrets.md"#));
 
     let getting_started = registry
         .page("getting-started")
         .expect("getting started guide should be bundled");
-    assert!(getting_started.html.contains(
+    assert!(getting_started.html().contains(
         r#"href="https://github.com/autumn-foundation/autumn/tree/trunk-dev/examples/todo-app""#
     ));
     assert!(
         !getting_started
-            .html
+            .html()
             .contains(r#"href="../../examples/todo-app""#)
     );
 
@@ -839,18 +843,18 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
         .expect("custom subsystems guide should be bundled");
     assert!(
         custom_subsystems
-            .html
+            .html()
             .contains(r#"href="/docs/extensibility""#)
     );
-    assert!(custom_subsystems.html.contains(
+    assert!(custom_subsystems.html().contains(
         r#"href="https://github.com/autumn-foundation/autumn/tree/trunk-dev/examples/custom_config_loader""#
     ));
-    assert!(custom_subsystems.html.contains(
+    assert!(custom_subsystems.html().contains(
         r#"href="https://github.com/autumn-foundation/autumn/blob/trunk-dev/autumn/src/plugin.rs""#
     ));
     assert!(
         !custom_subsystems
-            .html
+            .html()
             .contains(r#"href="../../examples/custom_config_loader""#)
     );
 
@@ -862,10 +866,10 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
         .expect("harvest signals chapter should be bundled");
     assert!(
         harvest_signals
-            .html
+            .html()
             .contains(r#"href="/docs/harvest-idempotency#idempotent-signal-delivery""#)
     );
-    assert!(harvest_signals.html.contains(
+    assert!(harvest_signals.html().contains(
         r#"href="https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/management-api.md""#
     ));
     // A sibling-chapter link rendered as a bare site route.
@@ -874,7 +878,7 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
         .expect("harvest first-workflow chapter should be bundled");
     assert!(
         harvest_first_workflow
-            .html
+            .html()
             .contains(r#"href="/docs/harvest-idempotency""#)
     );
     // The upstream guide index (`README.md`) resolves to the Harvest intro.
@@ -883,7 +887,7 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
         .expect("harvest testing chapter should be bundled");
     assert!(
         harvest_testing
-            .html
+            .html()
             .contains(r#"href="/docs/autumn-harvest""#)
     );
 
@@ -896,7 +900,7 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
         "https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/",
     ];
     for page in registry.pages() {
-        for href in html_hrefs(&page.html) {
+        for href in html_hrefs(page.html()) {
             assert!(
                 !href.starts_with("../") && !href.starts_with("./"),
                 "{} should not render repo-relative href {href}",
@@ -1027,7 +1031,7 @@ fn no_bundled_page_has_an_unlabeled_empty_table_header() {
 
     for page in registry.pages() {
         assert!(
-            !page.html.contains("<th></th>"),
+            !page.html().contains("<th></th>"),
             "{} has an empty table header with no accessible name",
             page.slug
         );

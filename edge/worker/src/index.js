@@ -1,0 +1,197 @@
+// The Cloudflare Worker that runs the Autumn docs site's edge capsule.
+//
+// Autumn ships an artifact and a protocol, not a vendor binding (see
+// `content/guide/edge.md` § "Deploying"), so this file is the vendor half:
+// load the `.wasm`, speak the NDJSON dialogue on its stdio, and forward
+// anything it declines to the origin, unchanged.
+//
+// # What a request does
+//
+//   1. Non-GET/HEAD, or a path the capsule does not own → straight to origin.
+//      The capsule would answer both with a fallthrough; skipping it saves an
+//      instantiation on every form post and every `/static/` asset.
+//   2. Cache hit → served from the colo's cache, no capsule at all.
+//   3. Otherwise → run the capsule. A response is cached and returned; a
+//      fallthrough is forwarded to the origin.
+//
+// # The origin is still the authority
+//
+// Every route the capsule serves is also mounted on the origin, so a
+// fallthrough needs no glue: the forwarded request lands on a route that was
+// always there. Anything the edge lane cannot do — the htmx search partial, the
+// JSON docs API, the MCP server, `/_stories`, static assets — was never routed
+// here in the first place.
+
+import { serveFromCapsule, unexpectedImports } from "./capsule.js";
+import { FALLTHROUGH_SENTINEL } from "./wire.js";
+import SECURITY_HEADERS from "../../security-headers.json";
+import CAPSULE_MODULE from "../build/edge-capsule.wasm";
+
+/**
+ * Paths the capsule owns, mirroring `autumn_io::edge::edge_routes`.
+ *
+ * This is a fast pre-filter, not a router: the capsule holds the real route
+ * table, built from the same `matchit` patterns the origin uses, and it is the
+ * only thing that decides whether a path matches. Being wrong here in the
+ * permissive direction costs one wasted instantiation and a fallthrough; being
+ * wrong in the restrictive direction sends a page to the origin that the edge
+ * could have served. `test/routes.test.js` pins it against the Rust route table.
+ */
+function isCapsulePath(pathname) {
+  if (pathname === "/" || pathname === "/docs") return true;
+  if (pathname === "/robots.txt" || pathname === "/sitemap.xml") return true;
+  // `/docs/{slug}` — exactly one non-empty segment. `matchit` does not match an
+  // empty capture, so `/docs/` is not a guide.
+  const slug = pathname.startsWith("/docs/") ? pathname.slice(6) : "";
+  return slug !== "" && !slug.includes("/");
+}
+
+/** Response headers the shim adds, so a hit is visible in `curl -I`. */
+const LANE_HEADER = "x-autumn-lane";
+
+export default {
+  /**
+   * @param {Request} request
+   * @param {{ORIGIN: string, EDGE_KV?: KVNamespace, EDGE_KV_SNAPSHOT_KEY?: string}} env
+   * @param {ExecutionContext} ctx
+   */
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    const readPath = request.method === "GET" || request.method === "HEAD";
+    if (!readPath || !isCapsulePath(url.pathname)) {
+      return forwardToOrigin(request, env, "not-edge-eligible");
+    }
+
+    const cache = caches.default;
+    const cached = await cache.match(request);
+    if (cached) return cached;
+
+    let kv;
+    try {
+      kv = await loadKvSnapshot(env);
+    } catch {
+      // A snapshot we could not read is a snapshot we do not have. Routes that
+      // need `kv` fall through; routes that do not are unaffected.
+      kv = undefined;
+    }
+
+    const outcome = serveFromCapsule(
+      CAPSULE_MODULE,
+      {
+        method: request.method,
+        // Path and query only — the capsule matches on the path, and handing it
+        // an absolute URL would make `/docs/x` and `https://host/docs/x` two
+        // different requests to the same router.
+        uri: url.pathname + url.search,
+        headers: [...request.headers],
+      },
+      { kv },
+    );
+
+    if (outcome.op === "fallthrough") {
+      return forwardToOrigin(request, env, outcome.reason);
+    }
+
+    const headers = new Headers();
+    for (const [name, value] of outcome.headers) {
+      // Defence in depth: the runtime already strips the sentinel and refuses a
+      // capsule response carrying `set-cookie`. Neither should ever arrive.
+      if (name.toLowerCase() === FALLTHROUGH_SENTINEL) continue;
+      if (name.toLowerCase() === "set-cookie") continue;
+      headers.append(name, value);
+    }
+    // The origin's middleware stack does not run in a capsule, so the security
+    // headers it stamps on every response have to be restored here. Without
+    // this an edge-served page would carry fewer protections than the same page
+    // from the origin. `edge/security-headers.json` is the shared list, and
+    // `tests/edge_conformance.rs` asserts the origin emits exactly it.
+    for (const [name, value] of Object.entries(SECURITY_HEADERS.headers)) {
+      if (!headers.has(name)) headers.set(name, value);
+    }
+    headers.set(LANE_HEADER, "edge");
+
+    const response = new Response(
+      request.method === "HEAD" ? null : outcome.body,
+      { status: outcome.status, headers },
+    );
+
+    if (isCacheable(response)) {
+      // Cache after responding: the reader should not wait on the write.
+      ctx.waitUntil(cache.put(request, response.clone()));
+    }
+    return response;
+  },
+};
+
+/**
+ * Forward a request to the origin unchanged.
+ *
+ * "Unchanged" is the whole contract of a fallthrough — the origin must see what
+ * the client sent, including the credentials the capsule was never given.
+ */
+async function forwardToOrigin(request, env, reason) {
+  const url = new URL(request.url);
+  const origin = new URL(env.ORIGIN);
+  url.protocol = origin.protocol;
+  url.hostname = origin.hostname;
+  url.port = origin.port;
+
+  const response = await fetch(new Request(url, request));
+  const headers = new Headers(response.headers);
+  headers.set(LANE_HEADER, `origin; reason=${reason}`);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
+ * Resolve the whole KV replica snapshot before the guest runs.
+ *
+ * `EdgeCache::get` is synchronous inside a handler and every CDN KV API is
+ * asynchronous, so the values have to be in hand before `_start`. A snapshot
+ * under one key is the shape that makes that possible, and it costs one read
+ * per request instead of one per `kv_get`.
+ *
+ * The snapshot is a JSON object of key → base64 bytes. Returning `undefined`
+ * means this host mediates no `kv`, which is a supported configuration: routes
+ * declaring `needs(kv)` fall through to the origin, which has the real cache.
+ *
+ * @returns {Promise<Map<string, Uint8Array> | undefined>}
+ */
+async function loadKvSnapshot(env) {
+  if (!env.EDGE_KV) return undefined;
+  const raw = await env.EDGE_KV.get(env.EDGE_KV_SNAPSHOT_KEY ?? "edge-snapshot", "json");
+  if (!raw || typeof raw !== "object") return new Map();
+
+  const { decodeBase64 } = await import("./wire.js");
+  const snapshot = new Map();
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === "string") snapshot.set(key, decodeBase64(value));
+  }
+  return snapshot;
+}
+
+/**
+ * Whether a capsule response may go in the colo cache.
+ *
+ * Only successes and the docs 404, which is a stable rendered page rather than
+ * an error. A redirect is cheap enough to re-derive and short enough to get
+ * wrong for a long time, so it is left uncached.
+ */
+function isCacheable(response) {
+  if (response.status !== 200 && response.status !== 404) return false;
+  const control = response.headers.get("cache-control") ?? "";
+  return !control.includes("no-store") && !control.includes("private");
+}
+
+/**
+ * Assert the artifact's import list against what the shim provides.
+ *
+ * Exported for `test/capsule.test.js` rather than run at request time: a
+ * capsule whose imports changed would fail to instantiate anyway, and the point
+ * of the check is to fail a *build*, not a request.
+ */
+export { unexpectedImports };

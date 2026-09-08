@@ -1,20 +1,41 @@
+//! The Autumn documentation site.
+//!
+//! # Two lanes, one source
+//!
+//! Everything on the public read path lives in [`edge`], which compiles for
+//! `wasm32-wasip1` as well as for the host. The origin binary mounts those
+//! handlers like any other route; `autumn build` also compiles them into an
+//! edge capsule a CDN can run in front of the origin. See
+//! `content/guide/edge.md` and `docs/adr/0001-cloudflare-edge-capsule.md`.
+//!
+//! That split is why this module is careful about what it names. `lib.rs`,
+//! [`docs`], [`site`], [`seo`], [`frontmatter`] and [`widgets`] are all
+//! **edge-safe**: they compile with `autumn-web` absent from the dependency
+//! graph entirely. Anything that needs the framework — the htmx search route,
+//! the JSON docs API, the response layer stack, the static-site exporter — is
+//! behind a `cfg(not(target_arch = "wasm32"))` gate below.
+
 use std::sync::LazyLock;
 
-use autumn_web::prelude::*;
-use autumn_web::reexports::axum::extract::Request;
-use autumn_web::reexports::axum::middleware::{self, Next};
-use autumn_web::reexports::axum::response::{IntoResponse, Redirect, Response};
-use autumn_web::reexports::http::{HeaderValue, StatusCode, header};
-
-pub mod api;
 pub mod docs;
-pub mod export;
+pub mod edge;
+pub mod frontmatter;
 pub mod seo;
 pub mod site;
+pub mod widgets;
 
-use serde::Deserialize;
+// ── origin-only (these name `autumn-web`) ──
+#[cfg(not(target_arch = "wasm32"))]
+pub mod api;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod export;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod origin;
 
-use docs::{DocRegistry, DocSource, DocsError, SearchIndex};
+#[cfg(not(target_arch = "wasm32"))]
+pub use origin::{app_routes, response_compression_layer, site_search_index};
+
+use docs::{DocRegistry, DocSource, DocsError};
 
 pub const DOCS_START_SLUG: &str = "getting-started";
 pub const DOCS_START_PATH: &str = "/docs/getting-started";
@@ -34,7 +55,12 @@ pub const DOCS_SEARCH_PATH: &str = "/search";
 pub const MCP_MOUNT_PATH: &str = "/mcp";
 
 /// Maximum number of guide results returned by the docs search handler.
-const DOCS_SEARCH_RESULT_LIMIT: usize = 20;
+///
+/// Origin-only, like the route that reads it: `/search` needs the framework's
+/// `HxRequest` extractor, so it is the one read-path route the capsule does not
+/// carry.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) const DOCS_SEARCH_RESULT_LIMIT: usize = 20;
 
 macro_rules! guide_doc {
     ($slug:literal) => {
@@ -204,215 +230,4 @@ pub fn site_docs() -> Result<&'static DocRegistry, &'static DocsError> {
         Ok(registry) => Ok(registry),
         Err(error) => Err(error),
     }
-}
-
-/// In-memory search index over the embedded guides, built once from
-/// [`site_docs`]. `None` when the docs failed to load.
-static SITE_SEARCH_INDEX: LazyLock<Option<SearchIndex>> =
-    LazyLock::new(|| site_docs().ok().map(SearchIndex::from_registry));
-
-#[must_use]
-pub fn site_search_index() -> Option<&'static SearchIndex> {
-    SITE_SEARCH_INDEX.as_ref()
-}
-
-/// Optimize HTTP responses for repeat visitors.
-///
-/// Autumn 0.6.0 (issue #752) now applies user layers to static-first responses,
-/// so wiring the framework's `dist/` static HTML serving is possible. We
-/// deliberately do not: the docs are served dynamically from the in-memory
-/// registry (content is already resident, so a request costs a HashMap lookup +
-/// template wrap + on-the-fly compression). Serving `dist/` would duplicate the
-/// embedded content on disk for no latency or bandwidth win on the 256 MB
-/// scale-to-zero VM. The `build_site`/`dist` exporter is kept only as a
-/// CDN/static-hosting bundle generator.
-///
-/// The stack also provides weak-ETag conditional-GET: [`EtagLayer`] is the
-/// innermost layer, so on the response path it runs first and derives a weak
-/// `ETag` from the raw uncompressed handler body, returning `304 Not Modified`
-/// when a repeat visit's `If-None-Match` matches. `CompressionLayer` then
-/// encodes the body and adds `Vary: Accept-Encoding`, keeping the ETag computed
-/// over the unencoded bytes (framework-blessed ordering — see `router.rs`).
-///
-/// [`EtagLayer`]: autumn_web::etag::EtagLayer
-pub fn response_compression_layer() -> impl autumn_web::app::IntoAppLayer {
-    tower::ServiceBuilder::new()
-        .layer(middleware::from_fn(cache_static_assets))
-        .layer(tower_http::map_response_body::MapResponseBodyLayer::new(
-            autumn_web::reexports::axum::body::Body::new,
-        ))
-        .layer(tower_http::compression::CompressionLayer::new())
-        .layer(autumn_web::etag::EtagLayer::new())
-}
-
-/// `Cache-Control` for a static asset whose URL carries the build's asset
-/// version: the URL changes whenever the bytes do, so the response can be
-/// cached permanently and never revalidated.
-const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
-
-/// `Cache-Control` for a static asset served at a stable, unversioned URL.
-///
-/// These cannot be cached immutably: the URL stays the same across deploys, so
-/// a year-long `immutable` entry would pin a visitor to a stale copy with no
-/// way to bust it. A short freshness window plus revalidation keeps them cheap
-/// — [`EtagLayer`] answers the revalidation with a `304`.
-///
-/// [`EtagLayer`]: autumn_web::etag::EtagLayer
-const REVALIDATED_CACHE_CONTROL: &str = "public, max-age=3600, must-revalidate";
-
-/// Whether a static-asset request carries this build's asset-version query
-/// (`?v=…`), which is what makes a URL safe to cache immutably.
-///
-/// Only `site::versioned_asset_path` adds it, and it covers just the assets
-/// this site authors. The framework serves its own assets under `/static/`
-/// too — `autumn-widgets.css`, `autumn-widgets.js`, `htmx.min.js` — and the
-/// pages that link them (the `/_stories` gallery is rendered by the framework,
-/// not by us) reference them at bare, unversioned URLs. Marking those
-/// `immutable` pinned every returning visitor to the previous release's copy
-/// for a year across an `autumn-web` upgrade.
-fn has_asset_version_query(query: Option<&str>) -> bool {
-    query.is_some_and(|query| {
-        query
-            .split('&')
-            .any(|pair| pair.split_once('=').is_some_and(|(key, _)| key == "v"))
-    })
-}
-
-async fn cache_static_assets(request: Request, next: Next) -> Response {
-    let is_static = request.uri().path().starts_with("/static/");
-    let versioned = has_asset_version_query(request.uri().query());
-    let mut response = next.run(request).await;
-
-    if is_static && response.status().is_success() {
-        let cache_control = if versioned {
-            IMMUTABLE_CACHE_CONTROL
-        } else {
-            REVALIDATED_CACHE_CONTROL
-        };
-        response.headers_mut().insert(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static(cache_control),
-        );
-    }
-
-    response
-}
-
-#[get("/")]
-pub async fn index() -> Response {
-    match site_docs() {
-        Ok(registry) => site::render_home_page(registry).into_response(),
-        Err(error) => docs_load_error_response(error),
-    }
-}
-
-#[get("/docs")]
-pub async fn docs_index() -> Redirect {
-    Redirect::temporary(DOCS_START_PATH)
-}
-
-#[get("/docs/{slug}")]
-pub async fn docs_page(Path(slug): Path<String>) -> Response {
-    let registry = match site_docs() {
-        Ok(registry) => registry,
-        Err(error) => return docs_load_error_response(error),
-    };
-
-    match registry.page(&slug) {
-        Some(page) => site::render_docs_page(registry, page).into_response(),
-        None => (
-            StatusCode::NOT_FOUND,
-            site::render_missing_docs_page(registry, &slug),
-        )
-            .into_response(),
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DocsSearchQuery {
-    #[serde(default)]
-    q: String,
-}
-
-/// Search the embedded guides and return an htmx results partial, or a full
-/// docs page when reached directly (e.g. the widget's `<noscript>` GET form).
-///
-/// Served at [`DOCS_SEARCH_PATH`], outside the `/docs/{slug}` namespace.
-#[get("/search")]
-pub async fn docs_search(hx: HxRequest, Query(query): Query<DocsSearchQuery>) -> Response {
-    let term = query.q.trim();
-
-    let results = match site_search_index() {
-        Some(index) if !term.is_empty() => {
-            let hits = index.search(term, DOCS_SEARCH_RESULT_LIMIT);
-            site::render_docs_search_results(term, &hits)
-        }
-        Some(_) => active_search_empty_state("Type to search the guides."),
-        None => active_search_empty_state("Search is unavailable right now."),
-    };
-
-    if hx.is_htmx {
-        return results.into_response();
-    }
-
-    // Non-htmx request (no-JS fallback): wrap the results in the docs layout.
-    match site_docs() {
-        Ok(registry) => site::render_docs_search_page(registry, term, results).into_response(),
-        Err(error) => docs_load_error_response(error),
-    }
-}
-
-#[get("/robots.txt")]
-pub async fn robots_txt() -> Response {
-    (
-        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        seo::robots_txt(),
-    )
-        .into_response()
-}
-
-#[get("/sitemap.xml")]
-pub async fn sitemap_xml() -> Response {
-    let registry = match site_docs() {
-        Ok(registry) => registry,
-        Err(error) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-                error.to_string(),
-            )
-                .into_response();
-        }
-    };
-
-    (
-        [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
-        seo::sitemap_xml(registry),
-    )
-        .into_response()
-}
-
-#[must_use]
-pub fn app_routes() -> Vec<autumn_web::Route> {
-    let mut routes = routes![
-        index,
-        docs_index,
-        docs_search,
-        docs_page,
-        robots_txt,
-        sitemap_xml
-    ];
-    // The JSON docs API, which `main` projects into the `/mcp` MCP server.
-    // Registered here rather than only in `main` so the test harness exercises
-    // the same route set the deployed app serves.
-    routes.extend(api::api_routes());
-    routes
-}
-
-fn docs_load_error_response(error: &DocsError) -> Response {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        site::render_docs_load_error(error),
-    )
-        .into_response()
 }

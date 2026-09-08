@@ -1,0 +1,13 @@
+{
+  "name": "autumn-io-edge-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker shim that runs the autumn_io docs edge capsule",
+  "scripts": {
+    "build": "../build-capsule.sh",
+    "test": "node --test test/*.test.js",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  }
+}

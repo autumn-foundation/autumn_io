@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "Security headers autumn-web's middleware stamps on every origin response.",
+    "",
+    "The edge capsule serves exactly what the handler produced — the origin's",
+    "middleware stack does not run there — so without this list an edge-served",
+    "page would carry fewer protections than the same page from the origin.",
+    "That is a security regression, not a cosmetic difference, so the Cloudflare",
+    "shim restores them on every response it serves.",
+    "",
+    "This file is the single source of truth for that list. Both sides read it:",
+    "  edge/worker/src/index.js   stamps these on every edge-served response",
+    "  tests/edge_conformance.rs  asserts the origin emits exactly these and no",
+    "                             others beyond what the handler itself sets",
+    "",
+    "So a framework upgrade that adds a fifth header fails the Rust test and",
+    "names the file to edit, rather than quietly shipping a weaker edge lane."
+  ],
+  "headers": {
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "x-xss-protection": "1; mode=block"
+  }
+}

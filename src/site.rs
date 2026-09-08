@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use autumn_web::prelude::HTMX_JS_PATH;
-use autumn_web::widgets::{ActiveSearchConfig, active_search, active_search_empty_state};
-use autumn_web::{Markup, PreEscaped, html};
+use maud::{Markup, PreEscaped, html};
+
+use crate::widgets::{ActiveSearchConfig, HTMX_JS_PATH, active_search, active_search_empty_state};
 
 use crate::docs::{DocPage, DocRegistry, SearchHit, render_highlighted_code_block};
 use crate::{DOCS_SEARCH_PATH, DOCS_START_PATH, seo};
@@ -444,7 +444,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                                 }
                             }
                             div class="article-body" {
-                                (PreEscaped(&page.html))
+                                (PreEscaped(page.html()))
                             }
                         }
                         nav class="docs-pagination" aria-label="Docs pagination" {
@@ -469,7 +469,7 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
                     aside class="docs-toc" aria-label="On this page" {
                         p class="toc-label" { "On this page" }
                         nav aria-label="On this page" {
-                            @for item in &page.toc {
+                            @for item in page.toc() {
                                 a class=(format!("toc-link depth-{}", item.level)) href=(format!("#{}", item.id)) {
                                     (&item.title)
                                 }

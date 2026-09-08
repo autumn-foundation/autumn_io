@@ -142,6 +142,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "autumn-edge"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ded2809e672b34ef959e62d5a429bf4cf9de825fb63b2dd4638b4ae1e4053aab"
+dependencies = [
+ "autumn-macros",
+ "axum",
+ "base64 0.23.1",
+ "futures",
+ "http",
+ "serde",
+ "serde_json",
+ "tower",
+]
+
+[[package]]
 name = "autumn-macros"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -160,6 +176,7 @@ checksum = "be9699fb1820106108ac4a023754f797bc2095e6689313dcb2b689d76f090cdc"
 dependencies = [
  "aes-gcm",
  "ammonia",
+ "autumn-edge",
  "autumn-macros",
  "axum",
  "base64 0.23.1",
@@ -218,6 +235,7 @@ dependencies = [
 name = "autumn_io"
 version = "0.1.0"
 dependencies = [
+ "autumn-edge",
  "autumn-web",
  "maud",
  "memchr",
@@ -226,6 +244,7 @@ dependencies = [
  "serde_json",
  "syntect",
  "tokio",
+ "toml",
  "tower",
  "tower-http 0.6.10",
 ]
@@ -342,6 +361,21 @@ checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "bit-set"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08807e080ed7f9d5433fa9b275196cfc35414f66a0c79d864dc51a0d825231a3"
+dependencies = [
+ "bit-vec",
+]
+
+[[package]]
+name = "bit-vec"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
 
 [[package]]
 name = "bitflags"
@@ -881,6 +915,17 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "fancy-regex"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "998b056554fbe42e03ae0e152895cd1a7e1002aec800fdc6635d20270260c46f"
+dependencies = [
+ "bit-set",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]
@@ -1951,9 +1996,9 @@ dependencies = [
 
 [[package]]
 name = "pkg-config"
-version = "0.3.33"
+version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
+checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "plist"
@@ -2720,6 +2765,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "656b45c05d95a5704399aeef6bd0ddec7b2b3531b7c9e900abbf7c4d2190c925"
 dependencies = [
  "bincode",
+ "fancy-regex",
  "flate2",
  "fnv",
  "once_cell",
