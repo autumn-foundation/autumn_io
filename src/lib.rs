@@ -401,11 +401,11 @@ pub async fn docs_page(Path(slug): Path<String>) -> Response {
 
     match registry.page(&slug) {
         Some(page) => {
-            metrics::record_page_view(metrics::outcome::FOUND);
+            metrics::record_page_render(metrics::outcome::FOUND);
             site::render_docs_page(registry, page).into_response()
         }
         None => {
-            metrics::record_page_view(metrics::outcome::MISSING);
+            metrics::record_page_render(metrics::outcome::MISSING);
             (
                 StatusCode::NOT_FOUND,
                 site::render_missing_docs_page(registry, &slug),

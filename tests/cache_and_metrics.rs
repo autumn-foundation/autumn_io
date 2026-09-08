@@ -195,7 +195,7 @@ fn series(scrape: &str, name: &str, label_fragment: &str) -> Option<f64> {
 }
 
 #[tokio::test]
-async fn a_docs_page_view_is_counted_by_outcome() {
+async fn a_docs_page_render_is_counted_by_outcome() {
     let app = app();
 
     app.get("/docs/getting-started").send().await;
@@ -203,11 +203,11 @@ async fn a_docs_page_view_is_counted_by_outcome() {
 
     let scrape = scrape(&app).await;
     assert!(
-        series(&scrape, metrics::DOCS_PAGE_VIEWS, r#"outcome="found""#).is_some(),
+        series(&scrape, metrics::DOCS_PAGE_RENDERS, r#"outcome="found""#).is_some(),
         "a rendered guide should be counted",
     );
     assert!(
-        series(&scrape, metrics::DOCS_PAGE_VIEWS, r#"outcome="missing""#).is_some(),
+        series(&scrape, metrics::DOCS_PAGE_RENDERS, r#"outcome="missing""#).is_some(),
         "a bad slug should be counted separately — it is how a stale inbound \
          link becomes visible",
     );
@@ -266,7 +266,7 @@ async fn no_family_name_falls_in_the_frameworks_reserved_namespace() {
     // family here was first named `autumn_io_*` and silently recorded nothing
     // for exactly that reason, which no amount of reading the code revealed —
     // only scraping the endpoint did.
-    for family in [metrics::DOCS_SEARCHES, metrics::DOCS_PAGE_VIEWS] {
+    for family in [metrics::DOCS_SEARCHES, metrics::DOCS_PAGE_RENDERS] {
         assert!(
             !family.starts_with("autumn_"),
             "{family} is in the reserved namespace and would record nothing",
@@ -284,7 +284,7 @@ async fn every_family_carries_help_text() {
     app.get("/search?q=router").send().await;
 
     let scrape = scrape(&app).await;
-    for family in [metrics::DOCS_PAGE_VIEWS, metrics::DOCS_SEARCHES] {
+    for family in [metrics::DOCS_PAGE_RENDERS, metrics::DOCS_SEARCHES] {
         assert!(
             scrape.contains(&format!("# HELP {family}")),
             "{family} should carry HELP text",
