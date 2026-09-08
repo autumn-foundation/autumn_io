@@ -85,8 +85,6 @@ COPY migrations ./migrations
 # the behaviour instead of relying on its absence.
 ENV RUSTONIG_STATIC_LIBONIG=1
 
-ENV CARGO_BUILD_JOBS=1
-
 RUN cargo build --locked --release --bin autumn_io
 
 FROM debian:bookworm-slim AS runtime
