@@ -57,18 +57,36 @@ fenced code blocks arrive as the author fenced them.
 the `404` carry the site's whole navigation as a linked, described list of every
 guide — the structure the sidebar encodes, in the form a caller can act on.
 
-**The resolution policy is the framework's.** `autumn_web::negotiate::Negotiate`
-resolves HTML against JSON with an RFC 7231 §5.3 q-value walk, and hard-codes
-that pair behind a `pub(crate)` parser. This module reimplements the *parse* for
-the HTML/Markdown pair and copies the *policy* exactly — effective q from the
-most specific matching range, `q=0` as an exclusion rather than a demotion,
-ties to the earlier entry, `406` when everything is forbidden — so the site does
-not answer `Accept` two different ways depending on the route.
+**The resolution policy is the framework's, with one departure.**
+`autumn_web::negotiate::Negotiate` resolves HTML against JSON with an RFC 7231
+§5.3 q-value walk, and hard-codes that pair behind a `pub(crate)` parser. This
+module reimplements the *parse* for the HTML/Markdown pair and copies the
+*policy* — effective q from the most specific matching range, `q=0` as an
+exclusion rather than a demotion, ties to the earlier entry, `406` when
+everything is forbidden — so the site does not answer `Accept` two different
+ways depending on the route.
 
-The practical effect of that policy is that nothing changes for anyone who was
-not asking: a browser sends `text/html,…,*/*;q=0.8` and a bare `curl` sends
-`*/*`, and both still get the page. `text/*` names both representations through
-one entry, so it is not a preference either.
+The departure: **a wildcard can forbid Markdown but never elect it.** Under a
+strict effective-q reading, `Accept: text/html;q=0.1, */*;q=1` lifts Markdown
+above HTML through the wildcard, and `Accept: text/html;q=0` leaves Markdown as
+the only representation not refused. Here the first is served HTML and the
+second is a `406`.
+
+That is a concession to the edge, and it is the reason the bypass rule below can
+be trusted. Cloudflare cannot evaluate "the effective q of `text/markdown`
+exceeds that of `text/html`"; a cache rule matches the header as a string. If
+the origin elected Markdown on header shapes the rule cannot recognise, exactly
+those requests would be answered from an HTML cache entry that ignores `Accept`
+— the feature failing precisely where it is hardest to notice. Restricting
+election to the literal media type makes the origin's condition and the edge's
+condition the same condition. What it costs is a `406` on headers nobody sends:
+`text/markdown`, `text/markdown, */*;q=0.1`, and every browser and `curl`
+default are unaffected.
+
+The practical effect is that nothing changes for anyone who was not asking: a
+browser sends `text/html,…,*/*;q=0.8` and a bare `curl` sends `*/*`, and both
+still get the page. `text/*` names both representations through one entry, so it
+is not a preference either.
 
 ### Caching, which is the whole difficulty
 
@@ -160,7 +178,12 @@ carried an HTML-to-Markdown converter to reproduce a string it already has.
   estimate from body length, deliberately: an exact count is model-specific and
   would cost a tokenizer pass per request.
 - **One more Cloudflare rule to configure**, and it is not optional — without
-  it, cached pages defeat negotiation at the edge for the most-read guides.
+  it, cached pages defeat negotiation at the edge for the most-read guides. It
+  is a *superset* of what the origin answers in Markdown, by construction: a
+  header naming `text/markdown` but ranking HTML above it bypasses the cache and
+  is then served HTML, which costs an origin hit and nothing else. The reverse —
+  a Markdown-electing request the rule fails to match — is what the election
+  rule above rules out.
 - Relative links inside a guide (`tutorial/index.md`, `../examples/todo-app`)
   are served as authored. The HTML render rewrites them; the Markdown does not,
   because it hands over the source unmodified and because that is already what

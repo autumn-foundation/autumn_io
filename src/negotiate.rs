@@ -23,8 +23,10 @@
 //! and `*/*`, and both the parser and the `AcceptQualities` it returns are
 //! `pub(crate)`. There is no seam to add a third media type through, so the
 //! parse below is this site's own — but the *policy* on top of it is
-//! deliberately the framework's, down to the tie-breaks, so one site does not
-//! answer `Accept` two different ways depending on which route you hit.
+//! deliberately the framework's, so one site does not answer `Accept` two
+//! different ways depending on which route you hit. It departs in exactly one
+//! place, for a reason the framework does not have to weigh: see *Only a named
+//! `text/markdown` elects Markdown* below.
 //!
 //! # Resolution policy (RFC 7231 §5.3)
 //!
@@ -36,12 +38,30 @@
 //!   range would allow it;
 //! * among the rest, the higher positive q wins, ties broken by the earlier
 //!   entry in the header;
-//! * a tie at the *same* entry means both sides resolved through one wildcard
-//!   — no concrete preference — so HTML, the default, is served;
-//! * if both are forbidden, the response is `406 Not Acceptable`.
+//! * if both are forbidden — or HTML is forbidden and Markdown was never named
+//!   — the response is `406 Not Acceptable`.
 //!
 //! Note that `text/*` is the subtype wildcard for *both* candidates, so
 //! `Accept: text/*` expresses no preference between them and gets HTML.
+//!
+//! ## Only a named `text/markdown` elects Markdown
+//!
+//! One deliberate departure from the framework's policy: a wildcard can forbid
+//! Markdown but never *choose* it. `Accept: text/html;q=0.1, */*;q=1` lifts
+//! Markdown above HTML on effective q under a strict reading, and is served
+//! HTML here; `Accept: text/html;q=0` — HTML refused, Markdown never mentioned
+//! — is a `406` rather than Markdown by elimination.
+//!
+//! The reason is the edge, not the RFC. Cloudflare cannot express "effective q
+//! of `text/markdown` exceeds that of `text/html`" in a cache rule; it can only
+//! match the header as a string. Restricting election to the literal media type
+//! makes the origin's condition for serving Markdown exactly the condition the
+//! bypass rule matches — every request that would be answered in Markdown
+//! reaches the origin, instead of some shapes being answered from an HTML cache
+//! entry that ignores `Accept`. Nothing an agent or a browser actually sends is
+//! affected: `text/markdown` and `text/markdown, */*;q=0.1` still resolve to
+//! Markdown, and every browser header still resolves to HTML.
+//! `docs/adr/0002-markdown-for-agents.md` records the trade.
 //!
 //! # Caching
 //!
@@ -233,15 +253,19 @@ impl MarkdownNegotiate {
         }
 
         let html = html.filter(|&(quality, _)| quality > 0.0);
-        let markdown = markdown.filter(|&(quality, _)| quality > 0.0);
+        // Markdown is *elected* only by its own media range, never by a
+        // wildcard that merely covers it — see the module docs. A wildcard can
+        // still forbid it (above), because an exclusion the client wrote is
+        // not ours to reinterpret.
+        let markdown = self
+            .qualities
+            .markdown
+            .filter(|&(quality, _)| quality > 0.0);
 
         match (html, markdown) {
             (Some((html_q, html_index)), Some((markdown_q, markdown_index))) => {
                 if (html_q - markdown_q).abs() < f32::EPSILON {
-                    // Equal effective q: the earlier header entry wins. Equal
-                    // index means both sides resolved through the *same*
-                    // wildcard entry — no concrete preference — so the default
-                    // applies.
+                    // Equal effective q: the earlier header entry wins.
                     match html_index.cmp(&markdown_index) {
                         std::cmp::Ordering::Greater => Resolution::Markdown,
                         std::cmp::Ordering::Less | std::cmp::Ordering::Equal => Resolution::Html,
@@ -252,16 +276,17 @@ impl MarkdownNegotiate {
                     Resolution::Html
                 }
             }
-            // The other side is forbidden or unmentioned, so the positive one
-            // wins.
+            // Markdown was forbidden, or never named: HTML, the default.
             (Some(_), None) => Resolution::Html,
+            // Markdown was named and HTML is forbidden or unmentioned.
             (None, Some(_)) => Resolution::Markdown,
-            // Neither is a positive candidate and they are not both forbidden,
-            // so at least one is merely unmentioned: serve the default, unless
-            // the default itself is the forbidden one.
+            // Neither is a candidate. HTML unmentioned is HTML by default;
+            // HTML *forbidden* with no Markdown named leaves nothing this
+            // resource is willing to serve, and the `406` says which two
+            // representations exist.
             (None, None) => {
                 if html_forbidden {
-                    Resolution::Markdown
+                    Resolution::NotAcceptable
                 } else {
                     Resolution::Html
                 }
@@ -533,12 +558,21 @@ mod tests {
     }
 
     #[test]
-    fn a_wildcard_can_lift_markdown_over_demoted_html() {
-        // `text/html;q=0.1` demotes the page while `*/*;q=1` covers Markdown at
-        // full quality, so Markdown wins on effective q.
+    fn a_wildcard_never_elects_markdown_on_its_own() {
+        // A strict effective-q reading would serve Markdown here: `text/html`
+        // is demoted to 0.1 while `*/*;q=1` covers Markdown at full quality.
+        // Markdown is only ever elected by its own media range, so that the
+        // edge's string match and the origin's decision cannot disagree — see
+        // the module docs.
         assert_eq!(
             negotiate(Some("text/html;q=0.1, */*;q=1")).representation(),
-            Representation::Markdown,
+            Representation::Html,
+        );
+        assert_eq!(
+            negotiate(Some("text/*;q=1")).representation(),
+            Representation::Html,
+            "the subtype wildcard covers Markdown too, and elects it no more \
+             than `*/*` does",
         );
     }
 
@@ -550,20 +584,25 @@ mod tests {
             negotiate(Some("text/markdown;q=0, */*;q=1")).resolve(),
             Resolution::Html,
         );
-        // And the same in the other direction: HTML is forbidden outright, so
-        // the wildcard's Markdown is what is left.
-        assert_eq!(
-            negotiate(Some("text/html;q=0, */*;q=1")).resolve(),
-            Resolution::Markdown,
-        );
     }
 
     #[test]
-    fn forbidding_html_alone_serves_markdown() {
-        // HTML is excluded and Markdown is unmentioned rather than forbidden,
-        // so the default must not resurrect the rejected representation.
+    fn refusing_html_without_naming_markdown_is_not_acceptable() {
+        // The client has refused the only representation it named, and a
+        // wildcard does not elect the other one. Answering `406` says so;
+        // answering HTML would serve what was explicitly refused, and answering
+        // Markdown would be a decision the edge cannot mirror.
         assert_eq!(
             negotiate(Some("text/html;q=0")).resolve(),
+            Resolution::NotAcceptable,
+        );
+        assert_eq!(
+            negotiate(Some("text/html;q=0, */*;q=1")).resolve(),
+            Resolution::NotAcceptable,
+        );
+        // Naming it is all it takes.
+        assert_eq!(
+            negotiate(Some("text/html;q=0, text/markdown")).resolve(),
             Resolution::Markdown,
         );
     }

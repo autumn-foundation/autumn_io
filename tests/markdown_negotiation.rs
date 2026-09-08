@@ -326,6 +326,46 @@ async fn markdown_is_never_stored_by_a_shared_cache() {
 }
 
 #[tokio::test]
+async fn only_a_named_markdown_media_type_produces_markdown() {
+    // The condition the origin serves Markdown on has to be the condition
+    // Cloudflare's cache rule can match as a string, or the shapes it cannot
+    // match get answered from an HTML cache entry that ignores `Accept`. A
+    // wildcard covering Markdown is therefore not an election, and refusing
+    // HTML without naming Markdown is a 406 rather than Markdown by
+    // elimination.
+    let app = app();
+
+    for accept in ["text/html;q=0.1, */*;q=1", "text/*;q=1"] {
+        let response = app
+            .get("/docs/getting-started")
+            .header("accept", accept)
+            .send()
+            .await;
+
+        response.assert_status(200);
+        assert_eq!(
+            response.header("content-type"),
+            Some("text/html; charset=utf-8"),
+            "{accept} does not name text/markdown, so it is not a request for it",
+        );
+    }
+
+    app.get("/docs/getting-started")
+        .header("accept", "text/html;q=0")
+        .send()
+        .await
+        .assert_status(406);
+
+    let named = app
+        .get("/docs/getting-started")
+        .header("accept", "text/html;q=0, text/markdown")
+        .send()
+        .await;
+    named.assert_status(200);
+    assert_eq!(named.header("content-type"), Some(MARKDOWN_CONTENT_TYPE));
+}
+
+#[tokio::test]
 async fn forbidding_both_representations_is_a_406() {
     let response = app()
         .get("/docs/getting-started")
