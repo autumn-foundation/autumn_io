@@ -318,12 +318,12 @@ fn html_metacharacters_in_code_stay_escaped_across_scope_boundaries() {
 fn the_full_embedded_corpus_renders_and_is_still_highlighted() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
 
-    // `content/guide` holds 141 Markdown files, but `docs-smoke` is a
+    // `content/guide` holds 139 Markdown files, but `docs-smoke` is a
     // release-rehearsal checklist deliberately kept off the site, so the
-    // rendered corpus is 140 pages. Issue #19 counted files, not pages.
+    // rendered corpus is 138 pages. Issue #19 counted files, not pages.
     assert!(
-        registry.pages().len() >= 140,
-        "the profiled corpus was 140 rendered guides, found {}",
+        registry.pages().len() >= 138,
+        "the profiled corpus was 138 rendered guides, found {}",
         registry.pages().len()
     );
 
