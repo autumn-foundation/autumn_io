@@ -139,10 +139,8 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "lifecycle",
             "authentication",
             "route-auth-coverage",
-            "ledgered-entities",
             "audit-logging",
             "retention-sweeps",
-            "query-budgets",
         ],
     },
     DocsNavGroup {

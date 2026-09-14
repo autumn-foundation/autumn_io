@@ -153,10 +153,15 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("route-auth-coverage.md", 1250),
     ("aggregates.md", 1260),
     ("counter-cache.md", 1270),
-    ("ledgered-entities.md", 1280),
+    // `ledgered-entities.md` and `query-budgets.md` are deliberately not
+    // synced: both document APIs (`ledgered = true`, `#[query_budget(N)]`)
+    // absent from the published autumn-web/autumn-macros 0.7.0 crates this
+    // site builds and links readers to install — upstream's `docs/guide`
+    // source is ahead of what actually shipped to crates.io. Re-add them
+    // once the crates ship the feature; re-syncing without checking would
+    // silently resurrect docs for code that does not exist.
     ("audit-logging.md", 1290),
     ("retention-sweeps.md", 1300),
-    ("query-budgets.md", 1310),
     ("metrics.md", 1320),
     ("observability/server-timing.md", 1330),
     ("failure-capsules.md", 1340),
