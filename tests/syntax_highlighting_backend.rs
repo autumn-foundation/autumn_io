@@ -233,6 +233,11 @@ fn rust_blocks_highlight_into_the_same_scopes_on_either_backend() {
     );
 }
 
+/// `--bin`'s color was `#bf616a` until the contrast audit in `docs.rs`'s
+/// `ACCESSIBLE_CODE_COLORS`: that color measured 4.02–4.26:1 against
+/// `--code-bg`, short of WCAG AA's 4.5:1. `code_theme()` now remaps it (and
+/// six other theme colors) to an equal-hue, AA-passing shade — a deliberate
+/// re-record, not a backend or grammar drift.
 #[test]
 fn shell_blocks_highlight_into_the_same_scopes_on_either_backend() {
     let block = code_block(&render("```bash\ncargo run --bin autumn_io\n```\n"));
@@ -243,7 +248,7 @@ fn shell_blocks_highlight_into_the_same_scopes_on_either_backend() {
             r#"<pre tabindex="0"><code class="language-bash">"#,
             r#"<span style="color:#8fa1b3;">cargo</span>"#,
             r#"<span style="color:#c0c5ce;"> run</span>"#,
-            r#"<span style="color:#bf616a;"> --bin</span>"#,
+            r#"<span style="color:#c46d75;"> --bin</span>"#,
             "<span style=\"color:#c0c5ce;\"> autumn_io\n</span>",
             "</code></pre>",
         )

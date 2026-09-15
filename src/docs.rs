@@ -7,14 +7,64 @@ use autumn_web::markdown::{MarkdownError, MarkdownPage, MarkdownRegistry, Markdo
 use memchr::memmem;
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{Theme, ThemeSet};
+use syntect::highlighting::{Color, Theme, ThemeSet};
 use syntect::html::{IncludeBackground, styled_line_to_highlighted_html};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
-const CODE_THEME: &str = "base16-ocean.dark";
+const CODE_THEME_NAME: &str = "base16-ocean.dark";
+
+/// `base16-ocean.dark` ships 17 distinct scope foreground colors; 7 of them
+/// measure 1.24–4.43:1 against `--code-bg`'s three gradient stops
+/// (`static/css/site.css`'s `.code-block` background — `IncludeBackground::No`
+/// leaves this CSS gradient, not the theme's own background, as what actually
+/// renders behind every token) — short of WCAG AA's 4.5:1 for normal-size
+/// text. Two of the seven (the comment color and the "red" keyword/CLI-flag
+/// color) were confirmed rendering in real guide content across 138 of 139
+/// pages; the other five (including `#2b303b`, at 1.24:1, nearly invisible)
+/// belong to scopes not exercised by the languages sampled but reachable by
+/// others `syntax_for_language` maps to, so they're fixed on the same basis
+/// rather than left for the next language to surface them. The theme's
+/// remaining 10 colors already clear 5.8–14.5:1 and are untouched. Each
+/// color below is remapped to the same hue at the minimal lightness that
+/// clears 4.5:1 against all three gradient stops (4.50–4.80:1), rather than
+/// swapping themes wholesale.
+static ACCESSIBLE_CODE_COLORS: [(Color, Color); 7] = [
+    (rgb(0x2b, 0x30, 0x3b), rgb(0x7b, 0x86, 0x9f)),
+    (rgb(0x4f, 0x5b, 0x66), rgb(0x78, 0x88, 0x96)),
+    (rgb(0x56, 0x56, 0x56), rgb(0x86, 0x86, 0x86)),
+    (rgb(0x65, 0x73, 0x7e), rgb(0x79, 0x88, 0x93)),
+    (rgb(0xab, 0x79, 0x67), rgb(0xac, 0x7b, 0x69)),
+    (rgb(0xbf, 0x61, 0x6a), rgb(0xc4, 0x6d, 0x75)),
+    (rgb(0xf9, 0x26, 0x72), rgb(0xf9, 0x32, 0x79)),
+];
+
+const fn rgb(r: u8, g: u8, b: u8) -> Color {
+    Color { r, g, b, a: 0xff }
+}
+
+static CODE_THEME: LazyLock<Theme> = LazyLock::new(|| {
+    let mut theme = THEME_SET
+        .themes
+        .get(CODE_THEME_NAME)
+        .or_else(|| THEME_SET.themes.values().next())
+        .expect("syntect ships at least one default theme")
+        .clone();
+
+    for item in &mut theme.scopes {
+        if let Some(foreground) = item.style.foreground
+            && let Some((_, accessible)) = ACCESSIBLE_CODE_COLORS
+                .iter()
+                .find(|(original, _)| *original == foreground)
+        {
+            item.style.foreground = Some(*accessible);
+        }
+    }
+
+    theme
+});
 const AUTUMN_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn";
 const AUTUMN_REPOSITORY_BRANCH: &str = "trunk-dev";
 const GUIDE_SOURCE_ROOT: [&str; 2] = ["docs", "guide"];
@@ -1344,11 +1394,7 @@ fn syntax_for_language(language: &str) -> Option<&'static SyntaxReference> {
 }
 
 fn code_theme() -> &'static Theme {
-    THEME_SET
-        .themes
-        .get(CODE_THEME)
-        .or_else(|| THEME_SET.themes.values().next())
-        .expect("syntect ships at least one default theme")
+    &CODE_THEME
 }
 
 fn push_code_block_header(output: &mut String, language: &str) {
@@ -1456,6 +1502,65 @@ mod tests {
         assert!(!rendered.html.contains("language-rust,no_run"));
         assert!(!rendered.html.contains("Rust,ignore"));
         assert!(!rendered.html.contains("Rust,no Run"));
+    }
+
+    /// WCAG relative luminance and contrast ratio (the same formula the
+    /// audit in `ACCESSIBLE_CODE_COLORS`'s doc comment used).
+    fn relative_luminance(rgb: (u8, u8, u8)) -> f64 {
+        let channel = |c: u8| {
+            let c = f64::from(c) / 255.0;
+            if c <= 0.039_28 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(rgb.0) + 0.7152 * channel(rgb.1) + 0.0722 * channel(rgb.2)
+    }
+
+    fn contrast_ratio(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
+        let (l1, l2) = (relative_luminance(a) + 0.05, relative_luminance(b) + 0.05);
+        if l1 > l2 { l1 / l2 } else { l2 / l1 }
+    }
+
+    /// Every token color `code_theme()` can hand `.code-block pre code`
+    /// clears WCAG AA (4.5:1, this site's code font is 0.9rem / not bold —
+    /// always "normal", never "large" text) against `--code-bg`'s gradient
+    /// (`static/css/site.css`'s `.code-block` background, `IncludeBackground::No`
+    /// leaves this CSS gradient — not the theme's own background — as what
+    /// renders behind every token). Regression test for the contrast audit:
+    /// `base16-ocean.dark` shipped two colors at 3.37–3.57:1 and 4.02–4.26:1
+    /// before `ACCESSIBLE_CODE_COLORS` remapped them.
+    #[test]
+    fn every_code_theme_color_clears_wcag_aa_against_code_bg() {
+        const CODE_BG_GRADIENT_STOPS: [(u8, u8, u8); 3] =
+            [(0x1b, 0x21, 0x19), (0x18, 0x1b, 0x17), (0x26, 0x16, 0x11)];
+
+        let mut checked = 0;
+        for item in &code_theme().scopes {
+            let Some(fg) = item.style.foreground else {
+                continue;
+            };
+            let fg = (fg.r, fg.g, fg.b);
+            let worst_ratio = CODE_BG_GRADIENT_STOPS
+                .iter()
+                .map(|&bg| contrast_ratio(fg, bg))
+                .fold(f64::INFINITY, f64::min);
+            assert!(
+                worst_ratio >= 4.5,
+                "token color #{:02x}{:02x}{:02x} is only {worst_ratio:.2}:1 against \
+                 --code-bg's gradient (need 4.5:1)",
+                fg.0,
+                fg.1,
+                fg.2
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 8,
+            "expected base16-ocean.dark's scopes to yield at least the 8 \
+             distinct foreground colors the audit found in guide content, got {checked}"
+        );
     }
 
     #[test]
