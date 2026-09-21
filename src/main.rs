@@ -4,6 +4,9 @@ async fn main() {
         .with_story_gallery(autumn_web::stories::StoryGallery::builtin())
         .routes(autumn_io::app_routes())
         .layer(autumn_io::response_compression_layer())
+        // Content-Security-Policy with a per-request script-src nonce, for
+        // Cloudflare's JavaScript Detections — see `src/security.rs`.
+        .layer(autumn_io::security::layer())
         // Project the JSON docs API (`src/api.rs`) into an MCP server, so any
         // coding agent can read the guides for the release that is deployed.
         // Deliberately unauthenticated: this is public documentation, and the

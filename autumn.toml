@@ -65,6 +65,34 @@ hosts = ["autumn-web.app", "www.autumn-web.app", "autumn-io.fly.dev"]
 [security.csrf]
 enabled = false
 
+# Per-request CSP nonce in `script-src`, for Cloudflare's JavaScript Detections
+# (https://developers.cloudflare.com/bots/additional-configurations/javascript-detections/).
+# Cloudflare's bot-management JS injects an inline `<script>` into every
+# response to run its browser fingerprinting; the framework default CSP ships
+# `script-src 'self'` with no `'unsafe-inline'` and no nonce, so without a
+# nonce that injected script is silently blocked by our own CSP.
+# `/cdn-cgi/challenge-platform/` needs no separate allowance — it's served
+# same-origin and already covered by `script-src 'self'`.
+#
+# `content_security_policy` is emptied here so the framework's own CSP
+# emission is a no-op (see `autumn::security::headers`'s "escape hatch" doc
+# comment) and `csp_nonce.enabled` is turned on purely so `SecurityHeadersLayer`
+# mints a fresh nonce per request and threads it into the `CspNonce` extractor.
+# `autumn_io::csp_nonce_layer()` (wired in `src/main.rs`) reads that nonce and
+# emits the actual `Content-Security-Policy` header itself, adding the nonce to
+# `script-src` only. That split — rather than the framework's own coupled
+# default, which nonces `style-src` too and drops its `'unsafe-inline'` — is
+# deliberate: this site's syntax-highlighted code blocks
+# (`docs.rs::highlight_code`) emit `style="color:..."` on every token span, and
+# a CSP nonce does not cover the `style` *attribute* (only `<style>` elements),
+# so nonce-ing `style-src` would silently strip all syntax-highlighting color
+# from every guide page. See the doc comment on `csp_nonce_layer` for the rest.
+[security.headers]
+content_security_policy = ""
+
+[security.headers.csp_nonce]
+enabled = true
+
 [log]
 level = "info"
 # format = "Auto"  # Auto | Pretty | Json

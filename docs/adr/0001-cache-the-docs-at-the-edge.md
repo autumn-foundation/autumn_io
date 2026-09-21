@@ -203,27 +203,35 @@ added later that nobody remembers to put in the rule.
 ### 5. Cloudflare's HTML injections vs. this site's CSP
 
 Several Cloudflare features work by **rewriting HTML in flight**, and this site
-sends `script-src 'self'` with no `'unsafe-inline'`. Every one of them therefore
-either gets blocked, or quietly takes over something the origin was already
-doing. Turning the proxy on surfaced four at once. None is a bug in the site,
-and none should be answered by loosening the CSP.
+sends `script-src 'self'` with no `'unsafe-inline'` (plus, as of the JS
+Detections nonce below, a fresh `'nonce-...'` in that same directive on every
+response — see `src/security.rs`). Every injection therefore either gets
+blocked, runs under that nonce, or quietly takes over something the origin was
+already doing. Turning the proxy on surfaced four at once. None is a bug in the
+site, and none should be answered by loosening the CSP beyond that nonce.
 
 | Injection | What it does here | Disposition |
 | --- | --- | --- |
 | **Rocket Loader** | Rewrites every `<script>` to a bogus MIME type so the browser skips it, then executes them itself | **Turn off** (Speed → Optimization → Content Optimization) |
-| **Bot-detection beacon** (JavaScript Detections) | Adds an inline script that builds a hidden iframe and pulls `/cdn-cgi/challenge-platform/scripts/jsd/main.js` | **Turn off** (Security → Bots) — it is already inert, see below |
+| **Bot-detection beacon** (JavaScript Detections) | Adds an inline script that builds a hidden iframe and pulls `/cdn-cgi/challenge-platform/scripts/jsd/main.js` | **Turn on** (Security → Bots) — it now runs, see below |
 | **Web Analytics** | Adds `static.cloudflareinsights.com/beacon.min.js` | Left off — see below |
 | **WebMCP bridge** | Adds `<script type="module" src="/.webmcp/bridge.js">` | Deliberate — mirrors this site's own `/mcp` server to the emerging WebMCP standard. Same-origin, so the CSP allows it as-is |
 
-**The bot beacon is already dead, so turning it off costs nothing.** Its
-bootstrap is inline and the CSP carries no `'unsafe-inline'`, so it never runs
-and `main.js` is never fetched — Cloudflare gets no JavaScript-detection signal
-from this site today, whatever the dashboard says. Disabling it does not lose a
-protection; it stops a console error on every page load and makes the dashboard
-agree with reality. Cloudflare's other bot signals (IP reputation, HTTP
-fingerprinting) are unaffected because they need no script. Getting the signal
-back would mean putting `'unsafe-inline'` into `script-src`, which is a poor
-trade for a site with no login, no forms and no writes.
+**The bot beacon used to be dead on arrival; it isn't anymore.** Its bootstrap
+is inline, and until the nonce below shipped the CSP carried no `'unsafe-inline'`
+and no nonce, so it never ran and `main.js` was never fetched — Cloudflare got
+no JavaScript-detection signal from this site, whatever the dashboard said.
+`[security.headers.csp_nonce]` in `autumn.toml` plus `src/security.rs`'s
+`apply_csp_nonce` layer now put a fresh `'nonce-...'` in `script-src` on every
+response; Cloudflare's edge parses that header and copies the nonce onto the
+beacon's inline script as it injects it, so it runs under this site's policy
+instead of being rejected by it — see
+[JavaScript Detections](https://developers.cloudflare.com/bots/additional-configurations/javascript-detections/).
+Unlike Web Analytics below, this cost nothing in `script-src`: the beacon is
+inline, not a new host to allow, so it needed a nonce rather than a widened
+allowlist. Enabling the dashboard toggle is the one step code here can't do —
+until an operator flips **Security → Bots → JavaScript Detections** on for this
+zone, the nonce sits unused and the feature stays off, exactly as before.
 
 **Rocket Loader is the one that matters**, because it does not fail loudly — it
 succeeds at taking ownership. It rewrites `htmx.min.js`, `copy-code.js` and
