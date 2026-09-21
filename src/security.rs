@@ -185,11 +185,7 @@ mod tests {
             .expect("EtagLayer should stamp a weak ETag")
             .to_owned();
 
-        let revalidated = app
-            .get("/")
-            .header("if-none-match", &etag)
-            .send()
-            .await;
+        let revalidated = app.get("/").header("if-none-match", &etag).send().await;
 
         assert_eq!(
             revalidated.status,
