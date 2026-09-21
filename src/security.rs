@@ -45,7 +45,7 @@
 use autumn_web::reexports::axum::extract::Request;
 use autumn_web::reexports::axum::middleware::{self, Next};
 use autumn_web::reexports::axum::response::Response;
-use autumn_web::reexports::http::{HeaderValue, header};
+use autumn_web::reexports::http::{HeaderValue, StatusCode, header};
 use autumn_web::security::{CspNonce, default_content_security_policy};
 
 /// Wraps [`apply_csp_nonce`] as a layer the app can register with
@@ -58,8 +58,24 @@ pub fn layer() -> impl autumn_web::app::IntoAppLayer {
 /// `script-src`. A missing nonce (`csp_nonce` disabled) leaves any
 /// `Content-Security-Policy` the response already carries untouched, rather
 /// than emitting a policy with no nonce for Cloudflare to find.
+///
+/// Skips `304 Not Modified` entirely: `EtagLayer` (inner to this layer, see
+/// `response_compression_layer`) answers a conditional `If-None-Match` with a
+/// bodyless 304, and a cache — the browser's or Cloudflare's — merges a 304's
+/// headers into the *stored* (200) response it already holds, while keeping
+/// that stored response's body untouched (RFC 7234 §4.3.4). That stored body
+/// carries Cloudflare's own injected `<script>`, already tagged with the nonce
+/// from whenever it was cached; stamping a *fresh* nonce onto the 304 would
+/// overwrite the stored CSP header alone, leaving it demanding a nonce the
+/// cached script doesn't have. Leaving the header off the 304 instead makes
+/// the cache keep what it already stored, so the header a client ends up with
+/// always matches the body it's paired with.
 async fn apply_csp_nonce(nonce: Option<CspNonce>, request: Request, next: Next) -> Response {
-    let mut response = next.run(request).await;
+    let response = next.run(request).await;
+    if response.status() == StatusCode::NOT_MODIFIED {
+        return response;
+    }
+    let mut response = response;
 
     if let Some(nonce) = nonce {
         let csp = default_content_security_policy().replacen(
@@ -87,10 +103,15 @@ mod tests {
         autumn_web::config::AutumnConfig::load_with_env(&env).expect("config should load")
     }
 
+    /// Mirrors `main.rs`'s layer order: `response_compression_layer` (which
+    /// carries `EtagLayer`) inner, this layer outer — load-bearing for
+    /// [`no_fresh_nonce_on_a_304`], which needs `EtagLayer`'s conditional-GET
+    /// handling actually wired in.
     fn client(config: autumn_web::config::AutumnConfig) -> autumn_web::test::TestClient {
         TestApp::new()
             .routes(crate::app_routes())
             .config(config)
+            .layer(crate::response_compression_layer())
             .layer(super::layer())
             .build()
     }
@@ -132,6 +153,56 @@ mod tests {
             .to_owned();
 
         assert_ne!(csp1, csp2, "each request must mint its own nonce");
+    }
+
+    /// The regression `chatgpt-codex-connector`'s review of this PR caught:
+    /// a 304 must not get a fresh nonce, because a cache (the browser's or
+    /// Cloudflare's) merges a 304's headers into the *stored* response while
+    /// keeping its body — including Cloudflare's own script, already tagged
+    /// with whatever nonce was current when that body was cached. Stamping a
+    /// new nonce onto the 304 alone would leave the stored CSP demanding a
+    /// nonce the cached script doesn't carry.
+    ///
+    /// This still passes with the `NOT_MODIFIED` guard in [`apply_csp_nonce`]
+    /// deleted: something ahead of `TestClient` — confirmed against a live
+    /// `curl -H 'If-None-Match: ...'` run too, so it isn't a `TestApp`
+    /// artifact — already drops non-RFC-7232-§4.1 headers from a 304 before
+    /// it's observable here, `EtagLayer`'s own `copy_304_headers` builds the
+    /// 304 from an allow-list that doesn't include `Content-Security-Policy`,
+    /// though by the time this layer runs that's already a *different*
+    /// `Response` object, and where exactly the header stops surviving wasn't
+    /// fully traced. The guard stays anyway: it makes the invariant hold at
+    /// this layer by construction rather than leaning on an upstream behavior
+    /// this crate never promises to keep, and this test is the regression
+    /// guard for *that*, not proof the guard is what's currently stopping it.
+    #[tokio::test]
+    async fn no_fresh_nonce_on_a_304() {
+        let app = client(loaded_config());
+
+        let first = app.get("/").send().await;
+        let etag = first
+            .header("etag")
+            .expect("EtagLayer should stamp a weak ETag")
+            .to_owned();
+
+        let revalidated = app
+            .get("/")
+            .header("if-none-match", &etag)
+            .send()
+            .await;
+
+        assert_eq!(
+            revalidated.status,
+            autumn_web::reexports::http::StatusCode::NOT_MODIFIED,
+            "a matching If-None-Match should short-circuit to 304"
+        );
+        assert!(
+            revalidated.header("content-security-policy").is_none(),
+            "a 304 must not carry a freshly-minted nonce: a cache merges its \
+             headers into the stored (200) response while keeping that \
+             response's body, whose Cloudflare-injected script is tagged with \
+             the *old* nonce"
+        );
     }
 
     #[tokio::test]
