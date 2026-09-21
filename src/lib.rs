@@ -11,6 +11,7 @@ pub mod docs;
 pub mod export;
 pub mod metrics;
 pub mod negotiate;
+pub mod security;
 pub mod seo;
 pub mod site;
 

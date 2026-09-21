@@ -329,3 +329,58 @@ fn csrf_cookie_stays_disabled_so_the_read_path_can_be_cached() {
          Cloudflare caching any of them; see the comment above the setting"
     );
 }
+
+/// Cloudflare's bot-management JavaScript Detections injects an inline
+/// `<script>` into every response to run its browser fingerprinting. The
+/// framework default CSP ships `script-src 'self'` with neither
+/// `'unsafe-inline'` nor a nonce, so without a nonce that injected script is
+/// silently blocked by our own policy and Cloudflare's detection stops
+/// working — see
+/// <https://developers.cloudflare.com/bots/additional-configurations/javascript-detections/>.
+///
+/// `content_security_policy = ""` and `csp_nonce.enabled = true` together are
+/// what make the framework mint a per-request nonce (via the `CspNonce`
+/// extractor) without also emitting its own CSP header — `src/security.rs`'s
+/// `layer()` is what actually writes the header, splicing that nonce into
+/// `script-src` only. See the comment above the settings in `autumn.toml`,
+/// and `src/security.rs`'s module doc, for why this app can't take the
+/// framework's own coupled `csp_nonce` template (it nonces `style-src` too,
+/// which would break every syntax-highlighted code block on the site).
+#[test]
+fn csp_nonce_config_stays_wired_for_cloudflare_js_detections() {
+    let (_, headers) = AUTUMN_TOML
+        .split_once("[security.headers]")
+        .expect("autumn.toml should declare [security.headers] explicitly");
+    let headers_section = headers
+        .split_once("\n[security.headers.csp_nonce]")
+        .map_or(headers, |(section, _)| section)
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        headers_section.contains(r#"content_security_policy = """#),
+        "the framework's own CSP emission must stay a no-op — \
+         `src/security.rs`'s layer is what emits the real header now; see \
+         the comment above the setting in autumn.toml"
+    );
+
+    let (_, csp_nonce) = AUTUMN_TOML
+        .split_once("[security.headers.csp_nonce]")
+        .expect("autumn.toml should declare [security.headers.csp_nonce] explicitly");
+    let csp_nonce_section = csp_nonce
+        .split_once("\n[")
+        .map_or(csp_nonce, |(section, _)| section)
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(
+        csp_nonce_section.contains("enabled = true"),
+        "disabling csp_nonce removes the nonce `src/security.rs`'s layer needs \
+         to put in script-src for Cloudflare's JS Detections; see the comment \
+         above the setting in autumn.toml"
+    );
+}
