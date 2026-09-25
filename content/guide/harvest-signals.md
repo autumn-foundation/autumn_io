@@ -173,7 +173,7 @@ and attempts delivery; the terminal outcome (`ExternalSignalDelivered` or
 `ExternalSignalFailed`) is also recorded. On replay the recorded outcome is returned
 immediately without re-issuing any side effect.
 
-#### Exactly-once delivery with an idempotency key (issue #521)
+### Exactly-once delivery with an idempotency key (issue #521)
 
 Cross-shard delivery is *at-least-once*: the outbox may re-attempt a delivery
 after a crash, which can land two `SignalReceived` events on the target. When the
