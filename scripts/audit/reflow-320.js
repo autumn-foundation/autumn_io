@@ -1,10 +1,11 @@
 // Reflow audit (WCAG 1.4.10): crawl every sitemap URL at 320px and report pages with page-level horizontal scroll.
-// Usage: serve locally on :3000, `npm i playwright-core`, `node scripts/audit/reflow-320.js`.
+// Usage: serve locally on :3000, `npm i playwright-core && npx playwright-core install chromium`,
+// then `node scripts/audit/reflow-320.js`. Set CHROMIUM_PATH to use an existing Chromium binary instead.
 const { chromium } = require('playwright-core');
 (async () => {
   const sm = await (await fetch('http://127.0.0.1:3000/sitemap.xml')).text();
   const paths = [...sm.matchAll(/<loc>https:\/\/autumn-web\.app([^<]*)/g)].map(m => m[1] || '/');
-  const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox'] });
+  const b = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ['--no-sandbox'] });
   const p = await b.newPage({ viewport: { width: 320, height: 700 } });
   let bad = [];
   for (const u of paths) {
