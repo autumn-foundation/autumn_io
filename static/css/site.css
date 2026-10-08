@@ -593,6 +593,10 @@ pre {
 
 .article-header h1 {
   font-size: 2.55rem;
+  /* `anywhere`, not `break-word`: it also lowers min-content, so a long
+     unbreakable word cannot widen the grid track and push the page past
+     320px (WCAG 1.4.10 Reflow). */
+  overflow-wrap: anywhere;
 }
 
 .article-header > p:not(.eyebrow) {
@@ -634,11 +638,15 @@ pre {
 .article-body p,
 .article-body li {
   color: #44372e;
+  /* Slash-joined tokens (`a/b/c/d`) have no break opportunity (WCAG 1.4.10). */
+  overflow-wrap: anywhere;
 }
 
 .article-body a {
   color: var(--rust-dark);
   font-weight: 750;
+  /* Raw URLs used as link text are one unbreakable token (WCAG 1.4.10). */
+  overflow-wrap: anywhere;
 }
 
 .article-body code:not(pre code),
@@ -653,8 +661,9 @@ pre {
      inline code in prose and list items overflows the article column at
      narrow widths instead of wrapping (WCAG 1.4.10 Reflow). Code *blocks*
      keep their intentional horizontal scroll via `.code-block pre` — this
-     only affects inline code, which is prose and should reflow like prose. */
-  overflow-wrap: break-word;
+     only affects inline code, which is prose and should reflow like prose.
+     `anywhere` (not `break-word`) so min-content shrinks too. */
+  overflow-wrap: anywhere;
 }
 
 .article-body .code-block {
