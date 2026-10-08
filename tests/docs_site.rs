@@ -1,3 +1,4 @@
+use autumn_plugin_motion::{MOTION_ASSETS, MotionPlugin};
 use autumn_web::test::TestApp;
 
 use autumn_io::docs::{DocRegistry, DocSource, DocsError, slugify_heading};
@@ -1274,6 +1275,21 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert!(dist.join("static/img/autumn-mark-68.png").exists());
     assert!(dist.join("static/img/autumn-mark-136.png").exists());
 
+    // The motion plugin's bundle is served from memory, not from `static/`, so
+    // the export has to write it out itself — at the content-hashed URL the
+    // exported pages link, byte-for-byte what their SRI hash was computed over.
+    for asset in MOTION_ASSETS.iter() {
+        let exported = dist.join(asset.url().trim_start_matches('/'));
+        let bytes = std::fs::read(&exported)
+            .unwrap_or_else(|error| panic!("{} should be exported: {error}", asset.url()));
+        assert_eq!(bytes, asset.bytes(), "{} bytes differ", asset.url());
+        assert!(
+            home.contains(asset.url()) || getting_started.contains(asset.url()),
+            "{} is exported but no exported page links it",
+            asset.url()
+        );
+    }
+
     let manifest = std::fs::read_to_string(dist.join("manifest.json")).expect("manifest");
     assert!(manifest.contains(r#""/docs/getting-started""#));
     assert!(manifest.contains(r#""docs/getting-started/index.html""#));
@@ -1546,4 +1562,170 @@ fn home_page_advertises_the_docs_mcp_endpoint() {
         html.contains(r#"href="/docs/mcp""#),
         "the band should link to the guide explaining the mechanism"
     );
+}
+
+/// Every `data-motion` value the site renders. The plugin's init script falls
+/// back to `fade-up` for a name it does not know, so a typo here would ship as
+/// a silently different animation rather than a failure.
+const MOTION_KINDS: &[&str] = &[
+    "fade-up",
+    "fade-down",
+    "fade-left",
+    "fade-right",
+    "fade",
+    "scale",
+    "zoom-in",
+    "zoom-out",
+    "slide-left",
+    "slide-right",
+    "slide-up",
+    "slide-down",
+    "rotate-in",
+    "blur-in",
+    "parallax",
+    "scroll-progress",
+];
+
+fn motion_kinds_in(html: &str) -> Vec<&str> {
+    html.split(r#"data-motion=""#)
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .collect()
+}
+
+#[test]
+fn every_page_loads_the_motion_plugin_scripts_with_sri() {
+    let registry = autumn_io::site_docs().expect("bundled docs should load");
+    let page = registry
+        .page(GUIDE_START_SLUG)
+        .expect("getting started guide");
+
+    for html in [
+        render_home_page(registry).into_string(),
+        render_docs_page(registry, page).into_string(),
+    ] {
+        for file in ["motion.min.js", "init.js"] {
+            let url = MOTION_ASSETS.url(file);
+            let integrity = MOTION_ASSETS.integrity(file).expect("bundled file");
+            assert!(
+                html.contains(&format!(r#"src="{url}""#)),
+                "{file} script tag"
+            );
+            assert!(html.contains(integrity), "{file} carries its SRI hash");
+        }
+
+        // The site restyles `.motion-progress`, which only works while
+        // site.css comes after the plugin stylesheet.
+        let plugin_css = html
+            .find(&MOTION_ASSETS.url("motion.css"))
+            .expect("plugin stylesheet linked");
+        let site_css = html.find("/static/css/site.css?v=").expect("site css");
+        assert!(plugin_css < site_css, "plugin stylesheet must load first");
+    }
+}
+
+#[test]
+fn home_page_animates_its_hero_and_cards() {
+    let registry = autumn_io::site_docs().expect("bundled docs should load");
+    let html = render_home_page(registry).into_string();
+
+    assert!(
+        html.contains(r#"<div class="hero-copy" data-motion="fade-up" data-motion-stagger="90">"#)
+    );
+    assert!(html.contains(r#"data-motion="blur-in""#), "hero code block");
+    assert!(
+        html.contains(r#"data-motion-press="scale(0.96)""#),
+        "hero CTAs"
+    );
+    assert!(
+        html.contains(
+            r#"class="home-secondary-grid" data-motion="fade-up" data-motion-stagger="60""#
+        )
+    );
+
+    // Featured cards each carry their own entrance (so their hover and press
+    // gestures are wired), offset so they still arrive one after another.
+    assert_eq!(html.matches(r#"class="home-feature-card""#).count(), 2);
+    assert!(
+        html.contains(
+            r#"data-motion="scale" data-motion-delay="0" data-motion-hover="scale(1.02)""#
+        )
+    );
+    assert!(html.contains(
+        r#"data-motion="scale" data-motion-delay="120" data-motion-hover="scale(1.02)""#
+    ));
+
+    // The reading-progress bar is for long guides, not the landing page.
+    assert!(!html.contains("motion-progress"));
+
+    for kind in motion_kinds_in(&html) {
+        assert!(
+            MOTION_KINDS.contains(&kind),
+            "unknown motion preset {kind:?}"
+        );
+    }
+}
+
+#[test]
+fn docs_pages_show_a_reading_progress_bar() {
+    let registry = autumn_io::site_docs().expect("bundled docs should load");
+    let page = registry
+        .page(GUIDE_START_SLUG)
+        .expect("getting started guide");
+    let html = render_docs_page(registry, page).into_string();
+
+    assert_eq!(html.matches(r#"data-motion="scroll-progress""#).count(), 1);
+    assert!(html.contains(r#"class="motion-progress""#));
+    assert!(
+        SITE_CSS.contains(".motion-progress {"),
+        "site.css repaints the progress bar in the site palette"
+    );
+
+    for kind in motion_kinds_in(&html) {
+        assert!(
+            MOTION_KINDS.contains(&kind),
+            "unknown motion preset {kind:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn htmx_search_results_cascade_in() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    app.get("/search?q=testing")
+        .header("hx-request", "true")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains(
+            r#"<ul class="docs-search-results-list" data-motion="fade-up" data-motion-stagger="35" data-motion-duration="0.35">"#,
+        );
+}
+
+#[tokio::test]
+async fn motion_plugin_assets_keep_the_frameworks_cache_policy() {
+    let app = TestApp::new()
+        .plugin(MotionPlugin::new())
+        .routes(autumn_io::app_routes())
+        .layer(autumn_io::response_compression_layer())
+        .build();
+
+    for asset in MOTION_ASSETS.iter() {
+        // The content-hashed URL every page links changes whenever the bytes
+        // do, so it must stay immutable — even though it carries no `?v=`,
+        // which is what the site's own policy keys on.
+        app.get(asset.url())
+            .send()
+            .await
+            .assert_status(200)
+            .assert_header("cache-control", "public, max-age=31536000, immutable");
+
+        // The plain URL is stable across releases, so it always revalidates.
+        app.get(asset.plain_url())
+            .send()
+            .await
+            .assert_status(200)
+            .assert_header("cache-control", "public, max-age=0, must-revalidate");
+    }
 }

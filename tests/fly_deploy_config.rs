@@ -42,8 +42,8 @@ fn docker_build_uses_the_committed_dependency_lockfile() {
 #[test]
 fn runtime_versions_reflect_current_published_autumn_dependency() {
     assert!(CARGO_TOML.contains("autumn-web"));
-    assert!(CARGO_TOML.contains(r#"version = "0.7.0""#));
-    assert!(EXPORT_RS.contains(r#"const AUTUMN_WEB_VERSION: &str = "0.7.0";"#));
+    assert!(CARGO_TOML.contains(r#"version = "0.8.0""#));
+    assert!(EXPORT_RS.contains(r#"const AUTUMN_WEB_VERSION: &str = "0.8.0";"#));
 }
 
 #[test]

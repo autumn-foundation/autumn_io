@@ -2,6 +2,9 @@
 async fn main() {
     autumn_web::app()
         .with_story_gallery(autumn_web::stories::StoryGallery::builtin())
+        // Motion (motion.dev) animations for the `data-motion` attributes in
+        // `src/site.rs`, served from memory under `/static/_plugins/motion/`.
+        .plugin(autumn_plugin_motion::MotionPlugin::new())
         .routes(autumn_io::app_routes())
         .layer(autumn_io::response_compression_layer())
         // Content-Security-Policy with a per-request script-src nonce, for
