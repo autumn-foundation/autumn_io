@@ -1,5 +1,6 @@
 use std::sync::LazyLock;
 
+use autumn_web::assets::PLUGIN_ASSETS_PREFIX;
 use autumn_web::prelude::*;
 use autumn_web::reexports::axum::extract::Request;
 use autumn_web::reexports::axum::middleware::{self, Next};
@@ -353,6 +354,9 @@ fn is_cacheable_page(path: &str) -> bool {
 async fn apply_cache_control(request: Request, next: Next) -> Response {
     let path = request.uri().path();
     let is_static = path.starts_with("/static/");
+    let is_plugin_asset = path
+        .strip_prefix(PLUGIN_ASSETS_PREFIX)
+        .is_some_and(|rest| rest.starts_with('/'));
     let is_page = is_cacheable_page(path);
     let is_search = path == DOCS_SEARCH_PATH;
     let versioned = has_asset_version_query(request.uri().query());
@@ -379,6 +383,12 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
 
     let cache_control = if is_markdown {
         Some(UNCACHEABLE)
+    } else if is_plugin_asset {
+        // Plugin bundles carry their own policy: `immutable` at the
+        // content-hashed URL the pages link, `must-revalidate` at the plain
+        // one. Neither URL has the `?v=` the branch below keys on, so letting
+        // it decide would downgrade the hashed URL to an hour.
+        None
     } else if is_static && status.is_success() {
         Some(if versioned {
             IMMUTABLE_CACHE_CONTROL

@@ -6,13 +6,14 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use autumn_web::assets::PluginAssets;
 use autumn_web::static_gen::{ManifestEntry, StaticManifest};
 
 use crate::docs::DocRegistry;
 use crate::{seo, site};
 
 const STATIC_DIR: &str = "static";
-const AUTUMN_WEB_VERSION: &str = "0.7.0";
+const AUTUMN_WEB_VERSION: &str = "0.8.0";
 const EXPORT_MARKER_FILE: &str = ".autumn-io-static-export";
 
 /// Filesystem settings for exporting the Autumn website as static assets.
@@ -116,13 +117,7 @@ pub fn export_site(
         Path::new("index.html"),
         site::render_home_page(registry).into_string(),
     )?;
-    routes.insert(
-        "/".to_owned(),
-        ManifestEntry {
-            file: "index.html".to_owned(),
-            revalidate: None,
-        },
-    );
+    routes.insert("/".to_owned(), ManifestEntry::new("index.html"));
 
     for page in registry.pages() {
         let file = format!("docs/{}/index.html", page.slug);
@@ -131,38 +126,21 @@ pub fn export_site(
             &PathBuf::from("docs").join(&page.slug).join("index.html"),
             site::render_docs_page(registry, page).into_string(),
         )?;
-        routes.insert(
-            seo::docs_path(&page.slug),
-            ManifestEntry {
-                file,
-                revalidate: None,
-            },
-        );
+        routes.insert(seo::docs_path(&page.slug), ManifestEntry::new(file));
     }
 
     write_text(&output_dir, Path::new("robots.txt"), seo::robots_txt())?;
-    routes.insert(
-        "/robots.txt".to_owned(),
-        ManifestEntry {
-            file: "robots.txt".to_owned(),
-            revalidate: None,
-        },
-    );
+    routes.insert("/robots.txt".to_owned(), ManifestEntry::new("robots.txt"));
 
     write_text(
         &output_dir,
         Path::new("sitemap.xml"),
         seo::sitemap_xml(registry),
     )?;
-    routes.insert(
-        "/sitemap.xml".to_owned(),
-        ManifestEntry {
-            file: "sitemap.xml".to_owned(),
-            revalidate: None,
-        },
-    );
+    routes.insert("/sitemap.xml".to_owned(), ManifestEntry::new("sitemap.xml"));
 
-    let static_assets = copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?;
+    let static_assets = copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?
+        + write_plugin_assets(&output_dir, &autumn_plugin_motion::MOTION_ASSETS)?;
     write_manifest(&output_dir, Path::new("manifest.json"), routes.clone())?;
 
     Ok(ExportSummary {
@@ -295,16 +273,36 @@ fn copy_static_assets(
     Ok(copied)
 }
 
+/// Writes a plugin asset bundle — served from memory by the running app, so
+/// absent from `static/` — at the content-hashed URLs the exported pages link.
+///
+/// Only the hashed URL is written: it is the one `motion_script()` and
+/// `motion_stylesheet()` emit, and the bytes are the embedded ones their SRI
+/// hashes were computed over.
+fn write_plugin_assets(output_dir: &Path, bundle: &PluginAssets) -> Result<usize, ExportError> {
+    let mut written = 0;
+    for asset in bundle.iter() {
+        let relative = Path::new(asset.url().trim_start_matches('/'));
+        if let Some(parent) = relative.parent() {
+            create_dir_under_output(output_dir, parent)?;
+        }
+        let path = output_path_for_write(output_dir, relative)?;
+        fs::write(&path, asset.bytes()).map_err(|source| ExportError::Io { path, source })?;
+        written += 1;
+    }
+    Ok(written)
+}
+
 fn write_manifest(
     output_dir: &Path,
     path: &Path,
     routes: HashMap<String, ManifestEntry>,
 ) -> Result<(), ExportError> {
-    let manifest = StaticManifest {
-        generated_at: timestamp_now(),
-        autumn_version: AUTUMN_WEB_VERSION.to_owned(),
-        routes,
-    };
+    // `StaticManifest::new` stamps the running framework's version itself;
+    // pinning it here keeps the exported manifest tied to the same constant
+    // `tests/fly_deploy_config.rs` guards against the `Cargo.toml` dependency.
+    let mut manifest = StaticManifest::new(routes).with_generated_at(timestamp_now());
+    manifest.autumn_version = AUTUMN_WEB_VERSION.to_owned();
     let json = serde_json::to_string_pretty(&manifest).map_err(|source| ExportError::Json {
         path: path.to_path_buf(),
         source,

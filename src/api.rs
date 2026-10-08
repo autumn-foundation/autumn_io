@@ -103,7 +103,7 @@ pub struct GuideIndex {
     /// so one call is enough to learn how to narrow the next one.
     pub groups: Vec<GuideGroup>,
     /// The group filter this response was narrowed to, if any.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
     /// Number of guides in `guides`, after any filtering.
     pub count: usize,
@@ -155,7 +155,7 @@ pub struct GuideDocument {
     pub sections: Vec<GuideSectionRef>,
     /// The requested section's id, when the response is one section rather
     /// than the whole guide.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section: Option<String>,
     /// The Markdown itself, `null` when it was too large to inline and had no
     /// introduction worth returning on its own, its introduction alone when
@@ -165,7 +165,7 @@ pub struct GuideDocument {
     pub markdown: Option<String>,
     /// Present only when something about the response needs explaining, so an
     /// agent that gets a `null` body is told what to do next.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notice: Option<String>,
 }
 

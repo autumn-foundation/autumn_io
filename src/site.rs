@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
+use autumn_plugin_motion::{Motion, motion_script, motion_stylesheet};
 use autumn_web::prelude::HTMX_JS_PATH;
 use autumn_web::widgets::{ActiveSearchConfig, active_search, active_search_empty_state};
 use autumn_web::{Markup, PreEscaped, html};
@@ -24,6 +25,12 @@ const BRAND_MARK_1X_PATH: &str = "/static/img/autumn-mark-68.png";
 const BRAND_MARK_2X_PATH: &str = "/static/img/autumn-mark-136.png";
 const DOCS_NAV_DISCLOSURE_JS_PATH: &str = "/static/js/docs-nav-disclosure.js";
 const HOME_FEATURED_DOC_SLUGS: &[&str] = &["getting-started", "coming-from-other-frameworks"];
+/// Gap between the home page's featured cards popping in, in milliseconds.
+///
+/// Each card carries its own `data-motion` (rather than one stagger container
+/// over the grid) because the hover/press gestures are only wired on an
+/// element the plugin scans, and a stagger container's children are not.
+const HOME_FEATURE_CARD_STAGGER_MS: usize = 120;
 const HOME_SECONDARY_DOC_SLUGS: &[&str] = &[
     "what-happens-when",
     "testing",
@@ -279,16 +286,37 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                 (site_header("home"))
                 main id="main-content" class="home-main" tabindex="-1" aria-labelledby="page-title" {
                     section class="home-hero" {
-                        div class="hero-copy" {
+                        // Eyebrow, headline, lede and actions rise in one
+                        // after another; the CTAs then pop in on top of that
+                        // and answer hover and press.
+                        div class="hero-copy" data-motion="fade-up" data-motion-stagger="90" {
                             p class="eyebrow" { (VERSION_LABEL) }
                             h1 id="page-title" { (HOME_HEADLINE) }
                             p class="hero-lede" { (HOME_LEDE) }
                             div class="hero-actions" {
-                                a class="button button-primary" href=(DOCS_START_PATH) { "Get started" }
-                                a class="button button-secondary" href="/docs/what-happens-when" { "Read the docs" }
+                                a
+                                    class="button button-primary"
+                                    href=(DOCS_START_PATH)
+                                    data-motion="zoom-in"
+                                    data-motion-delay="320"
+                                    data-motion-ease="spring(320,22,1)"
+                                    data-motion-hover="scale(1.04)"
+                                    data-motion-press="scale(0.96)"
+                                { "Get started" }
+                                a
+                                    class="button button-secondary"
+                                    href="/docs/what-happens-when"
+                                    data-motion="zoom-in"
+                                    data-motion-delay="400"
+                                    data-motion-ease="spring(320,22,1)"
+                                    data-motion-hover="scale(1.04)"
+                                    data-motion-press="scale(0.96)"
+                                { "Read the docs" }
                             }
                         }
-                        (PreEscaped(render_highlighted_code_block(Some("rust"), HOME_ROUTE_EXAMPLE)))
+                        (Motion::blur_in().delay(220).duration(0.9).wrap(html! {
+                            (PreEscaped(render_highlighted_code_block(Some("rust"), HOME_ROUTE_EXAMPLE)))
+                        }))
                     }
                     (home_harvest_release())
                     section class="home-featured" aria-labelledby="featured-guides-title" {
@@ -297,10 +325,12 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                             h2 id="featured-guides-title" { "Pick your entry point" }
                         }
                         div class="home-featured-grid" {
-                            @for slug in HOME_FEATURED_DOC_SLUGS {
-                                @if let Some(page) = registry.page(slug) {
-                                    (home_feature_card(page))
-                                }
+                            @for (index, page) in HOME_FEATURED_DOC_SLUGS
+                                .iter()
+                                .filter_map(|slug| registry.page(slug))
+                                .enumerate()
+                            {
+                                (home_feature_card(page, index))
                             }
                         }
                     }
@@ -309,7 +339,7 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                             p class="eyebrow" { "Core workflows" }
                             h2 id="common-paths-title" { "Build, test, secure, and deploy" }
                         }
-                        div class="home-secondary-grid" {
+                        div class="home-secondary-grid" data-motion="fade-up" data-motion-stagger="60" {
                             @for page in home_secondary_pages(registry) {
                                 a class="home-secondary-link" href=(seo::docs_path(&page.slug)) {
                                     span class="feature-title" { (&page.title) }
@@ -328,7 +358,7 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
 
 fn home_harvest_release() -> Markup {
     html! {
-        section class="home-harvest" aria-labelledby="harvest-release-title" {
+        section class="home-harvest" aria-labelledby="harvest-release-title" data-motion="fade-up" {
             div class="home-harvest-copy" {
                 p class="eyebrow" { "Companion release" }
                 h2 id="harvest-release-title" { "Autumn Harvest " (seo::HARVEST_VERSION) }
@@ -351,7 +381,7 @@ fn home_harvest_release() -> Markup {
 /// the whole setup — one command, no key, no account.
 fn home_mcp_endpoint() -> Markup {
     html! {
-        section class="home-mcp" aria-labelledby="mcp-endpoint-title" {
+        section class="home-mcp" aria-labelledby="mcp-endpoint-title" data-motion="fade-up" {
             div class="home-mcp-copy" {
                 p class="eyebrow" { "For coding agents" }
                 h2 id="mcp-endpoint-title" { "Point your agent at these docs" }
@@ -405,7 +435,7 @@ fn home_mcp_example() -> String {
     TEMPLATE.replace("{endpoint}", &seo::absolute_url(crate::MCP_MOUNT_PATH))
 }
 
-fn home_feature_card(page: &DocPage) -> Markup {
+fn home_feature_card(page: &DocPage, index: usize) -> Markup {
     let kicker = match page.slug.as_str() {
         "getting-started" => "Build first",
         "coming-from-other-frameworks" => "Map what you know",
@@ -413,7 +443,14 @@ fn home_feature_card(page: &DocPage) -> Markup {
     };
 
     html! {
-        a class="home-feature-card" href=(seo::docs_path(&page.slug)) {
+        a
+            class="home-feature-card"
+            href=(seo::docs_path(&page.slug))
+            data-motion="scale"
+            data-motion-delay=(index * HOME_FEATURE_CARD_STAGGER_MS)
+            data-motion-hover="scale(1.02)"
+            data-motion-press="scale(0.98)"
+        {
             span class="home-card-kicker" { (kicker) }
             h2 class="home-card-title" { (&page.title) }
             p { (&page.description) }
@@ -449,6 +486,8 @@ pub fn render_docs_page(registry: &DocRegistry, page: &DocPage) -> Markup {
             (document_head(&PageMeta::docs(page)))
             body class="site-shell docs-shell" {
                 (skip_link())
+                // Reading-progress bar for long guides, driven by page scroll.
+                (Motion::scroll_progress())
                 (site_header("docs"))
                 div class="docs-layout" {
                     (docs_sidebar(registry, Some(&page.slug)))
@@ -647,7 +686,14 @@ pub fn render_docs_search_results(query: &str, hits: &[SearchHit]) -> Markup {
                 query
             ))
         }
-        ul class="docs-search-results-list" {
+        // Animated by the motion plugin's `htmx:afterSwap` re-scan, so each
+        // keystroke's results cascade in without any search-specific script.
+        ul
+            class="docs-search-results-list"
+            data-motion="fade-up"
+            data-motion-stagger="35"
+            data-motion-duration="0.35"
+        {
             @for hit in hits {
                 li class="docs-search-result" {
                     a class="docs-search-result-link" href=(seo::docs_path(&hit.slug)) {
@@ -915,6 +961,8 @@ fn document_head(meta: &PageMeta) -> Markup {
             link rel="canonical" href=(&canonical_url);
             link rel="icon" href=(icon_path) type="image/png";
             link rel="sitemap" type="application/xml" href="/sitemap.xml";
+            // Before site.css, so the site can restyle `.motion-progress`.
+            (motion_stylesheet())
             link rel="stylesheet" href=(stylesheet_path);
             meta property="og:site_name" content=(seo::SITE_NAME);
             meta property="og:type" content=(meta.og_type);
@@ -930,6 +978,7 @@ fn document_head(meta: &PageMeta) -> Markup {
                 script type="application/ld+json" { (PreEscaped(structured_data)) }
             }
             script src=(copy_code_script_path) defer {}
+            (motion_script())
         }
     }
 }

@@ -1041,3 +1041,10 @@ pre {
     transition: none;
   }
 }
+
+/* Reading-progress bar from autumn-plugin-motion (`Motion::scroll_progress`).
+   The plugin stylesheet loads first and paints it violet; this repaints it in
+   the site's palette. */
+.motion-progress {
+  background: linear-gradient(90deg, var(--copper), var(--rust));
+}
