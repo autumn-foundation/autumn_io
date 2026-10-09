@@ -149,6 +149,20 @@ pub fn robots_txt() -> String {
     )
 }
 
+/// Path of the Web Bot Auth key directory.
+pub const WEB_BOT_AUTH_PATH: &str = "/.well-known/http-message-signatures-directory";
+
+/// Media type the Web Bot Auth draft assigns to the key directory.
+pub const WEB_BOT_AUTH_CONTENT_TYPE: &str = "application/http-message-signatures-directory+json";
+
+/// The site's Web Bot Auth key directory: a JWKS holding the Ed25519 public
+/// key (`kid` is its RFC 7638 thumbprint) that receiving sites use to verify
+/// requests this site signs as a bot or agent.
+///
+/// Only the public half lives here. To rotate, generate a new Ed25519 key,
+/// replace the entry, and keep the old one listed until signed traffic drains.
+pub const WEB_BOT_AUTH_DIRECTORY: &str = r#"{"keys":[{"kty":"OKP","crv":"Ed25519","x":"54vmrf8D78z2CRDIIjBEsd0Zzer3JgcjU8yIi6y5JuY","kid":"L8BOcML4IEa9Bcz6_cmkOlrDESF06ZmJqfKfkp2LA1E"}]}"#;
+
 #[must_use]
 pub fn sitemap_xml(registry: &DocRegistry) -> String {
     let mut sitemap = String::from(

@@ -1197,6 +1197,32 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
 }
 
 #[tokio::test]
+async fn web_bot_auth_directory_is_a_valid_ed25519_jwks() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let response = app
+        .get("/.well-known/http-message-signatures-directory")
+        .send()
+        .await;
+    response.assert_status(200).assert_header(
+        "content-type",
+        "application/http-message-signatures-directory+json",
+    );
+    let jwks: serde_json::Value = serde_json::from_str(&response.text()).expect("JSON body");
+    let keys = jwks["keys"].as_array().expect("keys array");
+    assert!(!keys.is_empty());
+    for key in keys {
+        assert_eq!(key["kty"], "OKP");
+        assert_eq!(key["crv"], "Ed25519");
+        assert!(key["x"].as_str().is_some_and(|x| x.len() == 43));
+        assert!(
+            key.get("d").is_none(),
+            "private key material must never be published"
+        );
+    }
+}
+
+#[tokio::test]
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 
@@ -1246,8 +1272,21 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     // Every guide, plus the home page.
     assert_eq!(summary.html_pages, registry.pages().len() + 1);
     assert!(summary.static_assets >= 4);
-    // `/`, `/robots.txt`, `/sitemap.xml`, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 3);
+    // `/`, `/robots.txt`, `/sitemap.xml`, the Web Bot Auth directory, and one
+    // per guide.
+    assert_eq!(summary.routes, registry.pages().len() + 4);
+    assert!(
+        dist.join(".well-known/http-message-signatures-directory")
+            .is_file()
+    );
+    // The file has no extension, so the manifest must carry the required media
+    // type for a static host to serve it correctly.
+    let manifest = std::fs::read_to_string(dist.join("manifest.json")).expect("manifest");
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).expect("manifest JSON");
+    assert_eq!(
+        manifest["routes"]["/.well-known/http-message-signatures-directory"]["content_type"],
+        "application/http-message-signatures-directory+json"
+    );
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
     assert!(home.contains("Ship the app, not the plumbing."));
