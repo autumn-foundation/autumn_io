@@ -173,7 +173,7 @@ pub fn mcp_server_card() -> String {
             "endpoint": crate::MCP_MOUNT_PATH
         },
         "endpoint": absolute_url(crate::MCP_MOUNT_PATH),
-        "authentication": { "required": false },
+        "authentication": { "required": false, "schemes": [] },
         "capabilities": {
             "tools": { "listChanged": false }
         },

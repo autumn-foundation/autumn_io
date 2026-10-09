@@ -615,16 +615,28 @@ pub async fn robots_txt() -> Response {
         .into_response()
 }
 
+/// CORS headers SEP-1649 requires on discovery endpoints so browser-based
+/// clients can fetch the card.
+const SERVER_CARD_CORS: [(header::HeaderName, &str); 3] = [
+    (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+    (header::ACCESS_CONTROL_ALLOW_METHODS, "GET"),
+    (header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type"),
+];
+
 #[get("/.well-known/mcp/server-card.json")]
 pub async fn mcp_server_card() -> Response {
     (
-        [
-            (header::CONTENT_TYPE, "application/json"),
-            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
-        ],
+        [(header::CONTENT_TYPE, "application/json")],
+        SERVER_CARD_CORS,
         seo::mcp_server_card(),
     )
         .into_response()
+}
+
+/// Answers the CORS preflight a browser sends before fetching the card with a
+/// `Content-Type` header. Attached to the card's route in [`app_routes`].
+async fn mcp_server_card_preflight() -> Response {
+    (StatusCode::NO_CONTENT, SERVER_CARD_CORS).into_response()
 }
 
 #[get("/sitemap.xml")]
@@ -659,6 +671,13 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         mcp_server_card,
         sitemap_xml
     ];
+    for route in &mut routes {
+        if route.name == "mcp_server_card" {
+            route.handler = std::mem::take(&mut route.handler).options(
+                autumn_web::reexports::axum::routing::options(mcp_server_card_preflight),
+            );
+        }
+    }
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.
     // Registered here rather than only in `main` so the test harness exercises
     // the same route set the deployed app serves.

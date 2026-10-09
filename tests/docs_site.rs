@@ -1204,13 +1204,17 @@ async fn mcp_server_card_is_served_for_agent_discovery() {
     response
         .assert_status(200)
         .assert_header_contains("content-type", "application/json")
-        .assert_header("access-control-allow-origin", "*");
+        .assert_header("access-control-allow-origin", "*")
+        .assert_header("access-control-allow-methods", "GET")
+        .assert_header("access-control-allow-headers", "Content-Type");
     let card: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
 
     assert_eq!(card["serverInfo"]["name"], "autumn-docs");
     assert_eq!(card["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(card["transport"]["endpoint"], autumn_io::MCP_MOUNT_PATH);
     assert_eq!(card["endpoint"], "https://autumn-web.app/mcp");
+    assert_eq!(card["authentication"]["required"], false);
+    assert_eq!(card["authentication"]["schemes"], serde_json::json!([]));
     assert_eq!(card["version"], "1.0");
     assert_eq!(card["protocolVersion"], "2025-06-18");
     assert!(card["capabilities"]["tools"].is_object());
@@ -1218,6 +1222,19 @@ async fn mcp_server_card_is_served_for_agent_discovery() {
     assert!(card["capabilities"].get("resources").is_none());
     assert!(card["capabilities"].get("prompts").is_none());
     assert_eq!(card["tools"], serde_json::json!(["dynamic"]));
+}
+
+#[tokio::test]
+async fn mcp_server_card_answers_cors_preflight() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    app.options("/.well-known/mcp/server-card.json")
+        .send()
+        .await
+        .assert_status(204)
+        .assert_header("access-control-allow-origin", "*")
+        .assert_header("access-control-allow-methods", "GET")
+        .assert_header("access-control-allow-headers", "Content-Type");
 }
 
 #[tokio::test]
