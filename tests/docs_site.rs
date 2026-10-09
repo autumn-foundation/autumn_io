@@ -1475,19 +1475,22 @@ async fn web_bot_auth_directory_is_a_valid_ed25519_jwks() {
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 
-    app.get("/robots.txt")
-        .send()
-        .await
+    let response = app.get("/robots.txt").send().await;
+    let robots = response
         .assert_status(200)
         .assert_header_contains("content-type", "text/plain")
         .assert_body_contains("User-agent: *")
         .assert_body_contains("Content-Signal: ai-train=yes, search=yes, ai-input=yes")
         .assert_body_contains("Allow: /")
-        // The JSON docs API and its MCP envelope serve the same guides as the
-        // HTML pages; indexing them would compete with the pages that rank.
+        // The JSON docs API serves the same guides as the HTML pages; indexing
+        // it would compete with the pages that rank. `/mcp` stays crawlable so
+        // robots-respecting agents can reach it.
         .assert_body_contains("Disallow: /api/")
-        .assert_body_contains("Disallow: /mcp")
         .assert_body_contains("Sitemap: https://autumn-web.app/sitemap.xml");
+    assert!(
+        !robots.text().contains("/mcp"),
+        "/mcp must stay crawlable so robots-respecting agents can reach it"
+    );
 
     let sitemap = app
         .get("/sitemap.xml")

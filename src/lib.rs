@@ -466,8 +466,9 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
 ///
 /// Only resources this site actually serves, and only relation types in the
 /// IANA registry: RFC 8288 §3.3 requires an unregistered relation to be an
-/// absolute URI, so `mcp` and `sitemap` are left to `robots.txt`, the
-/// `<link rel="sitemap">` in the page head, and `docs/mcp-server.md`.
+/// absolute URI, so `mcp` and `sitemap` are left to the
+/// `<link rel="sitemap">` in the page head, the sitemap `robots.txt` points at,
+/// and `docs/mcp-server.md`.
 pub const HOME_LINK_HEADER: &str = concat!(
     "</docs/getting-started>; rel=\"service-doc\"; type=\"text/html\", ",
     "</api/docs>; rel=\"describedby\"; type=\"application/json\""

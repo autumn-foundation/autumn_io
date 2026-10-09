@@ -140,8 +140,10 @@ Search lives at `/api/search`, not `/api/docs/search`: an exact route under
 called `search`. The HTML site sidesteps the same trap by putting its search at
 `/search`.
 
-`robots.txt` disallows `/api/` and `/mcp`. They mirror content that already has
-canonical HTML pages, and the clients they exist for do not read `robots.txt`.
+`robots.txt` disallows `/api/` but not `/mcp`. The JSON API mirrors content that
+already has canonical HTML pages, so crawlers are kept out of it (the clients it
+exists for do not read `robots.txt`). `/mcp` is left crawlable on purpose, so
+agents that honor `robots.txt` can still discover and use it.
 
 ## Changing it
 
