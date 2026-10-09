@@ -8,7 +8,13 @@
   }
 
   const controller = new AbortController();
-  window.addEventListener("pagehide", () => controller.abort(), { once: true });
+  // A persisted `pagehide` means the page is entering the back/forward cache and
+  // will be restored with this same heap, so keep the tools registered then.
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) {
+      controller.abort();
+    }
+  });
 
   const text = (value) => ({
     content: [{ type: "text", text: JSON.stringify(value, null, 2) }],
@@ -87,9 +93,18 @@
     },
   ];
 
-  for (const tool of tools) {
-    Promise.resolve(modelContext.registerTool(tool, { signal: controller.signal })).catch(
-      () => {},
-    );
-  }
+  // The static export (CDN hosting) ships these pages without the JSON API, so
+  // only advertise the tools when the API they call is actually served.
+  fetch("/api/search?q=autumn&limit=1", { headers: { accept: "application/json" } })
+    .then((response) => {
+      if (!response.ok || controller.signal.aborted) {
+        return;
+      }
+      for (const tool of tools) {
+        Promise.resolve(modelContext.registerTool(tool, { signal: controller.signal })).catch(
+          () => {},
+        );
+      }
+    })
+    .catch(() => {});
 })();
