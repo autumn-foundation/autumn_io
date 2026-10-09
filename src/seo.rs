@@ -149,6 +149,32 @@ pub fn robots_txt() -> String {
     )
 }
 
+/// Path of the RFC 9728 OAuth Protected Resource Metadata document.
+pub const OAUTH_PROTECTED_RESOURCE_PATH: &str = "/.well-known/oauth-protected-resource";
+
+/// Path of the same document scoped to the `/mcp` resource (RFC 9728 §3.1).
+pub const OAUTH_PROTECTED_RESOURCE_MCP_PATH: &str = "/.well-known/oauth-protected-resource/mcp";
+
+/// OAuth Protected Resource Metadata (RFC 9728) for `resource_path`.
+///
+/// This site is public, unauthenticated and read-only, so there is no
+/// authorization server to point at: publishing a made-up issuer would send
+/// agents off to obtain tokens nothing here would ever check. The document is
+/// therefore the honest one — the resource identifier, an empty
+/// `authorization_servers` and `scopes_supported` (no token is required), and
+/// `bearer_methods_supported` left out because no bearer token is accepted.
+#[must_use]
+pub fn oauth_protected_resource_metadata(resource_path: &str) -> String {
+    serde_json::json!({
+        "resource": absolute_url(resource_path),
+        "authorization_servers": [],
+        "scopes_supported": [],
+        "resource_name": format!("{SITE_NAME} documentation"),
+        "resource_documentation": absolute_url("/docs/mcp"),
+    })
+    .to_string()
+}
+
 #[must_use]
 pub fn sitemap_xml(registry: &DocRegistry) -> String {
     let mut sitemap = String::from(

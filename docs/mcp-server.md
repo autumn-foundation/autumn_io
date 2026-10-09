@@ -7,6 +7,13 @@ deployed instead of recalling whatever it saw in training.
 
 It is public, unauthenticated, and read-only.
 
+For agents that probe for it, the site publishes
+[RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) OAuth Protected Resource
+Metadata at `/.well-known/oauth-protected-resource` (and
+`/.well-known/oauth-protected-resource/mcp` for the `/mcp` resource). Because no
+token is required, `authorization_servers` and `scopes_supported` are empty
+rather than naming an issuer that nothing here would honour.
+
 ## Connecting an agent
 
 Claude Code:

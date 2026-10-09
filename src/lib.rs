@@ -340,6 +340,8 @@ fn is_cacheable_page(path: &str) -> bool {
     path == "/"
         || path == "/robots.txt"
         || path == "/sitemap.xml"
+        || path == seo::OAUTH_PROTECTED_RESOURCE_PATH
+        || path == seo::OAUTH_PROTECTED_RESOURCE_MCP_PATH
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
 
@@ -635,6 +637,26 @@ pub async fn sitemap_xml() -> Response {
         .into_response()
 }
 
+fn oauth_metadata_response(resource_path: &str) -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        seo::oauth_protected_resource_metadata(resource_path),
+    )
+        .into_response()
+}
+
+/// RFC 9728 metadata for the site origin.
+#[get("/.well-known/oauth-protected-resource")]
+pub async fn oauth_protected_resource() -> Response {
+    oauth_metadata_response("/")
+}
+
+/// RFC 9728 metadata for the `/mcp` resource.
+#[get("/.well-known/oauth-protected-resource/mcp")]
+pub async fn oauth_protected_resource_mcp() -> Response {
+    oauth_metadata_response(MCP_MOUNT_PATH)
+}
+
 #[must_use]
 pub fn app_routes() -> Vec<autumn_web::Route> {
     let mut routes = routes![
@@ -643,7 +665,9 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         docs_search,
         docs_page,
         robots_txt,
-        sitemap_xml
+        sitemap_xml,
+        oauth_protected_resource,
+        oauth_protected_resource_mcp
     ];
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.
     // Registered here rather than only in `main` so the test harness exercises

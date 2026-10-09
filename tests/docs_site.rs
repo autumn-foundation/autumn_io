@@ -1197,6 +1197,32 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
 }
 
 #[tokio::test]
+async fn oauth_protected_resource_metadata_is_published() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let root = app
+        .get("/.well-known/oauth-protected-resource")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_header_contains("content-type", "application/json")
+        .text();
+    let root: serde_json::Value = serde_json::from_str(&root).expect("valid JSON");
+    assert_eq!(root["resource"], "https://autumn-web.app/");
+    assert!(root["authorization_servers"].is_array());
+    assert!(root["scopes_supported"].is_array());
+
+    let mcp = app
+        .get("/.well-known/oauth-protected-resource/mcp")
+        .send()
+        .await
+        .assert_status(200)
+        .text();
+    let mcp: serde_json::Value = serde_json::from_str(&mcp).expect("valid JSON");
+    assert_eq!(mcp["resource"], "https://autumn-web.app/mcp");
+}
+
+#[tokio::test]
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 
@@ -1246,8 +1272,9 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     // Every guide, plus the home page.
     assert_eq!(summary.html_pages, registry.pages().len() + 1);
     assert!(summary.static_assets >= 4);
-    // `/`, `/robots.txt`, `/sitemap.xml`, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 3);
+    // `/`, `/robots.txt`, `/sitemap.xml`, the OAuth metadata, and one per guide.
+    assert_eq!(summary.routes, registry.pages().len() + 4);
+    assert!(dist.join(".well-known/oauth-protected-resource").is_file());
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
     assert!(home.contains("Ship the app, not the plumbing."));

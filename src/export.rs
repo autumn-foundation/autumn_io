@@ -139,6 +139,20 @@ pub fn export_site(
     )?;
     routes.insert("/sitemap.xml".to_owned(), ManifestEntry::new("sitemap.xml"));
 
+    // Only the origin-level document: the static tree has no `/mcp`, and a
+    // file at `.well-known/oauth-protected-resource` cannot also be the parent
+    // directory of the `/mcp`-scoped one.
+    let oauth_file = seo::OAUTH_PROTECTED_RESOURCE_PATH.trim_start_matches('/');
+    write_text(
+        &output_dir,
+        Path::new(oauth_file),
+        seo::oauth_protected_resource_metadata("/"),
+    )?;
+    routes.insert(
+        seo::OAUTH_PROTECTED_RESOURCE_PATH.to_owned(),
+        ManifestEntry::new(oauth_file),
+    );
+
     let static_assets = copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?
         + write_plugin_assets(&output_dir, &autumn_plugin_motion::MOTION_ASSETS)?;
     write_manifest(&output_dir, Path::new("manifest.json"), routes.clone())?;
