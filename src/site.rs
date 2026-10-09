@@ -17,7 +17,7 @@ pub mod markdown;
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
-const VERSION_LABEL: &str = "Autumn 0.7.0";
+const VERSION_LABEL: &str = "Autumn 0.8.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const HARVEST_GUIDE_START_PATH: &str = "/docs/harvest-project-skeleton";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
@@ -57,6 +57,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "coming-from-other-frameworks",
             "generators",
             "starters",
+            "platform-support",
         ],
     },
     DocsNavGroup {
@@ -65,6 +66,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "autumn-harvest",
             "harvest-project-skeleton",
             "harvest-first-workflow",
+            "harvest-standalone-axum",
             "harvest-durable-timers",
             "harvest-signals",
             "harvest-child-workflows",
@@ -98,6 +100,9 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "tabs",
             "seo",
             "pdf-downloads",
+            "extractors",
+            "forms",
+            "cors",
         ],
     },
     DocsNavGroup {
@@ -108,6 +113,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "votable",
             "feeds",
             "notifications",
+            "collaboration",
         ],
     },
     DocsNavGroup {
@@ -148,6 +154,11 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "route-auth-coverage",
             "audit-logging",
             "retention-sweeps",
+            "ledgered-entities",
+            "query-budgets",
+            "derivations",
+            "cache-coherence",
+            "money",
         ],
     },
     DocsNavGroup {
@@ -161,6 +172,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "scheduled-multi-replica",
             "admin",
             "presence",
+            "web-push",
         ],
     },
     DocsNavGroup {
@@ -171,6 +183,21 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "outbound-webhooks",
             "mcp",
             "openapi",
+            "billing",
+            "wire-contracts",
+        ],
+    },
+    DocsNavGroup {
+        label: "Security and compliance",
+        slugs: &[
+            "agent-authority",
+            "posture-gate",
+            "supply-chain",
+            "confidential-fields",
+            "data-classification",
+            "data-retention",
+            "data-scrubbing",
+            "cookie-consent",
         ],
     },
     DocsNavGroup {
@@ -197,6 +224,9 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "metrics",
             "server-timing",
             "failure-capsules",
+            "capacity-contracts",
+            "sla",
+            "hot-upgrades",
         ],
     },
     DocsNavGroup {
@@ -214,6 +244,8 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "time-zones",
             "console",
             "simulation-testing",
+            "architecture-graph",
+            "constela",
         ],
     },
     DocsNavGroup {
@@ -245,6 +277,8 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "upgrading",
             "edge",
             "fleet-deploys",
+            "plugin-assets",
+            "sandboxed-plugins",
             "deployment",
         ],
     },
@@ -948,6 +982,7 @@ fn document_head(meta: &PageMeta) -> Markup {
     let icon_path = versioned_asset_path(BRAND_MARK_1X_PATH);
     let stylesheet_path = versioned_asset_path("/static/css/site.css");
     let copy_code_script_path = versioned_asset_path("/static/js/copy-code.js");
+    let webmcp_script_path = versioned_asset_path("/static/js/webmcp.js");
 
     html! {
         head {
@@ -979,6 +1014,7 @@ fn document_head(meta: &PageMeta) -> Markup {
                 script type="application/ld+json" { (PreEscaped(structured_data)) }
             }
             script src=(copy_code_script_path) defer {}
+            script src=(webmcp_script_path) defer {}
             (motion_script())
         }
     }
@@ -1021,7 +1057,7 @@ fn site_header(active: &str) -> Markup {
                     a href=(DOCS_START_PATH) { "Docs" }
                 }
                 a href=(HARVEST_DOC_PATH) { "Harvest" }
-                a href=(DOCS_START_PATH) { "0.7.0" }
+                a href=(DOCS_START_PATH) { (seo::AUTUMN_VERSION) }
                 a href=(seo::GITHUB_REPOSITORY_URL) { "GitHub" }
                 a href=(seo::CRATES_IO_URL) { "crates.io" }
                 a href="/docs/deployment" { "Deploy" }

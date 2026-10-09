@@ -146,6 +146,16 @@ pub fn export_site(
         write_text(&output_dir, Path::new(file), seo::ai_catalog_json())?;
         routes.insert(route.to_owned(), ManifestEntry::new(file));
     }
+    write_text(
+        &output_dir,
+        Path::new(".well-known/http-message-signatures-directory"),
+        seo::WEB_BOT_AUTH_DIRECTORY.to_owned(),
+    )?;
+    routes.insert(
+        seo::WEB_BOT_AUTH_PATH.to_owned(),
+        ManifestEntry::new(".well-known/http-message-signatures-directory")
+            .with_content_type(Some(seo::WEB_BOT_AUTH_CONTENT_TYPE.to_owned())),
+    );
 
     let static_assets = copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?
         + write_plugin_assets(&output_dir, &autumn_plugin_motion::MOTION_ASSETS)?;

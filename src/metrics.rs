@@ -29,11 +29,13 @@
 //! already counts every registered route, giving one series per MCP tool for
 //! free, so counting those again here would be duplication.
 //!
-//! **An MCP request counter.** There is no way to write one in 0.7.0. The MCP
-//! endpoint is a *mount*, not a route: app layers do not wrap it (in either
+//! **An MCP request counter.** There was no way to write one in 0.7.0. The
+//! MCP endpoint is a *mount*, not a route: app layers do not wrap it (in either
 //! builder order), it registers no route series, and `autumn-web` emits no MCP
-//! metrics of its own, so nothing an application can install ever observes a
-//! request to `/mcp`.
+//! metrics of its own. 0.8.0 adds one seam onto the mount,
+//! `AppBuilder::secure_mcp(layer)`, which wraps the whole endpoint; it is
+//! documented for auth, but a counting layer would fit it too. Until one is
+//! wired there, nothing here observes a request to `/mcp` directly.
 //!
 //! What *is* observable is the tool call itself. A `tools/call` is replayed
 //! into the ordinary router as `GET /api/…`, so it lands in the route family

@@ -162,6 +162,8 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         // in the sidebar, anchored by the `autumn-harvest` intro above.
         guide_doc!("harvest-project-skeleton"),
         guide_doc!("harvest-first-workflow"),
+        // New in Harvest 0.7.0.
+        guide_doc!("harvest-standalone-axum"),
         guide_doc!("harvest-durable-timers"),
         guide_doc!("harvest-signals"),
         guide_doc!("harvest-child-workflows"),
@@ -188,8 +190,11 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("route-auth-coverage"),
         guide_doc!("aggregates"),
         guide_doc!("counter-cache"),
+        // Shipped in the 0.8.0 crates; held back from the 0.7.0 sync.
+        guide_doc!("ledgered-entities"),
         guide_doc!("audit-logging"),
         guide_doc!("retention-sweeps"),
+        guide_doc!("query-budgets"),
         guide_doc!("metrics"),
         guide_doc!("server-timing"),
         guide_doc!("failure-capsules"),
@@ -199,6 +204,33 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("upgrading"),
         guide_doc!("edge"),
         guide_doc!("fleet-deploys"),
+        // New in Autumn 0.8.0.
+        guide_doc!("platform-support"),
+        guide_doc!("extractors"),
+        guide_doc!("forms"),
+        guide_doc!("cors"),
+        guide_doc!("collaboration"),
+        guide_doc!("derivations"),
+        guide_doc!("cache-coherence"),
+        guide_doc!("money"),
+        guide_doc!("web-push"),
+        guide_doc!("billing"),
+        guide_doc!("wire-contracts"),
+        guide_doc!("agent-authority"),
+        guide_doc!("posture-gate"),
+        guide_doc!("supply-chain"),
+        guide_doc!("confidential-fields"),
+        guide_doc!("data-classification"),
+        guide_doc!("data-retention"),
+        guide_doc!("data-scrubbing"),
+        guide_doc!("cookie-consent"),
+        guide_doc!("capacity-contracts"),
+        guide_doc!("sla"),
+        guide_doc!("hot-upgrades"),
+        guide_doc!("architecture-graph"),
+        guide_doc!("constela"),
+        guide_doc!("plugin-assets"),
+        guide_doc!("sandboxed-plugins"),
     ])
 });
 
@@ -342,6 +374,7 @@ fn is_cacheable_page(path: &str) -> bool {
         || path == "/sitemap.xml"
         || path == seo::ARD_PATH
         || path == seo::AI_CATALOG_PATH
+        || path == seo::WEB_BOT_AUTH_PATH
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
 
@@ -633,6 +666,15 @@ pub async fn ai_catalog() -> Response {
         .into_response()
 }
 
+#[get("/.well-known/http-message-signatures-directory")]
+pub async fn web_bot_auth_directory() -> Response {
+    (
+        [(header::CONTENT_TYPE, seo::WEB_BOT_AUTH_CONTENT_TYPE)],
+        seo::WEB_BOT_AUTH_DIRECTORY,
+    )
+        .into_response()
+}
+
 #[get("/sitemap.xml")]
 pub async fn sitemap_xml() -> Response {
     let registry = match site_docs() {
@@ -664,7 +706,8 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         robots_txt,
         sitemap_xml,
         ard_manifest,
-        ai_catalog
+        ai_catalog,
+        web_bot_auth_directory
     ];
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.
     // Registered here rather than only in `main` so the test harness exercises
