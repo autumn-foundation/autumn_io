@@ -161,20 +161,9 @@ pub fn robots_txt() -> String {
 /// changes either fails CI instead of leaving the card stale.
 pub const MCP_SERVER_NAME: &str = "autumn-mcp";
 pub const MCP_SERVER_VERSION: &str = "0.8.0";
-const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 
-/// Reverse-DNS card name (`namespace/server`) the current Server Card schema
-/// requires; `serverInfo.name` keeps the handshake identity.
-const MCP_CARD_NAME: &str = "app.autumn-web/autumn-mcp";
-
-/// MCP Server Card, served at `/.well-known/mcp/server-card.json`
+/// MCP Server Card (SEP-1649), served at `/.well-known/mcp/server-card.json`
 /// so an agent can discover the `/mcp` server without being told about it.
-///
-/// A single document in two vocabularies, so both kinds of client can read it:
-/// the current `ext-server-card` schema (`name`, `version`, `remotes`) and the
-/// SEP-1649 draft layout (`serverInfo`, `transport`, `capabilities`) that
-/// discovery scanners still check for. The shared `version` is the server's
-/// semantic version, as the current schema defines it.
 ///
 /// Tools-only server: the catalog is derived from the `#[api_doc(mcp)]` routes
 /// in `src/api.rs`, so the card marks it `"dynamic"` rather than duplicating
@@ -182,15 +171,9 @@ const MCP_CARD_NAME: &str = "app.autumn-web/autumn-mcp";
 #[must_use]
 pub fn mcp_server_card() -> String {
     serde_json::json!({
-        "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
-        "name": MCP_CARD_NAME,
-        "version": MCP_SERVER_VERSION,
-        "remotes": [{
-            "type": "streamable-http",
-            "url": absolute_url(crate::MCP_MOUNT_PATH),
-            "supportedProtocolVersions": [MCP_PROTOCOL_VERSION]
-        }],
-        "protocolVersion": MCP_PROTOCOL_VERSION,
+        "$schema": "https://static.modelcontextprotocol.io/schemas/mcp-server-card/v1.json",
+        "version": "1.0",
+        "protocolVersion": "2025-06-18",
         "serverInfo": {
             "name": MCP_SERVER_NAME,
             "title": "Autumn Docs",
