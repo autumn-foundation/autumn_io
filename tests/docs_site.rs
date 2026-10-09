@@ -833,6 +833,7 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png?v="#));
     assert!(html.contains(r#"<link rel="stylesheet" href="/static/css/site.css?v="#));
     assert!(html.contains(r#"<script src="/static/js/copy-code.js?v="#));
+    assert!(html.contains(r#"<script src="/static/js/webmcp.js?v="#));
     assert!(html.contains(r#"src="/static/img/autumn-mark-68.png?v="#));
     assert!(html.contains("<span style=\"color:"));
     assert!(html.contains(r#"<span class="code-language">Rust</span>"#));
@@ -1280,6 +1281,7 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
     for path in [
         "/static/css/site.css?v=test",
         "/static/js/copy-code.js?v=test",
+        "/static/js/webmcp.js?v=test",
         "/static/img/autumn-social.png?v=test",
         "/static/img/autumn-mark-68.png?v=test",
     ] {
@@ -1426,6 +1428,7 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
+    assert!(dist.join("static/js/webmcp.js").exists());
     assert!(dist.join("static/img/autumn-social.png").exists());
     assert!(dist.join("static/img/autumn-mark-68.png").exists());
     assert!(dist.join("static/img/autumn-mark-136.png").exists());
