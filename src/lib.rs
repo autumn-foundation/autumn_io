@@ -373,6 +373,9 @@ fn is_cacheable_page(path: &str) -> bool {
         || path == "/robots.txt"
         || path == "/.well-known/mcp/server-card.json"
         || path == "/sitemap.xml"
+        || path == API_CATALOG_PATH
+        || path == seo::ARD_PATH
+        || path == seo::AI_CATALOG_PATH
         || path == seo::WEB_BOT_AUTH_PATH
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
@@ -471,6 +474,7 @@ pub const HOME_LINK_HEADER: &str = concat!(
 );
 
 #[get("/")]
+#[api_doc(hidden)]
 pub async fn index(negotiate: MarkdownNegotiate) -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -488,11 +492,13 @@ pub async fn index(negotiate: MarkdownNegotiate) -> Response {
 }
 
 #[get("/docs")]
+#[api_doc(hidden)]
 pub async fn docs_index() -> Redirect {
     Redirect::temporary(DOCS_START_PATH)
 }
 
 #[get("/docs/{slug}")]
+#[api_doc(hidden)]
 pub async fn docs_page(negotiate: MarkdownNegotiate, Path(slug): Path<String>) -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -559,6 +565,7 @@ pub struct DocsSearchQuery {
 ///
 /// Served at [`DOCS_SEARCH_PATH`], outside the `/docs/{slug}` namespace.
 #[get("/search")]
+#[api_doc(hidden)]
 pub async fn docs_search(
     negotiate: MarkdownNegotiate,
     hx: HxRequest,
@@ -640,6 +647,7 @@ fn search_html_response(is_htmx: bool, term: &str, hits: Option<&[SearchHit]>) -
 }
 
 #[get("/robots.txt")]
+#[api_doc(hidden)]
 pub async fn robots_txt() -> Response {
     (
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
@@ -657,6 +665,7 @@ const SERVER_CARD_CORS: [(header::HeaderName, &str); 3] = [
 ];
 
 #[get("/.well-known/mcp/server-card.json")]
+#[api_doc(hidden)]
 pub async fn mcp_server_card() -> Response {
     (
         [(header::CONTENT_TYPE, "application/json")],
@@ -672,7 +681,51 @@ async fn mcp_server_card_preflight() -> Response {
     (StatusCode::NO_CONTENT, SERVER_CARD_CORS).into_response()
 }
 
+/// Where RFC 9727 says an API catalog lives.
+pub const API_CATALOG_PATH: &str = "/.well-known/api-catalog";
+
+/// Media type and profile RFC 9727 §3 requires on the catalog response.
+const API_CATALOG_CONTENT_TYPE: &str =
+    "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"";
+
+const API_CATALOG_LINK: &str = "</.well-known/api-catalog>; rel=\"api-catalog\"";
+
+#[get("/.well-known/api-catalog")]
+#[api_doc(hidden)]
+pub async fn api_catalog() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, API_CATALOG_CONTENT_TYPE),
+            // RFC 9727 §2: GET and HEAD responses carry the `api-catalog`
+            // relation, so header-only discovery works.
+            (header::LINK, API_CATALOG_LINK),
+        ],
+        seo::api_catalog(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/ard.json")]
+#[api_doc(hidden)]
+pub async fn ard_manifest() -> Response {
+    ai_catalog().await
+}
+
+#[get("/.well-known/ai-catalog.json")]
+#[api_doc(hidden)]
+pub async fn ai_catalog() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::ai_catalog_json(),
+    )
+        .into_response()
+}
+
 #[get("/.well-known/http-message-signatures-directory")]
+#[api_doc(hidden)]
 pub async fn web_bot_auth_directory() -> Response {
     (
         [(header::CONTENT_TYPE, seo::WEB_BOT_AUTH_CONTENT_TYPE)],
@@ -682,6 +735,7 @@ pub async fn web_bot_auth_directory() -> Response {
 }
 
 #[get("/sitemap.xml")]
+#[api_doc(hidden)]
 pub async fn sitemap_xml() -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -712,6 +766,9 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         robots_txt,
         mcp_server_card,
         sitemap_xml,
+        api_catalog,
+        ard_manifest,
+        ai_catalog,
         web_bot_auth_directory
     ];
     for route in &mut routes {

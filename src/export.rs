@@ -139,6 +139,13 @@ pub fn export_site(
     )?;
     routes.insert("/sitemap.xml".to_owned(), ManifestEntry::new("sitemap.xml"));
 
+    for (route, file) in [
+        (seo::ARD_PATH, ".well-known/ard.json"),
+        (seo::AI_CATALOG_PATH, ".well-known/ai-catalog.json"),
+    ] {
+        write_text(&output_dir, Path::new(file), seo::ai_catalog_json())?;
+        routes.insert(route.to_owned(), ManifestEntry::new(file));
+    }
     write_text(
         &output_dir,
         Path::new(".well-known/http-message-signatures-directory"),
