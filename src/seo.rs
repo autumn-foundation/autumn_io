@@ -137,11 +137,12 @@ pub fn docs_structured_data(page: &DocPage) -> String {
 /// `robots.txt`, allowing the whole site except the machine-readable mirror of
 /// it.
 ///
-/// `/api/` serves the same guides as JSON for agents (and `/mcp` is the
-/// JSON-RPC envelope over those same handlers). Letting a crawler index them
-/// would put a second, uglier copy of every guide in the index competing with
-/// the HTML page that should rank — so they are disallowed here while staying
-/// fully open to the clients they exist for, which do not read `robots.txt`.
+/// `/api/` serves the same guides as JSON for agents. Letting a crawler index
+/// it would put a second, uglier copy of every guide in the index competing
+/// with the HTML page that should rank — so it is disallowed here while staying
+/// fully open to the clients it exists for, which do not read `robots.txt`.
+/// `/mcp` (the JSON-RPC envelope over those same handlers) is deliberately left
+/// crawlable so agents that honor `robots.txt` can still discover and use it.
 ///
 /// The `Content-Signal` line declares AI-usage preferences (see
 /// <https://contentsignals.org/>): these are public framework docs, so search
@@ -149,7 +150,7 @@ pub fn docs_structured_data(page: &DocPage) -> String {
 #[must_use]
 pub fn robots_txt() -> String {
     format!(
-        "User-agent: *\nContent-Signal: ai-train=yes, search=yes, ai-input=yes\nAllow: /\nDisallow: /api/\nDisallow: /mcp\n\nSitemap: {SITE_BASE_URL}/sitemap.xml\n"
+        "User-agent: *\nContent-Signal: ai-train=yes, search=yes, ai-input=yes\nAllow: /\nDisallow: /api/\n\nSitemap: {SITE_BASE_URL}/sitemap.xml\n"
     )
 }
 
