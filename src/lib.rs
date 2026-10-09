@@ -627,11 +627,18 @@ pub const API_CATALOG_PATH: &str = "/.well-known/api-catalog";
 const API_CATALOG_CONTENT_TYPE: &str =
     "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"";
 
+const API_CATALOG_LINK: &str = "</.well-known/api-catalog>; rel=\"api-catalog\"";
+
 #[get("/.well-known/api-catalog")]
 #[api_doc(hidden)]
 pub async fn api_catalog() -> Response {
     (
-        [(header::CONTENT_TYPE, API_CATALOG_CONTENT_TYPE)],
+        [
+            (header::CONTENT_TYPE, API_CATALOG_CONTENT_TYPE),
+            // RFC 9727 §2: GET and HEAD responses carry the `api-catalog`
+            // relation, so header-only discovery works.
+            (header::LINK, API_CATALOG_LINK),
+        ],
         seo::api_catalog(),
     )
         .into_response()

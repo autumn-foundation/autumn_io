@@ -163,7 +163,7 @@ pub fn api_catalog() -> String {
                 "service-desc": [
                     {
                         "href": absolute_url("/openapi.json"),
-                        "type": "application/vnd.oai.openapi+json"
+                        "type": "application/json"
                     }
                 ],
                 "service-doc": [

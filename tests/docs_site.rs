@@ -1205,6 +1205,7 @@ async fn api_catalog_is_a_rfc_9727_linkset() {
         "content-type",
         "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"",
     );
+    response.assert_header("link", "</.well-known/api-catalog>; rel=\"api-catalog\"");
     let catalog: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
     let entry = &catalog["linkset"][0];
     assert_eq!(entry["anchor"], "https://autumn-web.app/api/");
