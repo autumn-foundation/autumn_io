@@ -177,6 +177,7 @@ pub fn ai_catalog_json() -> String {
                 "displayName": "Autumn docs MCP server",
                 "type": "application/mcp-server-card+json",
                 "data": {
+                    "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
                     "name": "app.autumn-web/docs",
                     "title": "Autumn docs MCP server",
                     "description": "Read-only MCP server over the Autumn and Harvest guides for the deployed release.",

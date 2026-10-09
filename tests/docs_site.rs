@@ -1215,6 +1215,10 @@ async fn ard_manifest_is_served_with_cors_and_valid_entries() {
         catalog["entries"][0]["type"],
         "application/mcp-server-card+json"
     );
+    let card = &catalog["entries"][0]["data"];
+    for field in ["$schema", "name", "version", "description"] {
+        assert!(card[field].is_string(), "server card missing {field}");
+    }
     assert!(
         !catalog["specVersion"]
             .as_str()
