@@ -1200,12 +1200,21 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
 async fn ard_manifest_is_served_with_cors_and_valid_entries() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 
-    let response = app.get("/.well-known/ai-catalog.json").send().await;
+    let alias = app.get("/.well-known/ai-catalog.json").send().await;
+    alias.assert_status(200);
+    let alias_body: serde_json::Value = alias.json();
+
+    let response = app.get("/.well-known/ard.json").send().await;
     response.assert_status(200);
     assert_eq!(response.header("content-type"), Some("application/json"));
     assert_eq!(response.header("access-control-allow-origin"), Some("*"));
 
     let catalog: serde_json::Value = response.json();
+    assert_eq!(catalog, alias_body);
+    assert_eq!(
+        catalog["entries"][0]["type"],
+        "application/mcp-server-card+json"
+    );
     assert!(
         !catalog["specVersion"]
             .as_str()
@@ -1284,7 +1293,7 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert_eq!(summary.html_pages, registry.pages().len() + 1);
     assert!(summary.static_assets >= 4);
     // `/`, `/robots.txt`, `/sitemap.xml`, the ARD manifest, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 4);
+    assert_eq!(summary.routes, registry.pages().len() + 5);
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
     assert!(home.contains("Ship the app, not the plumbing."));

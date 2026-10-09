@@ -39,6 +39,7 @@ async fn every_read_path_page_is_cacheable_by_a_shared_cache() {
         "/docs/metrics",
         "/robots.txt",
         "/sitemap.xml",
+        "/.well-known/ard.json",
         "/.well-known/ai-catalog.json",
     ] {
         let response = app.get(path).send().await;
@@ -94,6 +95,7 @@ async fn no_cacheable_response_sets_a_cookie() {
         "/docs/getting-started",
         "/robots.txt",
         "/sitemap.xml",
+        "/.well-known/ard.json",
         "/.well-known/ai-catalog.json",
     ] {
         let response = app.get(path).send().await;

@@ -149,10 +149,14 @@ pub fn robots_txt() -> String {
     )
 }
 
-/// Path of the ARD (Agentic Resource Discovery) manifest.
+/// Canonical path of the ARD (Agentic Resource Discovery) manifest.
+pub const ARD_PATH: &str = "/.well-known/ard.json";
+
+/// Predecessor path, still served so consumers that only check it find the
+/// same manifest.
 pub const AI_CATALOG_PATH: &str = "/.well-known/ai-catalog.json";
 
-/// The ARD manifest served at [`AI_CATALOG_PATH`], so agents can discover the
+/// The ARD manifest served at [`ARD_PATH`] (and [`AI_CATALOG_PATH`]), so agents can discover the
 /// site's MCP server and JSON docs API without parsing HTML.
 ///
 /// Each entry carries exactly one of `url` or `data`: the MCP server is
@@ -169,16 +173,17 @@ pub fn ai_catalog_json() -> String {
         },
         "entries": [
             {
-                "identifier": format!("urn:air:{domain}:docs:mcp-server"),
+                "identifier": format!("urn:air:{domain}:mcp:docs"),
                 "displayName": "Autumn docs MCP server",
-                "type": "application/json",
+                "type": "application/mcp-server-card+json",
                 "data": {
-                    "name": "autumn-docs",
+                    "name": "app.autumn-web/docs",
+                    "title": "Autumn docs MCP server",
                     "description": "Read-only MCP server over the Autumn and Harvest guides for the deployed release.",
-                    "transport": "streamable-http",
-                    "endpoint": absolute_url("/mcp"),
-                    "authentication": "none",
-                    "tools": ["search_autumn_docs", "get_autumn_doc", "list_autumn_docs"]
+                    "version": AUTUMN_VERSION,
+                    "remotes": [
+                        { "type": "streamable-http", "url": absolute_url("/mcp") }
+                    ]
                 },
                 "representativeQueries": [
                     "search the Autumn Rust web framework documentation",
