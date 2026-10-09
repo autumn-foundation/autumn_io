@@ -1197,6 +1197,24 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
 }
 
 #[tokio::test]
+async fn mcp_server_card_is_served_for_agent_discovery() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let response = app.get("/.well-known/mcp/server-card.json").send().await;
+    response
+        .assert_status(200)
+        .assert_header_contains("content-type", "application/json")
+        .assert_header("access-control-allow-origin", "*");
+    let card: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
+
+    assert_eq!(card["serverInfo"]["name"], "autumn-docs");
+    assert_eq!(card["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(card["transport"]["endpoint"], autumn_io::MCP_MOUNT_PATH);
+    assert_eq!(card["endpoint"], "https://autumn-web.app/mcp");
+    assert!(card["capabilities"]["tools"].is_object());
+}
+
+#[tokio::test]
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 

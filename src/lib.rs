@@ -339,6 +339,7 @@ fn has_asset_version_query(query: Option<&str>) -> bool {
 fn is_cacheable_page(path: &str) -> bool {
     path == "/"
         || path == "/robots.txt"
+        || path == "/.well-known/mcp/server-card.json"
         || path == "/sitemap.xml"
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
@@ -614,6 +615,18 @@ pub async fn robots_txt() -> Response {
         .into_response()
 }
 
+#[get("/.well-known/mcp/server-card.json")]
+pub async fn mcp_server_card() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::mcp_server_card(),
+    )
+        .into_response()
+}
+
 #[get("/sitemap.xml")]
 pub async fn sitemap_xml() -> Response {
     let registry = match site_docs() {
@@ -643,6 +656,7 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         docs_search,
         docs_page,
         robots_txt,
+        mcp_server_card,
         sitemap_xml
     ];
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.

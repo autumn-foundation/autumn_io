@@ -38,6 +38,7 @@ async fn every_read_path_page_is_cacheable_by_a_shared_cache() {
         "/docs/getting-started",
         "/docs/metrics",
         "/robots.txt",
+        "/.well-known/mcp/server-card.json",
         "/sitemap.xml",
     ] {
         let response = app.get(path).send().await;

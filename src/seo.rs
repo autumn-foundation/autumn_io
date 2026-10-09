@@ -149,6 +149,43 @@ pub fn robots_txt() -> String {
     )
 }
 
+/// MCP Server Card (SEP-1649), served at `/.well-known/mcp/server-card.json`
+/// so an agent can discover the `/mcp` server without being told about it.
+///
+/// The tool list mirrors the `#[api_doc(mcp)]` routes in `src/api.rs`; the
+/// `tools/list` response stays authoritative, this is the pre-connection
+/// summary.
+#[must_use]
+pub fn mcp_server_card() -> String {
+    serde_json::json!({
+        "$schema": "https://static.modelcontextprotocol.io/schemas/mcp-server-card/v1.json",
+        "serverInfo": {
+            "name": "autumn-docs",
+            "title": "Autumn Docs",
+            "version": env!("CARGO_PKG_VERSION")
+        },
+        "description": "Search and read the Autumn and Autumn Harvest guides as Markdown.",
+        "documentationUrl": absolute_url("/docs/mcp"),
+        "transport": {
+            "type": "streamable-http",
+            "endpoint": crate::MCP_MOUNT_PATH
+        },
+        "endpoint": absolute_url(crate::MCP_MOUNT_PATH),
+        "authentication": { "required": false },
+        "capabilities": {
+            "tools": { "listChanged": false },
+            "resources": {},
+            "prompts": {}
+        },
+        "tools": [
+            { "name": "list_autumn_docs" },
+            { "name": "search_autumn_docs" },
+            { "name": "get_autumn_doc" }
+        ]
+    })
+    .to_string()
+}
+
 #[must_use]
 pub fn sitemap_xml(registry: &DocRegistry) -> String {
     let mut sitemap = String::from(
