@@ -424,16 +424,16 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
 }
 
 /// `Link` header (RFC 8288) on the homepage, advertising where an agent should
-/// go next without having to parse the HTML: the getting-started guide, the
-/// JSON docs API, the MCP server, and the sitemap.
+/// go next without having to parse the HTML: the getting-started guide and the
+/// JSON docs API.
 ///
-/// Only resources this site actually serves; every target is a path in this
-/// file's own route set, so a relative reference resolves against the origin.
+/// Only resources this site actually serves, and only relation types in the
+/// IANA registry: RFC 8288 §3.3 requires an unregistered relation to be an
+/// absolute URI, so `mcp` and `sitemap` are left to `robots.txt`, the
+/// `<link rel="sitemap">` in the page head, and `docs/mcp-server.md`.
 pub const HOME_LINK_HEADER: &str = concat!(
     "</docs/getting-started>; rel=\"service-doc\"; type=\"text/html\", ",
-    "</api/docs>; rel=\"describedby\"; type=\"application/json\", ",
-    "</mcp>; rel=\"mcp\", ",
-    "</sitemap.xml>; rel=\"sitemap\"; type=\"application/xml\""
+    "</api/docs>; rel=\"describedby\"; type=\"application/json\""
 );
 
 #[get("/")]

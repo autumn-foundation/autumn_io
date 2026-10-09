@@ -485,8 +485,6 @@ async fn homepage_advertises_agent_resources_in_a_link_header() {
         for expected in [
             "</docs/getting-started>; rel=\"service-doc\"",
             "</api/docs>; rel=\"describedby\"",
-            "</mcp>; rel=\"mcp\"",
-            "</sitemap.xml>; rel=\"sitemap\"",
         ] {
             assert!(link.contains(expected), "missing {expected} in {link}");
         }
