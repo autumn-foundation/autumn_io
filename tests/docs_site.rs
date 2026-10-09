@@ -1524,6 +1524,7 @@ async fn agent_skills_index_lists_a_skill_whose_digest_matches_the_served_file()
         .await
         .assert_status(200)
         .assert_header_contains("content-type", "application/json")
+        .assert_header("access-control-allow-origin", "*")
         .text();
     let index: serde_json::Value = serde_json::from_str(&index).expect("index is JSON");
     assert_eq!(
@@ -1545,6 +1546,7 @@ async fn agent_skills_index_lists_a_skill_whose_digest_matches_the_served_file()
         .await
         .assert_status(200)
         .assert_header_contains("content-type", "text/markdown")
+        .assert_header("access-control-allow-origin", "*")
         .text();
     let digest = autumn_io::seo::sha256_digest(&body);
     assert_eq!(skill["digest"], digest.as_str());

@@ -768,7 +768,10 @@ pub async fn sitemap_xml() -> Response {
 #[api_doc(hidden)]
 pub async fn agent_skills_index() -> Response {
     (
-        [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
         seo::agent_skills_index(),
     )
         .into_response()
@@ -778,7 +781,10 @@ pub async fn agent_skills_index() -> Response {
 #[api_doc(hidden)]
 pub async fn autumn_docs_skill() -> Response {
     (
-        [(header::CONTENT_TYPE, "text/markdown; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "text/markdown; charset=utf-8"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
         seo::AUTUMN_DOCS_SKILL,
     )
         .into_response()
