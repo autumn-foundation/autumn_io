@@ -214,7 +214,7 @@ pub struct GetDocQuery {
     description = "Return the slug, title, abridged description, sidebar group, \
                    and Markdown size of every guide bundled with this site, plus \
                    the autumn-web and autumn-harvest versions they document. \
-                   There are around 140 guides, so pass the optional `group` \
+                   There are around 170 guides, so pass the optional `group` \
                    argument — a name from the `groups` list every response \
                    carries — to list one section at a time. Use this to browse \
                    what documentation exists; use search_autumn_docs when you \

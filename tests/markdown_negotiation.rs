@@ -200,7 +200,7 @@ async fn the_home_page_hands_an_agent_the_whole_guide_index() {
         .await
         .text();
 
-    assert!(body.starts_with("# Autumn 0.7.0\n"));
+    assert!(body.starts_with("# Autumn 0.8.0\n"));
     assert!(
         body.contains("## All guides"),
         "the home page should carry the site's navigation as a list",
