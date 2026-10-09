@@ -153,6 +153,48 @@ pub fn robots_txt() -> String {
     )
 }
 
+/// Identity the mounted MCP server reports in `initialize.serverInfo`.
+///
+/// `autumn-web` hard-codes both (its own package name and version) and offers
+/// no accessor, so they are mirrored here; `tests/mcp_docs_api.rs` compares
+/// them with a live `initialize` response, so an `autumn-web` upgrade that
+/// changes either fails CI instead of leaving the card stale.
+pub const MCP_SERVER_NAME: &str = "autumn-mcp";
+pub const MCP_SERVER_VERSION: &str = AUTUMN_VERSION;
+
+/// MCP Server Card (SEP-1649), served at `/.well-known/mcp/server-card.json`
+/// so an agent can discover the `/mcp` server without being told about it.
+///
+/// Tools-only server: the catalog is derived from the `#[api_doc(mcp)]` routes
+/// in `src/api.rs`, so the card marks it `"dynamic"` rather than duplicating
+/// the descriptors; `tools/list` is the source of truth.
+#[must_use]
+pub fn mcp_server_card() -> String {
+    serde_json::json!({
+        "$schema": "https://static.modelcontextprotocol.io/schemas/mcp-server-card/v1.json",
+        "version": "1.0",
+        "protocolVersion": "2025-06-18",
+        "serverInfo": {
+            "name": MCP_SERVER_NAME,
+            "title": "Autumn Docs",
+            "version": MCP_SERVER_VERSION
+        },
+        "description": "Search and read the Autumn and Autumn Harvest guides as Markdown.",
+        "documentationUrl": absolute_url("/docs/mcp"),
+        "transport": {
+            "type": "streamable-http",
+            "endpoint": crate::MCP_MOUNT_PATH
+        },
+        "endpoint": absolute_url(crate::MCP_MOUNT_PATH),
+        "authentication": { "required": false, "schemes": [] },
+        "capabilities": {
+            "tools": { "listChanged": false }
+        },
+        "tools": ["dynamic"]
+    })
+    .to_string()
+}
+
 /// The RFC 9727 API catalog served at `/.well-known/api-catalog`.
 ///
 /// A linkset (RFC 9264) with one entry for the public docs API under `/api/`:
@@ -199,8 +241,10 @@ pub const AI_CATALOG_PATH: &str = "/.well-known/ai-catalog.json";
 /// site's MCP server and JSON docs API without parsing HTML.
 ///
 /// Each entry carries exactly one of `url` or `data`: the MCP server is
-/// described inline (there is no separate card document to link to), and the
-/// JSON API is linked by URL.
+/// described inline in the current `ext-server-card` vocabulary (the
+/// SEP-1649-layout card at `/.well-known/mcp/server-card.json` uses a different
+/// `version` meaning, so the two cannot be one document), and the JSON API is
+/// linked by URL.
 #[must_use]
 pub fn ai_catalog_json() -> String {
     let domain = SITE_BASE_URL.trim_start_matches("https://");

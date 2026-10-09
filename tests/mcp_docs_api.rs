@@ -102,6 +102,29 @@ async fn mcp_initialize_advertises_tool_capability() {
 }
 
 #[tokio::test]
+async fn server_card_matches_the_initialize_handshake() {
+    let app = app();
+
+    let handshake = rpc(
+        &app,
+        "initialize",
+        json!({ "protocolVersion": "2025-06-18" }),
+    )
+    .await;
+    let response = app.get("/.well-known/mcp/server-card.json").send().await;
+    response.assert_status(200);
+    let card: Value = response.json();
+
+    assert_eq!(card["serverInfo"]["name"], handshake["serverInfo"]["name"]);
+    assert_eq!(
+        card["serverInfo"]["version"],
+        handshake["serverInfo"]["version"]
+    );
+    assert_eq!(card["protocolVersion"], handshake["protocolVersion"]);
+    assert_eq!(card["capabilities"], handshake["capabilities"]);
+}
+
+#[tokio::test]
 async fn mcp_catalog_exposes_the_three_docs_tools_as_read_only() {
     let app = app();
 
