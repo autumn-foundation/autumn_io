@@ -27,7 +27,8 @@ plan is to refresh them for 0.8 alongside Harvest 0.7.0.
   `tests/fly_deploy_config.rs` already separates the two:
   `runtime_versions_reflect_current_published_autumn_dependency` (Cargo.toml,
   `export.rs`) now pins 0.8.0, and `site_copy_targets_the_upcoming_autumn_docs_line`
-  (`VERSION_LABEL`, `seo::AUTUMN_VERSION`) still pins 0.7.0. The upgrade itself
+  (`VERSION_LABEL`, `seo::AUTUMN_VERSION`; since renamed
+  `site_copy_targets_the_published_autumn_docs_line`) still pins 0.7.0. The upgrade itself
   was small: `#[serde(default)]` beside `skip_serializing_if` for 0.8's stricter
   `OpenApiSchema` derive, and `ManifestEntry::new` / `StaticManifest::new` for the
   structs 0.8 made `#[non_exhaustive]`.
@@ -60,3 +61,9 @@ plan is to refresh them for 0.8 alongside Harvest 0.7.0.
   plugin's preset list.
 - When the docs move to 0.8, only the docs-line constants and the guides
   change. The runtime is already there.
+
+## Follow-up (2026-10-09)
+
+The docs line moved to Autumn 0.8.0 / Harvest 0.7.0, as the last consequence
+above anticipated: the docs-line constants and the guides changed, and nothing
+else in the runtime did. Runtime and docs line now pin the same version.

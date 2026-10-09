@@ -1,10 +1,10 @@
 +++
-title = "File Storage in Autumn"
+title = "File Uploads and Storage"
 description = "Autumn ships a pluggable file-storage abstraction so apps that accept user-uploaded files (avatars, attachments, generated reports) don't have to pick an SDK, design a key scheme, or hand-roll URL signing every time."
 order = 120
 +++
 
-# File Storage in Autumn
+# File Uploads and Storage
 
 Autumn ships a pluggable file-storage abstraction so apps that accept
 user-uploaded files (avatars, attachments, generated reports) don't
@@ -36,8 +36,8 @@ Enable the `storage` feature on `autumn-web` (for the Local backend and the
 
 ```toml
 [dependencies]
-autumn-web       = { version = "0.7", features = ["storage", "multipart"] }
-autumn-storage-s3 = "0.7"   # only needed when storage.backend = "s3"
+autumn-web       = { version = "0.8", features = ["storage", "multipart"] }
+autumn-storage-s3 = "0.8"   # only needed when storage.backend = "s3"
 ```
 
 The framework gives you a working `Local` backend in `dev` out of the
@@ -220,8 +220,8 @@ Add `autumn-storage-s3` to your `Cargo.toml` and wire it up in `main`:
 
 ```toml
 [dependencies]
-autumn-web        = { version = "0.7", features = ["storage", "multipart"] }
-autumn-storage-s3 = "0.7"
+autumn-web        = { version = "0.8", features = ["storage", "multipart"] }
+autumn-storage-s3 = "0.8"
 ```
 
 ```rust,ignore
@@ -341,7 +341,9 @@ Everything works in `dev` with no extra config.
 ### S3 backend
 
 The S3 backend issues real AWS SigV4 presigned PUT URLs. Ensure your bucket CORS
-policy allows `PUT` from your app's origin if you call from browser JavaScript:
+policy allows `PUT` from your app's origin if you call from browser JavaScript
+— this is the **bucket's** policy, separate from your app's own
+[`[cors]` configuration](cors.md):
 
 ```json
 [{

@@ -47,10 +47,10 @@ fn runtime_versions_reflect_current_published_autumn_dependency() {
 }
 
 #[test]
-fn site_copy_targets_the_upcoming_autumn_docs_line() {
-    assert!(SEO_RS.contains(r#"pub const AUTUMN_VERSION: &str = "0.7.0";"#));
-    assert!(SITE_RS.contains(r#"const VERSION_LABEL: &str = "Autumn 0.7.0";"#));
-    assert!(SEO_RS.contains(r#"pub const HARVEST_VERSION: &str = "0.6.0";"#));
+fn site_copy_targets_the_published_autumn_docs_line() {
+    assert!(SEO_RS.contains(r#"pub const AUTUMN_VERSION: &str = "0.8.0";"#));
+    assert!(SITE_RS.contains(r#"const VERSION_LABEL: &str = "Autumn 0.8.0";"#));
+    assert!(SEO_RS.contains(r#"pub const HARVEST_VERSION: &str = "0.7.0";"#));
 }
 
 /// `fly.toml` once set both `memory = '1gb'` and `memory_mb = 256` in the same

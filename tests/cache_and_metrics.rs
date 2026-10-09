@@ -40,6 +40,7 @@ async fn every_read_path_page_is_cacheable_by_a_shared_cache() {
         "/robots.txt",
         "/.well-known/mcp/server-card.json",
         "/sitemap.xml",
+        "/.well-known/http-message-signatures-directory",
     ] {
         let response = app.get(path).send().await;
         response.assert_status(200);

@@ -33,7 +33,7 @@ Postgres/Diesel repository stack — the same setup any Autumn app with a
 
 ```toml
 [dependencies]
-autumn-web = { version = "0.7", features = ["openapi"] }
+autumn-web = { version = "0.8", features = ["openapi"] }
 ```
 
 The `DateBucket` type used for time-series roll-ups is at
@@ -68,9 +68,10 @@ pub trait BookmarkRepository {
 ```
 
 Each declared method becomes an **inherent method** on the generated
-`PgBookmarkRepository` struct that returns a lazy `GroupedAggregate` builder
-(mirroring `find_in_batches`). Nothing touches the database until you call the
-terminal `.load()`.
+`PgBookmarkRepository` struct that returns a lazy
+[`GroupedAggregate`](https://docs.rs/autumn-web/latest/autumn_web/aggregate/struct.GroupedAggregate.html) builder (mirroring
+`find_in_batches`). Nothing touches the database until you call the terminal
+`.load()`.
 
 ## Running the query
 
@@ -106,15 +107,16 @@ let top_tags: Vec<(String, i64)> = repo
     .await?;
 ```
 
-Use `order_by_aggregate_asc` for smallest-first. The ordering is on the
-*aggregate value*, not the group key — that is what makes it a leaderboard
-rather than an alphabetical list.
+Use [`order_by_aggregate_asc`](https://docs.rs/autumn-web/latest/autumn_web/aggregate/struct.GroupedAggregate.html#method.order_by_aggregate_asc)
+for smallest-first. The ordering is on the *aggregate value*, not the group key —
+that is what makes it a leaderboard rather than an alphabetical list.
 
 ## Filtering before the group
 
-`filter_eq` and `filter_range` scope which rows feed the aggregate — they
-apply **before** grouping, and both bounds are bound as query parameters
-(never string-interpolated):
+[`filter_eq`](https://docs.rs/autumn-web/latest/autumn_web/aggregate/struct.GroupedAggregate.html#method.filter_eq) and
+[`filter_range`](https://docs.rs/autumn-web/latest/autumn_web/aggregate/struct.GroupedAggregate.html#method.filter_range) scope
+which rows feed the aggregate — they apply **before** grouping, and both bounds
+are bound as query parameters (never string-interpolated):
 
 ```rust,ignore
 // Only bookmarks created in a window feed the counts.
@@ -131,9 +133,9 @@ windows the input to a time-series roll-up.
 ## Time series with `DateBucket`
 
 Grouping on a raw `created_at` timestamp gives one bucket per distinct instant —
-almost never what you want. `bucket` groups by `date_trunc('<unit>', <col>)`
-instead, collapsing the timestamps into `Day`, `Week`, or `Month` buckets keyed
-by each bucket's start:
+almost never what you want. [`bucket`](https://docs.rs/autumn-web/latest/autumn_web/aggregate/struct.GroupedAggregate.html#method.bucket)
+groups by `date_trunc('<unit>', <col>)` instead, collapsing the timestamps into
+`Day`, `Week`, or `Month` buckets keyed by each bucket's start:
 
 ```rust,ignore
 use autumn_web::aggregate::DateBucket;
