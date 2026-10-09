@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use autumn_io::docs::slugify_heading;
+use pulldown_cmark::{Event, Options, Parser, Tag};
 
 const DEFAULT_AUTUMN_REPO: &str = "../autumn";
 const DEFAULT_DESTINATION: &str = "content/guide";
@@ -825,9 +826,9 @@ fn fragment_target_slug(path: &str, slug: &str) -> Option<String> {
     (!stem.is_empty() && !stem.contains('/')).then(|| stem.to_owned())
 }
 
-/// Close heading-level skips: an ATX heading outside a fenced code block is
-/// placed exactly one level below the nearest preceding heading its author put
-/// at a shallower level, so a `####` straight under a `##` becomes a `###`.
+/// Close heading-level skips: an ATX heading is placed exactly one level below
+/// the nearest preceding heading its author put at a shallower level, so a
+/// `####` straight under a `##` becomes a `###`.
 ///
 /// A skipped level breaks the document outline screen-reader users navigate by
 /// — axe reports it as `heading-order`. Upstream authors these by hand, and a
@@ -837,95 +838,52 @@ fn fragment_target_slug(path: &str, slug: &str) -> Option<String> {
 /// stay siblings and deeper nesting under a raised heading moves up with it.
 /// Only the level changes: heading IDs come from the heading text, so no
 /// anchor moves.
+///
+/// Headings are found by the same CommonMark parser, with the same options,
+/// that renders the site, not by scanning lines. This pass rewrites content,
+/// and a `#` line inside a tilde fence, a longer backtick fence, or an
+/// indented code block is code: line heuristics misread each of those in turn.
 fn clamp_heading_levels(markdown: &str) -> String {
-    let mut output = String::with_capacity(markdown.len());
-    let mut open_fence: Option<Fence> = None;
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+
     // (authored level, emitted level) for each open ancestor heading.
     let mut ancestors: Vec<(usize, usize)> = Vec::new();
+    // (byte offset of the heading's `#` run, authored level, emitted level).
+    let mut raises: Vec<(usize, usize, usize)> = Vec::new();
 
-    for line in markdown.lines() {
-        // This pass rewrites lines, so it tracks fences the CommonMark way: a
-        // `#` line inside a `~~~` block, or inside a ```` block that quotes a
-        // ``` line, is code — rewriting it would corrupt the example, and
-        // reading it as a heading would skew the outline for the real ones.
-        let in_fence = match open_fence {
-            Some(fence) => {
-                if fence.is_closed_by(line) {
-                    open_fence = None;
-                }
-                true
-            }
-            None => {
-                open_fence = Fence::opened_by(line);
-                open_fence.is_some()
-            }
+    for (event, range) in Parser::new_ext(markdown, options).into_offset_iter() {
+        let Event::Start(Tag::Heading { level, .. }) = event else {
+            continue;
         };
-        if !in_fence && let Some(level) = atx_heading_level(line) {
-            while ancestors
-                .last()
-                .is_some_and(|(authored, _)| *authored >= level)
-            {
-                ancestors.pop();
-            }
-            let emitted = ancestors.last().map_or(level, |(_, parent)| parent + 1);
-            ancestors.push((level, emitted));
-            if emitted < level {
-                output.push_str(&"#".repeat(emitted));
-                output.push_str(&line[level..]);
-                output.push('\n');
-                continue;
-            }
+        let level = level as usize;
+        while ancestors
+            .last()
+            .is_some_and(|(authored, _)| *authored >= level)
+        {
+            ancestors.pop();
         }
-        output.push_str(line);
-        output.push('\n');
+        let emitted = ancestors.last().map_or(level, |(_, parent)| parent + 1);
+        ancestors.push((level, emitted));
+
+        // Only an ATX heading carries its level as a `#` run to rewrite. A
+        // setext heading is level 1 or 2 and so never needs raising.
+        if emitted < level && markdown[range.start..].starts_with(&"#".repeat(level)) {
+            raises.push((range.start, level, emitted));
+        }
     }
 
+    let mut output = String::with_capacity(markdown.len());
+    let mut copied = 0;
+    for (start, level, emitted) in raises {
+        output.push_str(&markdown[copied..start]);
+        output.push_str(&"#".repeat(emitted));
+        copied = start + level;
+    }
+    output.push_str(&markdown[copied..]);
     output
-}
-
-/// An open fenced code block: its fence character and the length of the run
-/// that opened it.
-#[derive(Clone, Copy)]
-struct Fence {
-    marker: u8,
-    len: usize,
-}
-
-impl Fence {
-    /// The fence a line opens: a run of three or more backticks or tildes. A
-    /// backtick fence's info string may not itself contain a backtick.
-    fn opened_by(line: &str) -> Option<Self> {
-        let (marker, len, info) = fence_run(line)?;
-        (marker == b'~' || !info.contains('`')).then_some(Self { marker, len })
-    }
-
-    /// Whether a line closes this fence: a run of the same character, at least
-    /// as long as the opening one, with nothing after it but whitespace.
-    fn is_closed_by(self, line: &str) -> bool {
-        fence_run(line).is_some_and(|(marker, len, rest)| {
-            marker == self.marker && len >= self.len && rest.trim().is_empty()
-        })
-    }
-}
-
-/// A line's leading fence run as (character, run length, rest of the line), if
-/// it starts with three or more backticks or tildes. Indentation is allowed, as
-/// everywhere else in this tool, because upstream nests fences in list items.
-fn fence_run(line: &str) -> Option<(u8, usize, &str)> {
-    let rest = line.trim_start();
-    let marker = *rest.as_bytes().first()?;
-    if marker != b'`' && marker != b'~' {
-        return None;
-    }
-    let len = rest.bytes().take_while(|byte| *byte == marker).count();
-    (len >= 3).then(|| (marker, len, &rest[len..]))
-}
-
-/// The level of an ATX heading line (`## Title` is 2), or `None` for any other
-/// line — including a `#hashtag` with no space after the hashes.
-fn atx_heading_level(line: &str) -> Option<usize> {
-    let level = line.bytes().take_while(|byte| *byte == b'#').count();
-    ((1..=6).contains(&level) && line[level..].starts_with(' ')).then_some(level)
 }
 
 /// The site slug a guide file is served at: its file stem. Entries in
@@ -1101,6 +1059,28 @@ mod tests {
         assert_eq!(
             clamp_heading_levels(markdown),
             "# T\n## A\n````\n~~~\n```\n#### code\n````\n### D\n"
+        );
+    }
+
+    #[test]
+    fn an_unmatched_fence_line_in_indented_code_does_not_hide_later_headings() {
+        // The four-space-indented block is code, so its lone ``` opens no
+        // fence, and the `####` after it is still clamped.
+        let markdown = "# T\n\n## A\n\n    ```\n    #### code\n\n#### B\n";
+        assert_eq!(
+            clamp_heading_levels(markdown),
+            "# T\n\n## A\n\n    ```\n    #### code\n\n### B\n"
+        );
+    }
+
+    #[test]
+    fn headings_inside_containers_are_clamped_in_place() {
+        // A heading in a blockquote is part of the outline; only its `#` run
+        // changes, never the `> ` prefix in front of it.
+        let markdown = "# T\n\n## A\n\n> #### Quoted\n";
+        assert_eq!(
+            clamp_heading_levels(markdown),
+            "# T\n\n## A\n\n> ### Quoted\n"
         );
     }
 
