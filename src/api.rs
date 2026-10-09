@@ -574,8 +574,16 @@ impl IntoResponse for DocsApiError {
     }
 }
 
+/// Render an error as the framework's RFC 9457 Problem Details, the shape the
+/// generated OpenAPI spec (`service-desc` in the API catalog) declares for every
+/// error status.
 fn json_error(status: StatusCode, detail: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": detail }))).into_response()
+    let error = if status == StatusCode::NOT_FOUND {
+        AutumnError::not_found_msg(detail)
+    } else {
+        AutumnError::internal_server_error_msg(detail)
+    };
+    error.into_response()
 }
 
 // ─────────────────────────────────────────────────────────────────────────
