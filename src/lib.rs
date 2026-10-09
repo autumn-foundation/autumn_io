@@ -340,6 +340,7 @@ fn is_cacheable_page(path: &str) -> bool {
     path == "/"
         || path == "/robots.txt"
         || path == "/sitemap.xml"
+        || path == seo::AI_CATALOG_PATH
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
 
@@ -614,6 +615,18 @@ pub async fn robots_txt() -> Response {
         .into_response()
 }
 
+#[get("/.well-known/ai-catalog.json")]
+pub async fn ai_catalog() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::ai_catalog_json(),
+    )
+        .into_response()
+}
+
 #[get("/sitemap.xml")]
 pub async fn sitemap_xml() -> Response {
     let registry = match site_docs() {
@@ -643,7 +656,8 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         docs_search,
         docs_page,
         robots_txt,
-        sitemap_xml
+        sitemap_xml,
+        ai_catalog
     ];
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.
     // Registered here rather than only in `main` so the test harness exercises

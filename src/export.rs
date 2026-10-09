@@ -139,6 +139,16 @@ pub fn export_site(
     )?;
     routes.insert("/sitemap.xml".to_owned(), ManifestEntry::new("sitemap.xml"));
 
+    write_text(
+        &output_dir,
+        &PathBuf::from(".well-known").join("ai-catalog.json"),
+        seo::ai_catalog_json(),
+    )?;
+    routes.insert(
+        seo::AI_CATALOG_PATH.to_owned(),
+        ManifestEntry::new(".well-known/ai-catalog.json"),
+    );
+
     let static_assets = copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?
         + write_plugin_assets(&output_dir, &autumn_plugin_motion::MOTION_ASSETS)?;
     write_manifest(&output_dir, Path::new("manifest.json"), routes.clone())?;

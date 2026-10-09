@@ -149,6 +149,61 @@ pub fn robots_txt() -> String {
     )
 }
 
+/// Path of the ARD (Agentic Resource Discovery) manifest.
+pub const AI_CATALOG_PATH: &str = "/.well-known/ai-catalog.json";
+
+/// The ARD manifest served at [`AI_CATALOG_PATH`], so agents can discover the
+/// site's MCP server and JSON docs API without parsing HTML.
+///
+/// Each entry carries exactly one of `url` or `data`: the MCP server is
+/// described inline (there is no separate card document to link to), and the
+/// JSON API is linked by URL.
+#[must_use]
+pub fn ai_catalog_json() -> String {
+    let domain = SITE_BASE_URL.trim_start_matches("https://");
+    serde_json::to_string_pretty(&json!({
+        "specVersion": "1.0",
+        "host": {
+            "displayName": SITE_NAME,
+            "identifier": format!("did:web:{domain}")
+        },
+        "entries": [
+            {
+                "identifier": format!("urn:air:{domain}:docs:mcp-server"),
+                "displayName": "Autumn docs MCP server",
+                "type": "application/json",
+                "data": {
+                    "name": "autumn-docs",
+                    "description": "Read-only MCP server over the Autumn and Harvest guides for the deployed release.",
+                    "transport": "streamable-http",
+                    "endpoint": absolute_url("/mcp"),
+                    "authentication": "none",
+                    "tools": ["search_autumn_docs", "get_autumn_doc", "list_autumn_docs"]
+                },
+                "representativeQueries": [
+                    "search the Autumn Rust web framework documentation",
+                    "how do I define typed routes in Autumn",
+                    "read the Autumn deployment guide",
+                    "which Autumn version does this documentation describe"
+                ]
+            },
+            {
+                "identifier": format!("urn:air:{domain}:docs:json-api"),
+                "displayName": "Autumn docs JSON API",
+                "type": "application/json",
+                "url": absolute_url("/api/docs"),
+                "representativeQueries": [
+                    "list all Autumn framework guides as JSON",
+                    "fetch an Autumn guide as Markdown by slug",
+                    "full-text search of Autumn and Harvest docs"
+                ]
+            }
+        ]
+    }))
+    .expect("static JSON value always serializes")
+        + "\n"
+}
+
 #[must_use]
 pub fn sitemap_xml(registry: &DocRegistry) -> String {
     let mut sitemap = String::from(
