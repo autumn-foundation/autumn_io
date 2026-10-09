@@ -1311,6 +1311,56 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
 }
 
 #[tokio::test]
+async fn ard_manifest_is_served_with_cors_and_valid_entries() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let alias = app.get("/.well-known/ai-catalog.json").send().await;
+    alias.assert_status(200);
+    let alias_body: serde_json::Value = alias.json();
+
+    let response = app.get("/.well-known/ard.json").send().await;
+    response.assert_status(200);
+    assert_eq!(response.header("content-type"), Some("application/json"));
+    assert_eq!(response.header("access-control-allow-origin"), Some("*"));
+
+    let catalog: serde_json::Value = response.json();
+    assert_eq!(catalog, alias_body);
+    assert_eq!(
+        catalog["entries"][0]["type"],
+        "application/mcp-server-card+json"
+    );
+    let card = &catalog["entries"][0]["data"];
+    for field in ["$schema", "name", "version", "description"] {
+        assert!(card[field].is_string(), "server card missing {field}");
+    }
+    assert!(
+        !catalog["specVersion"]
+            .as_str()
+            .unwrap_or_default()
+            .is_empty()
+    );
+    assert!(catalog["host"]["displayName"].is_string());
+    assert!(catalog["host"]["identifier"].is_string());
+
+    let entries = catalog["entries"].as_array().expect("entries array");
+    assert!(!entries.is_empty());
+    for entry in entries {
+        let id = entry["identifier"].as_str().expect("identifier");
+        assert!(id.starts_with("urn:air:autumn-web.app:"), "{id}");
+        assert_eq!(id.split(':').count(), 5, "{id}");
+        assert!(entry["displayName"].is_string());
+        assert!(entry["type"].is_string());
+        assert_ne!(
+            entry.get("url").is_some(),
+            entry.get("data").is_some(),
+            "{id} needs exactly one of url or data"
+        );
+        let queries = entry["representativeQueries"].as_array().expect("queries");
+        assert!((2..=5).contains(&queries.len()), "{id}");
+    }
+}
+
+#[tokio::test]
 async fn web_bot_auth_directory_is_a_valid_ed25519_jwks() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 
@@ -1390,9 +1440,9 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     // Every guide, plus the home page.
     assert_eq!(summary.html_pages, registry.pages().len() + 1);
     assert!(summary.static_assets >= 4);
-    // `/`, `/robots.txt`, `/sitemap.xml`, the Web Bot Auth directory, and one
-    // per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 4);
+    // `/`, `/robots.txt`, `/sitemap.xml`, the ARD manifest (two paths), the Web Bot
+    // Auth directory, and one per guide.
+    assert_eq!(summary.routes, registry.pages().len() + 6);
     assert!(
         dist.join(".well-known/http-message-signatures-directory")
             .is_file()

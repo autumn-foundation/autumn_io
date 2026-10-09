@@ -996,6 +996,7 @@ fn document_head(meta: &PageMeta) -> Markup {
             link rel="canonical" href=(&canonical_url);
             link rel="icon" href=(icon_path) type="image/png";
             link rel="sitemap" type="application/xml" href="/sitemap.xml";
+            link rel="ard" type="application/json" href=(seo::ARD_PATH);
             // Before site.css, so the site can restyle `.motion-progress`.
             (motion_stylesheet())
             link rel="stylesheet" href=(stylesheet_path);

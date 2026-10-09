@@ -153,6 +153,67 @@ pub fn robots_txt() -> String {
     )
 }
 
+/// Canonical path of the ARD (Agentic Resource Discovery) manifest.
+pub const ARD_PATH: &str = "/.well-known/ard.json";
+
+/// Predecessor path, still served so consumers that only check it find the
+/// same manifest.
+pub const AI_CATALOG_PATH: &str = "/.well-known/ai-catalog.json";
+
+/// The ARD manifest served at [`ARD_PATH`] (and [`AI_CATALOG_PATH`]), so agents can discover the
+/// site's MCP server and JSON docs API without parsing HTML.
+///
+/// Each entry carries exactly one of `url` or `data`: the MCP server is
+/// described inline (there is no separate card document to link to), and the
+/// JSON API is linked by URL.
+#[must_use]
+pub fn ai_catalog_json() -> String {
+    let domain = SITE_BASE_URL.trim_start_matches("https://");
+    serde_json::to_string_pretty(&json!({
+        "specVersion": "1.0",
+        "host": {
+            "displayName": SITE_NAME,
+            "identifier": format!("did:web:{domain}")
+        },
+        "entries": [
+            {
+                "identifier": format!("urn:air:{domain}:mcp:docs"),
+                "displayName": "Autumn docs MCP server",
+                "type": "application/mcp-server-card+json",
+                "data": {
+                    "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+                    "name": "app.autumn-web/docs",
+                    "title": "Autumn docs MCP server",
+                    "description": "Read-only MCP server over the Autumn and Harvest guides for the deployed release.",
+                    "version": AUTUMN_VERSION,
+                    "remotes": [
+                        { "type": "streamable-http", "url": absolute_url("/mcp") }
+                    ]
+                },
+                "representativeQueries": [
+                    "search the Autumn Rust web framework documentation",
+                    "how do I define typed routes in Autumn",
+                    "read the Autumn deployment guide",
+                    "which Autumn version does this documentation describe"
+                ]
+            },
+            {
+                "identifier": format!("urn:air:{domain}:docs:json-api"),
+                "displayName": "Autumn docs JSON API",
+                "type": "application/json",
+                "url": absolute_url("/api/docs"),
+                "representativeQueries": [
+                    "list all Autumn framework guides as JSON",
+                    "fetch an Autumn guide as Markdown by slug",
+                    "full-text search of Autumn and Harvest docs"
+                ]
+            }
+        ]
+    }))
+    .expect("static JSON value always serializes")
+        + "\n"
+}
+
 /// Path of the Web Bot Auth key directory.
 pub const WEB_BOT_AUTH_PATH: &str = "/.well-known/http-message-signatures-directory";
 
