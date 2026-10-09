@@ -149,6 +149,41 @@ pub fn robots_txt() -> String {
     )
 }
 
+/// The RFC 9727 API catalog served at `/.well-known/api-catalog`.
+///
+/// A linkset (RFC 9264) with one entry for the public docs API under `/api/`:
+/// `service-desc` points at the generated OpenAPI document, `service-doc` at
+/// the human-readable guides, and `status` at the health endpoint.
+#[must_use]
+pub fn api_catalog() -> String {
+    serde_json::json!({
+        "linkset": [
+            {
+                "anchor": absolute_url("/api/"),
+                "service-desc": [
+                    {
+                        "href": absolute_url("/openapi.json"),
+                        "type": "application/vnd.oai.openapi+json"
+                    }
+                ],
+                "service-doc": [
+                    {
+                        "href": absolute_url("/docs"),
+                        "type": "text/html"
+                    }
+                ],
+                "status": [
+                    {
+                        "href": absolute_url("/health"),
+                        "type": "application/json"
+                    }
+                ]
+            }
+        ]
+    })
+    .to_string()
+}
+
 #[must_use]
 pub fn sitemap_xml(registry: &DocRegistry) -> String {
     let mut sitemap = String::from(

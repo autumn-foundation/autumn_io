@@ -1197,6 +1197,29 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
 }
 
 #[tokio::test]
+async fn api_catalog_is_a_rfc_9727_linkset() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let response = app.get("/.well-known/api-catalog").send().await;
+    response.assert_status(200).assert_header(
+        "content-type",
+        "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"",
+    );
+    let catalog: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
+    let entry = &catalog["linkset"][0];
+    assert_eq!(entry["anchor"], "https://autumn-web.app/api/");
+    assert_eq!(
+        entry["service-desc"][0]["href"],
+        "https://autumn-web.app/openapi.json"
+    );
+    assert_eq!(
+        entry["service-doc"][0]["href"],
+        "https://autumn-web.app/docs"
+    );
+    assert_eq!(entry["status"][0]["href"], "https://autumn-web.app/health");
+}
+
+#[tokio::test]
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 

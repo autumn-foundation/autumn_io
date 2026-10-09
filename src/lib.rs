@@ -340,6 +340,7 @@ fn is_cacheable_page(path: &str) -> bool {
     path == "/"
         || path == "/robots.txt"
         || path == "/sitemap.xml"
+        || path == API_CATALOG_PATH
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
 
@@ -614,6 +615,22 @@ pub async fn robots_txt() -> Response {
         .into_response()
 }
 
+/// Where RFC 9727 says an API catalog lives.
+pub const API_CATALOG_PATH: &str = "/.well-known/api-catalog";
+
+/// Media type and profile RFC 9727 §3 requires on the catalog response.
+const API_CATALOG_CONTENT_TYPE: &str =
+    "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"";
+
+#[get("/.well-known/api-catalog")]
+pub async fn api_catalog() -> Response {
+    (
+        [(header::CONTENT_TYPE, API_CATALOG_CONTENT_TYPE)],
+        seo::api_catalog(),
+    )
+        .into_response()
+}
+
 #[get("/sitemap.xml")]
 pub async fn sitemap_xml() -> Response {
     let registry = match site_docs() {
@@ -643,7 +660,8 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         docs_search,
         docs_page,
         robots_txt,
-        sitemap_xml
+        sitemap_xml,
+        api_catalog
     ];
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.
     // Registered here rather than only in `main` so the test harness exercises
