@@ -368,8 +368,21 @@ fn has_asset_version_query(query: Option<&str>) -> bool {
 /// and so is everything not listed: `/api/*`, `/mcp`, `/health` and the
 /// framework's own `/actuator/*` and `/_stories` are either request-specific or
 /// nobody's business to cache.
+/// Fixed agent-discovery documents (`/auth.md` and the OAuth `.well-known`
+/// pair). Each has exactly one representation whatever `Accept` says, so
+/// `/auth.md` is exempt from the negotiated-Markdown `no-store` safeguard.
+fn is_discovery_document(path: &str) -> bool {
+    matches!(
+        path,
+        seo::AUTH_MD_PATH
+            | seo::OAUTH_PROTECTED_RESOURCE_PATH
+            | seo::OAUTH_AUTHORIZATION_SERVER_PATH
+    )
+}
+
 fn is_cacheable_page(path: &str) -> bool {
     path == "/"
+        || is_discovery_document(path)
         || path == "/robots.txt"
         || path == "/.well-known/mcp/server-card.json"
         || path == "/sitemap.xml"
@@ -397,6 +410,7 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
         .is_some_and(|rest| rest.starts_with('/'));
     let is_page = is_cacheable_page(path);
     let path_is_agent_skill = path.starts_with("/.well-known/agent-skills/");
+    let path_is_discovery = is_discovery_document(path);
     let is_search = path == DOCS_SEARCH_PATH;
     let versioned = has_asset_version_query(request.uri().query());
 
@@ -417,7 +431,7 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
     // The skill file is the exception: it is `text/markdown` but has exactly one
     // representation, the same bytes for every visitor, so it takes the page
     // policy like `robots.txt` rather than the negotiated-Markdown `no-store`.
-    let is_fixed_artifact = path_is_agent_skill;
+    let is_fixed_artifact = path_is_agent_skill || path_is_discovery;
     let is_markdown = !is_fixed_artifact
         && (wants_markdown
             || response
@@ -743,6 +757,36 @@ pub async fn web_bot_auth_directory() -> Response {
         .into_response()
 }
 
+#[get("/auth.md")]
+#[api_doc(hidden)]
+pub async fn auth_md() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/markdown; charset=utf-8")],
+        seo::auth_md(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/oauth-protected-resource")]
+#[api_doc(hidden)]
+pub async fn oauth_protected_resource() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        seo::oauth_protected_resource(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/oauth-authorization-server")]
+#[api_doc(hidden)]
+pub async fn oauth_authorization_server() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        seo::oauth_authorization_server(),
+    )
+        .into_response()
+}
+
 #[get("/sitemap.xml")]
 #[api_doc(hidden)]
 pub async fn sitemap_xml() -> Response {
@@ -800,6 +844,9 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         docs_page,
         robots_txt,
         mcp_server_card,
+        auth_md,
+        oauth_protected_resource,
+        oauth_authorization_server,
         sitemap_xml,
         api_catalog,
         ard_manifest,

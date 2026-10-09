@@ -132,6 +132,23 @@ pub fn export_site(
     write_text(&output_dir, Path::new("robots.txt"), seo::robots_txt())?;
     routes.insert("/robots.txt".to_owned(), ManifestEntry::new("robots.txt"));
 
+    for (route, file, body) in [
+        ("/auth.md", "auth.md", seo::auth_md()),
+        (
+            "/.well-known/oauth-protected-resource",
+            ".well-known/oauth-protected-resource.json",
+            seo::oauth_protected_resource(),
+        ),
+        (
+            "/.well-known/oauth-authorization-server",
+            ".well-known/oauth-authorization-server.json",
+            seo::oauth_authorization_server(),
+        ),
+    ] {
+        write_text(&output_dir, Path::new(file), body)?;
+        routes.insert(route.to_owned(), ManifestEntry::new(file));
+    }
+
     write_text(
         &output_dir,
         Path::new("sitemap.xml"),

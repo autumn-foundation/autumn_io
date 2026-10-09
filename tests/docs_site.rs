@@ -1568,7 +1568,7 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert!(summary.static_assets >= 4);
     // `/`, `/robots.txt`, `/sitemap.xml`, the ARD manifest (two paths), the Web Bot
     // Auth directory, the agent-skills index and skill file, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 8);
+    assert_eq!(summary.routes, registry.pages().len() + 11);
     assert!(
         dist.join(".well-known/http-message-signatures-directory")
             .is_file()
@@ -1601,6 +1601,17 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     let sitemap = std::fs::read_to_string(dist.join("sitemap.xml")).expect("sitemap file");
     assert!(sitemap.contains("<loc>https://autumn-web.app/docs/getting-started</loc>"));
+
+    let auth_md = std::fs::read_to_string(dist.join("auth.md")).expect("auth.md file");
+    assert!(auth_md.starts_with("# auth.md"));
+    assert!(
+        dist.join(".well-known/oauth-protected-resource.json")
+            .exists()
+    );
+    assert!(
+        dist.join(".well-known/oauth-authorization-server.json")
+            .exists()
+    );
 
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
