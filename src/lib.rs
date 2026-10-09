@@ -373,6 +373,8 @@ fn is_cacheable_page(path: &str) -> bool {
         || path == "/robots.txt"
         || path == "/sitemap.xml"
         || path == API_CATALOG_PATH
+        || path == seo::ARD_PATH
+        || path == seo::AI_CATALOG_PATH
         || path == seo::WEB_BOT_AUTH_PATH
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
@@ -677,6 +679,25 @@ pub async fn api_catalog() -> Response {
         .into_response()
 }
 
+#[get("/.well-known/ard.json")]
+#[api_doc(hidden)]
+pub async fn ard_manifest() -> Response {
+    ai_catalog().await
+}
+
+#[get("/.well-known/ai-catalog.json")]
+#[api_doc(hidden)]
+pub async fn ai_catalog() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::ai_catalog_json(),
+    )
+        .into_response()
+}
+
 #[get("/.well-known/http-message-signatures-directory")]
 #[api_doc(hidden)]
 pub async fn web_bot_auth_directory() -> Response {
@@ -719,6 +740,8 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         robots_txt,
         sitemap_xml,
         api_catalog,
+        ard_manifest,
+        ai_catalog,
         web_bot_auth_directory
     ];
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.

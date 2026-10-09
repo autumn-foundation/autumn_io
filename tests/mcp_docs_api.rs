@@ -197,6 +197,8 @@ async fn mcp_catalog_excludes_the_html_site() {
         "sitemap_xml",
         "robots_txt",
         "api_catalog",
+        "ard_manifest",
+        "ai_catalog",
     ] {
         assert!(
             !paths.contains(&excluded.to_owned()),
