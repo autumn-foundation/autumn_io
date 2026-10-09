@@ -1232,6 +1232,7 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_status(200)
         .assert_header_contains("content-type", "text/plain")
         .assert_body_contains("User-agent: *")
+        .assert_body_contains("Content-Signal: ai-train=yes, search=yes, ai-input=yes")
         .assert_body_contains("Allow: /")
         // The JSON docs API and its MCP envelope serve the same guides as the
         // HTML pages; indexing them would compete with the pages that rank.
