@@ -1209,8 +1209,9 @@ async fn oauth_protected_resource_metadata_is_published() {
         .text();
     let root: serde_json::Value = serde_json::from_str(&root).expect("valid JSON");
     assert_eq!(root["resource"], "https://autumn-web.app/");
-    assert!(root["authorization_servers"].is_array());
-    assert!(root["scopes_supported"].is_array());
+    // RFC 9728 §3.2: zero-valued parameters are omitted, not sent as `[]`.
+    assert!(root.get("authorization_servers").is_none());
+    assert!(root.get("scopes_supported").is_none());
 
     let mcp = app
         .get("/.well-known/oauth-protected-resource/mcp")

@@ -160,15 +160,14 @@ pub const OAUTH_PROTECTED_RESOURCE_MCP_PATH: &str = "/.well-known/oauth-protecte
 /// This site is public, unauthenticated and read-only, so there is no
 /// authorization server to point at: publishing a made-up issuer would send
 /// agents off to obtain tokens nothing here would ever check. The document is
-/// therefore the honest one — the resource identifier, an empty
-/// `authorization_servers` and `scopes_supported` (no token is required), and
-/// `bearer_methods_supported` left out because no bearer token is accepted.
+/// therefore the honest one — the resource identifier only. RFC 9728 §3.2
+/// requires parameters with zero values to be omitted, so there is no
+/// `authorization_servers`, `scopes_supported` or `bearer_methods_supported`:
+/// no token is required and no bearer token is accepted.
 #[must_use]
 pub fn oauth_protected_resource_metadata(resource_path: &str) -> String {
     serde_json::json!({
         "resource": absolute_url(resource_path),
-        "authorization_servers": [],
-        "scopes_supported": [],
         "resource_name": format!("{SITE_NAME} documentation"),
         "resource_documentation": absolute_url("/docs/mcp"),
     })
