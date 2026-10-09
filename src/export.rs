@@ -146,7 +146,8 @@ pub fn export_site(
     )?;
     routes.insert(
         seo::WEB_BOT_AUTH_PATH.to_owned(),
-        ManifestEntry::new(".well-known/http-message-signatures-directory"),
+        ManifestEntry::new(".well-known/http-message-signatures-directory")
+            .with_content_type(Some(seo::WEB_BOT_AUTH_CONTENT_TYPE.to_owned())),
     );
 
     let static_assets = copy_static_assets(&config.static_dir, &output_dir, Path::new(STATIC_DIR))?

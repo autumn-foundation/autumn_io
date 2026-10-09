@@ -1279,6 +1279,14 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
         dist.join(".well-known/http-message-signatures-directory")
             .is_file()
     );
+    // The file has no extension, so the manifest must carry the required media
+    // type for a static host to serve it correctly.
+    let manifest = std::fs::read_to_string(dist.join("manifest.json")).expect("manifest");
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).expect("manifest JSON");
+    assert_eq!(
+        manifest["routes"]["/.well-known/http-message-signatures-directory"]["content_type"],
+        "application/http-message-signatures-directory+json"
+    );
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
     assert!(home.contains("Ship the app, not the plumbing."));
