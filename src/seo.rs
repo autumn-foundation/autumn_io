@@ -5,6 +5,7 @@ use crate::docs::{DocPage, DocRegistry};
 pub const SITE_BASE_URL: &str = "https://autumn-web.app";
 pub const SITE_NAME: &str = "Autumn";
 pub const SITE_DESCRIPTION: &str = "Autumn is a Rust web framework for fast server-rendered apps, typed routes, Maud templates, static assets, and production defaults.";
+const MCP_PATH: &str = "/mcp";
 pub const SITE_IMAGE_PATH: &str = "/static/img/autumn-social.png";
 pub const GITHUB_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn";
 pub const WEBSITE_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn_io";
@@ -147,6 +148,91 @@ pub fn robots_txt() -> String {
     format!(
         "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /mcp\n\nSitemap: {SITE_BASE_URL}/sitemap.xml\n"
     )
+}
+
+/// Path of the Auth.md document agents read to learn how to get access.
+pub const AUTH_MD_PATH: &str = "/auth.md";
+/// Path of the OAuth Protected Resource Metadata (RFC 9728).
+pub const OAUTH_PROTECTED_RESOURCE_PATH: &str = "/.well-known/oauth-protected-resource";
+/// Path of the OAuth Authorization Server Metadata (RFC 8414).
+pub const OAUTH_AUTHORIZATION_SERVER_PATH: &str = "/.well-known/oauth-authorization-server";
+
+/// `/auth.md`: how an agent gets access to this site.
+///
+/// The honest answer is that it needs nothing. The site has no accounts,
+/// sessions or tokens, and everything it serves is public documentation, so
+/// the only "registration" is anonymous and no credential is ever issued.
+/// Publishing that explicitly lets an agent stop looking for a sign-up flow.
+#[must_use]
+pub fn auth_md() -> String {
+    format!(
+        "# auth.md\n\n\
+Agent registration instructions for {SITE_NAME} ({SITE_BASE_URL}).\n\n\
+## Audience\n\n\
+Software agents, crawlers and coding assistants reading the {SITE_NAME} documentation.\n\n\
+## Summary\n\n\
+**No registration is required.** This site has no user accounts, sessions, API keys or\n\
+OAuth tokens. Every read-only endpoint is public and anonymous. No credential is issued,\n\
+so there is nothing to claim and nothing to revoke.\n\n\
+## Identity types\n\n\
+- `anonymous`: the only supported type. Send requests without an `Authorization` header.\n\n\
+## Endpoints\n\n\
+- Docs as Markdown: `GET {SITE_BASE_URL}/docs/{{slug}}` with `Accept: text/markdown`\n\
+- Docs JSON API: `GET {SITE_BASE_URL}/api/docs`\n\
+- MCP server (read-only tools): `POST {SITE_BASE_URL}{MCP_PATH}`\n\n\
+## Credentials\n\n\
+None. Credential types supported: `none`. `Authorization` headers are ignored.\n\n\
+## Discovery\n\n\
+- Protected resource metadata: {SITE_BASE_URL}{OAUTH_PROTECTED_RESOURCE_PATH}\n\
+- Authorization server metadata: {SITE_BASE_URL}{OAUTH_AUTHORIZATION_SERVER_PATH}\n\n\
+## Etiquette\n\n\
+Responses are cached at the edge; honour `Cache-Control` and `ETag` and keep request rates\n\
+reasonable.\n"
+    )
+}
+
+/// `/.well-known/oauth-protected-resource` (RFC 9728).
+///
+/// The resource is the site itself and its own origin is the (anonymous)
+/// authorization server, because there is no separate issuer to point at.
+#[must_use]
+pub fn oauth_protected_resource() -> String {
+    json!({
+        "resource": SITE_BASE_URL,
+        "authorization_servers": [SITE_BASE_URL],
+        "scopes_supported": ["docs:read"],
+        "bearer_methods_supported": ["header"],
+        "resource_name": SITE_NAME,
+        "resource_documentation": absolute_url(AUTH_MD_PATH)
+    })
+    .to_string()
+}
+
+/// `/.well-known/oauth-authorization-server` (RFC 8414) with an `agent_auth`
+/// block describing anonymous registration.
+///
+/// No `authorization_endpoint`, `token_endpoint` or `revocation_uri` is
+/// advertised: this site issues no credentials, so there is nothing to
+/// exchange, claim or revoke. `register_uri` points at `/auth.md`, which
+/// states that registration is unnecessary.
+#[must_use]
+pub fn oauth_authorization_server() -> String {
+    json!({
+        "issuer": SITE_BASE_URL,
+        "scopes_supported": ["docs:read"],
+        "response_types_supported": [],
+        "grant_types_supported": [],
+        "service_documentation": absolute_url(AUTH_MD_PATH),
+        "agent_auth": {
+            "skill": absolute_url(AUTH_MD_PATH),
+            "register_uri": absolute_url(AUTH_MD_PATH),
+            "identity_types_supported": ["anonymous"],
+            "anonymous": {
+                "credential_types_supported": ["none"]
+            }
+        }
+    })
+    .to_string()
 }
 
 #[must_use]

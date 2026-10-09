@@ -614,6 +614,33 @@ pub async fn robots_txt() -> Response {
         .into_response()
 }
 
+#[get("/auth.md")]
+pub async fn auth_md() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/markdown; charset=utf-8")],
+        seo::auth_md(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/oauth-protected-resource")]
+pub async fn oauth_protected_resource() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        seo::oauth_protected_resource(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/oauth-authorization-server")]
+pub async fn oauth_authorization_server() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        seo::oauth_authorization_server(),
+    )
+        .into_response()
+}
+
 #[get("/sitemap.xml")]
 pub async fn sitemap_xml() -> Response {
     let registry = match site_docs() {
@@ -643,6 +670,9 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         docs_search,
         docs_page,
         robots_txt,
+        auth_md,
+        oauth_protected_resource,
+        oauth_authorization_server,
         sitemap_xml
     ];
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.

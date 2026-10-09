@@ -1246,8 +1246,9 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     // Every guide, plus the home page.
     assert_eq!(summary.html_pages, registry.pages().len() + 1);
     assert!(summary.static_assets >= 4);
-    // `/`, `/robots.txt`, `/sitemap.xml`, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 3);
+    // `/`, `/robots.txt`, `/sitemap.xml`, `/auth.md`, the two OAuth
+    // `.well-known` documents, and one per guide.
+    assert_eq!(summary.routes, registry.pages().len() + 6);
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
     assert!(home.contains("Ship the app, not the plumbing."));
@@ -1268,6 +1269,11 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     let sitemap = std::fs::read_to_string(dist.join("sitemap.xml")).expect("sitemap file");
     assert!(sitemap.contains("<loc>https://autumn-web.app/docs/getting-started</loc>"));
+
+    let auth_md = std::fs::read_to_string(dist.join("auth.md")).expect("auth.md file");
+    assert!(auth_md.starts_with("# auth.md"));
+    assert!(dist.join(".well-known/oauth-protected-resource").exists());
+    assert!(dist.join(".well-known/oauth-authorization-server").exists());
 
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
