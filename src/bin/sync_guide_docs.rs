@@ -839,14 +839,27 @@ fn fragment_target_slug(path: &str, slug: &str) -> Option<String> {
 /// anchor moves.
 fn clamp_heading_levels(markdown: &str) -> String {
     let mut output = String::with_capacity(markdown.len());
-    let mut in_fence = false;
+    let mut open_fence: Option<Fence> = None;
     // (authored level, emitted level) for each open ancestor heading.
     let mut ancestors: Vec<(usize, usize)> = Vec::new();
 
     for line in markdown.lines() {
-        if line.trim_start().starts_with("```") {
-            in_fence = !in_fence;
-        }
+        // This pass rewrites lines, so it tracks fences the CommonMark way: a
+        // `#` line inside a `~~~` block, or inside a ```` block that quotes a
+        // ``` line, is code — rewriting it would corrupt the example, and
+        // reading it as a heading would skew the outline for the real ones.
+        let in_fence = match open_fence {
+            Some(fence) => {
+                if fence.is_closed_by(line) {
+                    open_fence = None;
+                }
+                true
+            }
+            None => {
+                open_fence = Fence::opened_by(line);
+                open_fence.is_some()
+            }
+        };
         if !in_fence && let Some(level) = atx_heading_level(line) {
             while ancestors
                 .last()
@@ -868,6 +881,44 @@ fn clamp_heading_levels(markdown: &str) -> String {
     }
 
     output
+}
+
+/// An open fenced code block: its fence character and the length of the run
+/// that opened it.
+#[derive(Clone, Copy)]
+struct Fence {
+    marker: u8,
+    len: usize,
+}
+
+impl Fence {
+    /// The fence a line opens: a run of three or more backticks or tildes. A
+    /// backtick fence's info string may not itself contain a backtick.
+    fn opened_by(line: &str) -> Option<Self> {
+        let (marker, len, info) = fence_run(line)?;
+        (marker == b'~' || !info.contains('`')).then_some(Self { marker, len })
+    }
+
+    /// Whether a line closes this fence: a run of the same character, at least
+    /// as long as the opening one, with nothing after it but whitespace.
+    fn is_closed_by(self, line: &str) -> bool {
+        fence_run(line).is_some_and(|(marker, len, rest)| {
+            marker == self.marker && len >= self.len && rest.trim().is_empty()
+        })
+    }
+}
+
+/// A line's leading fence run as (character, run length, rest of the line), if
+/// it starts with three or more backticks or tildes. Indentation is allowed, as
+/// everywhere else in this tool, because upstream nests fences in list items.
+fn fence_run(line: &str) -> Option<(u8, usize, &str)> {
+    let rest = line.trim_start();
+    let marker = *rest.as_bytes().first()?;
+    if marker != b'`' && marker != b'~' {
+        return None;
+    }
+    let len = rest.bytes().take_while(|byte| *byte == marker).count();
+    (len >= 3).then(|| (marker, len, &rest[len..]))
 }
 
 /// The level of an ATX heading line (`## Title` is 2), or `None` for any other
@@ -1029,6 +1080,27 @@ mod tests {
         assert_eq!(
             clamp_heading_levels(markdown),
             "# T\n## A\n### B\n#### B1\n## D\n"
+        );
+    }
+
+    #[test]
+    fn hashes_inside_tilde_and_long_backtick_fences_are_code() {
+        // A tilde fence, and a four-backtick fence quoting a ``` line: neither
+        // `####` is a heading, and the `#` shell comment must not reset the
+        // outline so that the real `###` after it gets raised.
+        let markdown = "# T\n## A\n~~~sh\n# install\n#### output\n~~~\n### B\n\
+                        ````md\n```\n#### quoted\n```\n````\n### C\n";
+        assert_eq!(clamp_heading_levels(markdown), markdown);
+    }
+
+    #[test]
+    fn a_fence_closes_only_on_its_own_marker_and_length() {
+        // `~~~` cannot close a backtick fence, nor ``` a ```` one, so the
+        // `####` lines stay code; the heading after the real close is clamped.
+        let markdown = "# T\n## A\n````\n~~~\n```\n#### code\n````\n#### D\n";
+        assert_eq!(
+            clamp_heading_levels(markdown),
+            "# T\n## A\n````\n~~~\n```\n#### code\n````\n### D\n"
         );
     }
 
