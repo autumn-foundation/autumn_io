@@ -214,7 +214,7 @@ pub struct GetDocQuery {
     description = "Return the slug, title, abridged description, sidebar group, \
                    and Markdown size of every guide bundled with this site, plus \
                    the autumn-web and autumn-harvest versions they document. \
-                   There are around 140 guides, so pass the optional `group` \
+                   There are around 170 guides, so pass the optional `group` \
                    argument — a name from the `groups` list every response \
                    carries — to list one section at a time. Use this to browse \
                    what documentation exists; use search_autumn_docs when you \
@@ -574,8 +574,16 @@ impl IntoResponse for DocsApiError {
     }
 }
 
+/// Render an error as the framework's RFC 9457 Problem Details, the shape the
+/// generated OpenAPI spec (`service-desc` in the API catalog) declares for every
+/// error status.
 fn json_error(status: StatusCode, detail: &str) -> Response {
-    (status, Json(serde_json::json!({ "error": detail }))).into_response()
+    let error = if status == StatusCode::NOT_FOUND {
+        AutumnError::not_found_msg(detail)
+    } else {
+        AutumnError::internal_server_error_msg(detail)
+    };
+    error.into_response()
 }
 
 // ─────────────────────────────────────────────────────────────────────────

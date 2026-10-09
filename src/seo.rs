@@ -1,4 +1,5 @@
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use crate::docs::{DocPage, DocRegistry};
 
@@ -10,11 +11,11 @@ pub const GITHUB_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/au
 pub const WEBSITE_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn_io";
 pub const CRATES_IO_URL: &str = "https://crates.io/crates/autumn-web";
 pub const RUSTDOC_URL: &str = "https://docs.rs/autumn-web";
-pub const AUTUMN_VERSION: &str = "0.7.0";
+pub const AUTUMN_VERSION: &str = "0.8.0";
 pub const HARVEST_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn-harvest";
 pub const HARVEST_CRATES_IO_URL: &str = "https://crates.io/crates/autumn-harvest";
 pub const HARVEST_RUSTDOC_URL: &str = "https://docs.rs/autumn-harvest";
-pub const HARVEST_VERSION: &str = "0.6.0";
+pub const HARVEST_VERSION: &str = "0.7.0";
 
 #[must_use]
 pub fn absolute_url(path: &str) -> String {
@@ -137,39 +138,297 @@ pub fn docs_structured_data(page: &DocPage) -> String {
 /// `robots.txt`, allowing the whole site except the machine-readable mirror of
 /// it.
 ///
-/// `/api/` serves the same guides as JSON for agents (and `/mcp` is the
-/// JSON-RPC envelope over those same handlers). Letting a crawler index them
-/// would put a second, uglier copy of every guide in the index competing with
-/// the HTML page that should rank — so they are disallowed here while staying
-/// fully open to the clients they exist for, which do not read `robots.txt`.
+/// `/api/` serves the same guides as JSON for agents. Letting a crawler index
+/// it would put a second, uglier copy of every guide in the index competing
+/// with the HTML page that should rank — so it is disallowed here while staying
+/// fully open to the clients it exists for, which do not read `robots.txt`.
+/// `/mcp` (the JSON-RPC envelope over those same handlers) is deliberately left
+/// crawlable so agents that honor `robots.txt` can still discover and use it.
+///
+/// The `Content-Signal` line declares AI-usage preferences (see
+/// <https://contentsignals.org/>): these are public framework docs, so search
+/// indexing, AI grounding/input, and AI training are all welcome.
 #[must_use]
 pub fn robots_txt() -> String {
     format!(
-        "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /mcp\n\nSitemap: {SITE_BASE_URL}/sitemap.xml\n"
+        "User-agent: *\nContent-Signal: ai-train=yes, search=yes, ai-input=yes\nAllow: /\nDisallow: /api/\n\nSitemap: {SITE_BASE_URL}/sitemap.xml\n"
     )
 }
 
-/// Path of the RFC 9728 OAuth Protected Resource Metadata document.
-pub const OAUTH_PROTECTED_RESOURCE_PATH: &str = "/.well-known/oauth-protected-resource";
-
-/// Path of the same document scoped to the `/mcp` resource (RFC 9728 §3.1).
-pub const OAUTH_PROTECTED_RESOURCE_MCP_PATH: &str = "/.well-known/oauth-protected-resource/mcp";
-
-/// OAuth Protected Resource Metadata (RFC 9728) for `resource_path`.
+/// Identity the mounted MCP server reports in `initialize.serverInfo`.
 ///
-/// This site is public, unauthenticated and read-only, so there is no
-/// authorization server to point at: publishing a made-up issuer would send
-/// agents off to obtain tokens nothing here would ever check. The document is
-/// therefore the honest one — the resource identifier only. RFC 9728 §3.2
-/// requires parameters with zero values to be omitted, so there is no
-/// `authorization_servers`, `scopes_supported` or `bearer_methods_supported`:
-/// no token is required and no bearer token is accepted.
+/// `autumn-web` hard-codes both (its own package name and version) and offers
+/// no accessor, so they are mirrored here; `tests/mcp_docs_api.rs` compares
+/// them with a live `initialize` response, so an `autumn-web` upgrade that
+/// changes either fails CI instead of leaving the card stale.
+pub const MCP_SERVER_NAME: &str = "autumn-mcp";
+pub const MCP_SERVER_VERSION: &str = AUTUMN_VERSION;
+
+/// MCP Server Card (SEP-1649), served at `/.well-known/mcp/server-card.json`
+/// so an agent can discover the `/mcp` server without being told about it.
+///
+/// Tools-only server: the catalog is derived from the `#[api_doc(mcp)]` routes
+/// in `src/api.rs`, so the card marks it `"dynamic"` rather than duplicating
+/// the descriptors; `tools/list` is the source of truth.
 #[must_use]
-pub fn oauth_protected_resource_metadata(resource_path: &str) -> String {
+pub fn mcp_server_card() -> String {
     serde_json::json!({
-        "resource": absolute_url(resource_path),
-        "resource_name": format!("{SITE_NAME} documentation"),
-        "resource_documentation": absolute_url("/docs/mcp"),
+        "$schema": "https://static.modelcontextprotocol.io/schemas/mcp-server-card/v1.json",
+        "version": "1.0",
+        "protocolVersion": "2025-06-18",
+        "serverInfo": {
+            "name": MCP_SERVER_NAME,
+            "title": "Autumn Docs",
+            "version": MCP_SERVER_VERSION
+        },
+        "description": "Search and read the Autumn and Autumn Harvest guides as Markdown.",
+        "documentationUrl": absolute_url("/docs/mcp"),
+        "transport": {
+            "type": "streamable-http",
+            "endpoint": crate::MCP_MOUNT_PATH
+        },
+        "endpoint": absolute_url(crate::MCP_MOUNT_PATH),
+        "authentication": { "required": false, "schemes": [] },
+        "capabilities": {
+            "tools": { "listChanged": false }
+        },
+        "tools": ["dynamic"]
+    })
+    .to_string()
+}
+
+/// Path of the Agent Skills discovery index (Agent Skills Discovery RFC v0.2.0).
+pub const AGENT_SKILLS_INDEX_PATH: &str = "/.well-known/agent-skills/index.json";
+/// Path the `autumn-docs` skill is served from.
+pub const AUTUMN_DOCS_SKILL_PATH: &str = "/.well-known/agent-skills/autumn-docs/SKILL.md";
+/// The `autumn-docs` skill, served verbatim and digested from these same bytes.
+pub const AUTUMN_DOCS_SKILL: &str = include_str!("../content/skills/autumn-docs/SKILL.md");
+const AGENT_SKILLS_SCHEMA: &str = "https://schemas.agentskills.io/discovery/0.2.0/schema.json";
+
+/// `sha256:{hex}` digest of `content`, the form the discovery index uses.
+#[must_use]
+pub fn sha256_digest(content: &str) -> String {
+    use std::fmt::Write as _;
+
+    let hash = Sha256::digest(content.as_bytes());
+    let mut out = String::from("sha256:");
+    for byte in hash {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// The Agent Skills discovery index. The digest is computed from the served
+/// `SKILL.md` bytes, so the two cannot drift apart.
+#[must_use]
+pub fn agent_skills_index() -> String {
+    json!({
+        "$schema": AGENT_SKILLS_SCHEMA,
+        "skills": [{
+            "name": "autumn-docs",
+            "type": "skill-md",
+            "description": "Look up the Autumn Rust web framework documentation for the deployed release via the docs MCP server, JSON API, or Markdown negotiation.",
+            "url": absolute_url(AUTUMN_DOCS_SKILL_PATH),
+            "digest": sha256_digest(AUTUMN_DOCS_SKILL)
+        }]
+    })
+    .to_string()
+}
+
+/// The RFC 9727 API catalog served at `/.well-known/api-catalog`.
+///
+/// A linkset (RFC 9264) with one entry for the public docs API under `/api/`:
+/// `service-desc` points at the generated OpenAPI document, `service-doc` at
+/// the human-readable guides, and `status` at the health endpoint.
+#[must_use]
+pub fn api_catalog() -> String {
+    serde_json::json!({
+        "linkset": [
+            {
+                "anchor": absolute_url("/api/"),
+                "service-desc": [
+                    {
+                        "href": absolute_url("/openapi.json"),
+                        "type": "application/json"
+                    }
+                ],
+                "service-doc": [
+                    {
+                        "href": absolute_url("/docs"),
+                        "type": "text/html"
+                    }
+                ],
+                "status": [
+                    {
+                        "href": absolute_url("/health"),
+                        "type": "application/json"
+                    }
+                ]
+            }
+        ]
+    })
+    .to_string()
+}
+
+/// Canonical path of the ARD (Agentic Resource Discovery) manifest.
+pub const ARD_PATH: &str = "/.well-known/ard.json";
+
+/// Predecessor path, still served so consumers that only check it find the
+/// same manifest.
+pub const AI_CATALOG_PATH: &str = "/.well-known/ai-catalog.json";
+
+/// The ARD manifest served at [`ARD_PATH`] (and [`AI_CATALOG_PATH`]), so agents can discover the
+/// site's MCP server and JSON docs API without parsing HTML.
+///
+/// Each entry carries exactly one of `url` or `data`: the MCP server is
+/// described inline in the current `ext-server-card` vocabulary (the
+/// SEP-1649-layout card at `/.well-known/mcp/server-card.json` uses a different
+/// `version` meaning, so the two cannot be one document), and the JSON API is
+/// linked by URL.
+#[must_use]
+pub fn ai_catalog_json() -> String {
+    let domain = SITE_BASE_URL.trim_start_matches("https://");
+    serde_json::to_string_pretty(&json!({
+        "specVersion": "1.0",
+        "host": {
+            "displayName": SITE_NAME,
+            "identifier": format!("did:web:{domain}")
+        },
+        "entries": [
+            {
+                "identifier": format!("urn:air:{domain}:mcp:docs"),
+                "displayName": "Autumn docs MCP server",
+                "type": "application/mcp-server-card+json",
+                "data": {
+                    "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+                    "name": "app.autumn-web/docs",
+                    "title": "Autumn docs MCP server",
+                    "description": "Read-only MCP server over the Autumn and Harvest guides for the deployed release.",
+                    "version": AUTUMN_VERSION,
+                    "remotes": [
+                        { "type": "streamable-http", "url": absolute_url("/mcp") }
+                    ]
+                },
+                "representativeQueries": [
+                    "search the Autumn Rust web framework documentation",
+                    "how do I define typed routes in Autumn",
+                    "read the Autumn deployment guide",
+                    "which Autumn version does this documentation describe"
+                ]
+            },
+            {
+                "identifier": format!("urn:air:{domain}:docs:json-api"),
+                "displayName": "Autumn docs JSON API",
+                "type": "application/json",
+                "url": absolute_url("/api/docs"),
+                "representativeQueries": [
+                    "list all Autumn framework guides as JSON",
+                    "fetch an Autumn guide as Markdown by slug",
+                    "full-text search of Autumn and Harvest docs"
+                ]
+            }
+        ]
+    }))
+    .expect("static JSON value always serializes")
+        + "\n"
+}
+
+/// Path of the Web Bot Auth key directory.
+pub const WEB_BOT_AUTH_PATH: &str = "/.well-known/http-message-signatures-directory";
+
+/// Media type the Web Bot Auth draft assigns to the key directory.
+pub const WEB_BOT_AUTH_CONTENT_TYPE: &str = "application/http-message-signatures-directory+json";
+
+/// The site's Web Bot Auth key directory: a JWKS holding the Ed25519 public
+/// key (`kid` is its RFC 7638 thumbprint) that receiving sites use to verify
+/// requests this site signs as a bot or agent.
+///
+/// Only the public half lives here. To rotate, generate a new Ed25519 key,
+/// replace the entry, and keep the old one listed until signed traffic drains.
+pub const WEB_BOT_AUTH_DIRECTORY: &str = r#"{"keys":[{"kty":"OKP","crv":"Ed25519","x":"54vmrf8D78z2CRDIIjBEsd0Zzer3JgcjU8yIi6y5JuY","kid":"L8BOcML4IEa9Bcz6_cmkOlrDESF06ZmJqfKfkp2LA1E"}]}"#;
+
+/// Path of the Auth.md document agents read to learn how to get access.
+pub const AUTH_MD_PATH: &str = "/auth.md";
+/// Path of the OAuth Protected Resource Metadata (RFC 9728).
+pub const OAUTH_PROTECTED_RESOURCE_PATH: &str = "/.well-known/oauth-protected-resource";
+/// Path of the OAuth Authorization Server Metadata (RFC 8414).
+pub const OAUTH_AUTHORIZATION_SERVER_PATH: &str = "/.well-known/oauth-authorization-server";
+
+const MCP_PATH: &str = crate::MCP_MOUNT_PATH;
+
+/// `/auth.md`: how an agent gets access to this site.
+///
+/// The honest answer is that it needs nothing. The site has no accounts,
+/// sessions or tokens, and everything it serves is public documentation, so
+/// the only "registration" is anonymous and no credential is ever issued.
+/// Publishing that explicitly lets an agent stop looking for a sign-up flow.
+#[must_use]
+pub fn auth_md() -> String {
+    format!(
+        "# auth.md\n\n\
+Agent registration instructions for {SITE_NAME} ({SITE_BASE_URL}).\n\n\
+## Audience\n\n\
+Software agents, crawlers and coding assistants reading the {SITE_NAME} documentation.\n\n\
+## Summary\n\n\
+**No registration is required.** This site has no user accounts, sessions, API keys or\n\
+OAuth tokens. Every read-only endpoint is public and anonymous. No credential is issued,\n\
+so there is nothing to claim and nothing to revoke.\n\n\
+## Identity types\n\n\
+- `anonymous`: the only supported type. Send requests without an `Authorization` header.\n\n\
+## Endpoints\n\n\
+- Docs as Markdown: `GET {SITE_BASE_URL}/docs/{{slug}}` with `Accept: text/markdown`\n\
+- Docs JSON API: `GET {SITE_BASE_URL}/api/docs`\n\
+- MCP server (read-only tools): `POST {SITE_BASE_URL}{MCP_PATH}`\n\n\
+## Credentials\n\n\
+None. Credential types supported: `none`. `Authorization` headers are ignored.\n\n\
+## Discovery\n\n\
+- Protected resource metadata: {SITE_BASE_URL}{OAUTH_PROTECTED_RESOURCE_PATH}\n\
+- Authorization server metadata: {SITE_BASE_URL}{OAUTH_AUTHORIZATION_SERVER_PATH}\n\n\
+## Etiquette\n\n\
+Responses are cached at the edge; honour `Cache-Control` and `ETag` and keep request rates\n\
+reasonable.\n"
+    )
+}
+
+/// `/.well-known/oauth-protected-resource` (RFC 9728).
+///
+/// The resource is the site itself and its own origin is the (anonymous)
+/// authorization server, because there is no separate issuer to point at.
+#[must_use]
+pub fn oauth_protected_resource() -> String {
+    json!({
+        "resource": SITE_BASE_URL,
+        "authorization_servers": [SITE_BASE_URL],
+        "scopes_supported": ["docs:read"],
+        "bearer_methods_supported": ["header"],
+        "resource_name": SITE_NAME,
+        "resource_documentation": absolute_url(AUTH_MD_PATH)
+    })
+    .to_string()
+}
+
+/// `/.well-known/oauth-authorization-server` (RFC 8414) with an `agent_auth`
+/// block describing anonymous registration.
+///
+/// No `authorization_endpoint`, `token_endpoint`, `revocation_uri` or empty
+/// grant/response-type lists (RFC 8414 §3.2 forbids zero-element claims) are
+/// advertised: this site issues no credentials, so there is nothing to
+/// exchange, claim or revoke. `register_uri` points at `/auth.md`, which
+/// states that registration is unnecessary.
+#[must_use]
+pub fn oauth_authorization_server() -> String {
+    json!({
+        "issuer": SITE_BASE_URL,
+        "scopes_supported": ["docs:read"],
+        "service_documentation": absolute_url(AUTH_MD_PATH),
+        "agent_auth": {
+            "skill": absolute_url(AUTH_MD_PATH),
+            "register_uri": absolute_url(AUTH_MD_PATH),
+            "identity_types_supported": ["anonymous"],
+            "anonymous": {
+                "credential_types_supported": ["none"]
+            }
+        }
     })
     .to_string()
 }

@@ -1,12 +1,12 @@
 +++
 title = "Autumn Harvest"
-description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.6.0."
+description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.7.0."
 order = 1015
 +++
 
 # Autumn Harvest
 
-Autumn Harvest 0.6.0 is the durable workflow engine for Autumn apps. Use it
+Autumn Harvest 0.7.0 is the durable workflow engine for Autumn apps. Use it
 when a request should start work that must survive restarts, retries, timers,
 signals, child workflows, and scheduled dependency graphs.
 
@@ -35,12 +35,45 @@ history instead of a hopeful background task.
 - A management API, dashboard, CLI, dead-letter inspection and replay, queue and
   per-activity pause/resume, execution lineage and parked-awaitable
   diagnostics, audit trails, search attributes, and telemetry hooks.
+- Safer production defaults: mutating management routes fail closed outside
+  the `dev` profile, activities stop after a 10-minute start-to-close default,
+  every run's history is capped, and retry, re-dispatch and cron fires are
+  jittered.
+- Liveness and readiness probes with a draining state, workers that release
+  their claims on shutdown, automatic load shedding by backlog age, and
+  optional per-client API rate limiting.
+- `HarvestEmbedding`, a single entry point for running Harvest inside a plain
+  Axum service with no autumn-web at all.
+
+## What's New in 0.7.0
+
+Harvest 0.7.0 moves to autumn-web 0.8, so an app bumps `autumn-web`,
+`autumn-harvest`, and `autumn-harvest-plugin` in one change. A leftover
+`autumn-web = "0.7"` compiles a second copy of the framework whose `Plugin`
+trait `HarvestPlugin` does not implement. `HarvestPlugin` now declares a plugin
+contract, so `autumn plugin-check` and `AppBuilder::plugin` both catch a
+mismatched framework version up front.
+
+```toml
+[dependencies]
+autumn-harvest = "0.7"
+autumn-harvest-plugin = "0.7"
+autumn-web = "0.8"
+```
+
+Several defaults changed, and some fail closed. Before you deploy, read the
+[0.7.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.7.0.md).
+Each change has its own section, opt-out, and check.
 
 ## Autumn Integration
 
 Autumn apps wire Harvest in through the plugin. The plugin owns the workflow
 runtime lifecycle, mounts the management API, and keeps the web process and
-worker pool in the same operational footprint.
+worker pool in the same operational footprint. Outside the `dev` profile, the
+management API's mutating routes answer `401` until you declare an auth
+boundary for them, for example with `api_with_auth` in place of `api`. The
+management API reference covers
+[token scopes and the authorizer hook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/management-api.md#authorization-token-scopes-and-the-authorizer-hook).
 
 ```rust
 use autumn_harvest::prelude::*;
@@ -89,7 +122,9 @@ The Harvest guide is folded into this site — the thirteen chapters below the
 Harvest heading in the sidebar walk from a bare project skeleton through
 activities, durable timers, signals, child workflows, idempotency, reliability
 knobs, DAG schedules, worker routing, operations, testing, inbound webhooks,
-and Kafka/SQS broker connectors.
+and Kafka/SQS broker connectors. Running on plain Axum instead of autumn-web?
+Take the fork after chapter 2,
+[The first workflow on plain Axum](harvest-standalone-axum.md).
 
 - [Start the Harvest guide](harvest-project-skeleton.md)
 - [Harvest repository](https://github.com/autumn-foundation/autumn-harvest)

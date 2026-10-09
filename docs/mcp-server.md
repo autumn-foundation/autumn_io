@@ -7,14 +7,6 @@ deployed instead of recalling whatever it saw in training.
 
 It is public, unauthenticated, and read-only.
 
-For agents that probe for it, the site publishes
-[RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) OAuth Protected Resource
-Metadata at `/.well-known/oauth-protected-resource` (and
-`/.well-known/oauth-protected-resource/mcp` for the `/mcp` resource). Because no
-token is required, the document omits `authorization_servers` and
-`scopes_supported` (RFC 9728 §3.2 forbids zero-length members) rather than
-naming an issuer that nothing here would honour.
-
 ## Connecting an agent
 
 Claude Code:
@@ -148,8 +140,10 @@ Search lives at `/api/search`, not `/api/docs/search`: an exact route under
 called `search`. The HTML site sidesteps the same trap by putting its search at
 `/search`.
 
-`robots.txt` disallows `/api/` and `/mcp`. They mirror content that already has
-canonical HTML pages, and the clients they exist for do not read `robots.txt`.
+`robots.txt` disallows `/api/` but not `/mcp`. The JSON API mirrors content that
+already has canonical HTML pages, so crawlers are kept out of it (the clients it
+exists for do not read `robots.txt`). `/mcp` is left crawlable on purpose, so
+agents that honor `robots.txt` can still discover and use it.
 
 ## Changing it
 

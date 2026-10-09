@@ -6,6 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use autumn_io::docs::slugify_heading;
+use pulldown_cmark::{Event, Options, Parser, Tag};
 
 const DEFAULT_AUTUMN_REPO: &str = "../autumn";
 const DEFAULT_DESTINATION: &str = "content/guide";
@@ -153,15 +154,15 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("route-auth-coverage.md", 1250),
     ("aggregates.md", 1260),
     ("counter-cache.md", 1270),
-    // `ledgered-entities.md` and `query-budgets.md` are deliberately not
-    // synced: both document APIs (`ledgered = true`, `#[query_budget(N)]`)
-    // absent from the published autumn-web/autumn-macros 0.7.0 crates this
-    // site builds and links readers to install — upstream's `docs/guide`
-    // source is ahead of what actually shipped to crates.io. Re-add them
-    // once the crates ship the feature; re-syncing without checking would
-    // silently resurrect docs for code that does not exist.
+    // `ledgered-entities.md` and `query-budgets.md` were held back from the
+    // 0.7.0 sync because upstream `trunk-dev` documented APIs (`ledgered =
+    // true`, `#[query_budget(N)]`) the published 0.7.0 crates lacked. Both
+    // ship in autumn-web/autumn-macros 0.8.0, so they fill the weights that
+    // were left open for them.
+    ("ledgered-entities.md", 1280),
     ("audit-logging.md", 1290),
     ("retention-sweeps.md", 1300),
+    ("query-budgets.md", 1310),
     ("metrics.md", 1320),
     ("observability/server-timing.md", 1330),
     ("failure-capsules.md", 1340),
@@ -171,6 +172,39 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("upgrading.md", 1380),
     ("edge.md", 1390),
     ("fleet-deploys.md", 1400),
+    // New in Autumn 0.8.0. Weights continue the trailing tens block, grouped by
+    // the sidebar clusters they are wired into. Synced from the `v0.8.0` tag,
+    // not `trunk-dev`, so every page documents an API the published crates
+    // carry. Upstream's `index.md` is not vendored: it is a hand-kept link
+    // list the sidebar already replaces, and it links the `tutorial/`
+    // sequence, which stays unvendored while six of its twelve chapters are
+    // still signposts back into Getting Started.
+    ("platform-support.md", 1410),
+    ("extractors.md", 1420),
+    ("forms.md", 1430),
+    ("cors.md", 1440),
+    ("collaboration.md", 1450),
+    ("derivations.md", 1460),
+    ("cache-coherence.md", 1470),
+    ("money.md", 1480),
+    ("web-push.md", 1490),
+    ("billing.md", 1500),
+    ("wire-contracts.md", 1510),
+    ("agent-authority.md", 1520),
+    ("posture-gate.md", 1530),
+    ("supply-chain.md", 1540),
+    ("confidential-fields.md", 1550),
+    ("data-classification.md", 1560),
+    ("data-retention.md", 1570),
+    ("data-scrubbing.md", 1580),
+    ("cookie-consent.md", 1590),
+    ("capacity-contracts.md", 1600),
+    ("sla.md", 1610),
+    ("hot-upgrades.md", 1620),
+    ("architecture-graph.md", 1630),
+    ("constela.md", 1640),
+    ("plugin-assets.md", 1650),
+    ("sandboxed-plugins.md", 1660),
 ];
 
 const DEFAULT_HARVEST_REPO: &str = "../autumn-harvest";
@@ -198,6 +232,9 @@ const HARVEST_INTRO_SLUG: &str = "autumn-harvest";
 const HARVEST_GUIDE_FILES: &[(&str, &str, u32)] = &[
     ("01-project-skeleton.md", "harvest-project-skeleton", 1020),
     ("02-first-workflow.md", "harvest-first-workflow", 1030),
+    // New in Harvest 0.7.0: a fork off chapter 2 for services on plain Axum
+    // rather than autumn-web, so it sits between chapters 2 and 3.
+    ("standalone-axum.md", "harvest-standalone-axum", 1035),
     ("03-durable-timers.md", "harvest-durable-timers", 1040),
     ("04-signals.md", "harvest-signals", 1050),
     ("05-child-workflows.md", "harvest-child-workflows", 1060),
@@ -263,7 +300,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     fs::create_dir_all(&args.destination)?;
     for guide in &guides {
-        let body = normalize_fragments(&guide.body, &guide.slug, &headings);
+        let body = clamp_heading_levels(&normalize_fragments(&guide.body, &guide.slug, &headings));
         write_guide(
             &args.destination,
             &guide.slug,
@@ -336,20 +373,32 @@ fn write_guide(
 }
 
 /// Strip the verbose `Chapter N — `/`Chapter N: ` prefix from a Harvest chapter
-/// heading, leaving a clean sidebar/title label (`Project skeleton`).
+/// heading, leaving a clean sidebar/title label (`Project skeleton`). Harvest
+/// 0.7.0's side chapter is labelled `Fork — …` instead of numbered; that label
+/// is stripped the same way, since the sidebar already places it after
+/// chapter 2.
 fn clean_harvest_title(heading: &str) -> String {
     let heading = heading.trim();
     if let Some(rest) = heading.strip_prefix("Chapter ") {
         let after_number = rest.trim_start_matches(|char: char| char.is_ascii_digit());
-        let cleaned = after_number
-            .trim_start()
-            .trim_start_matches(['—', ':', '-'])
-            .trim();
-        if !cleaned.is_empty() {
+        if let Some(cleaned) = strip_title_separator(after_number) {
             return cleaned.to_owned();
         }
     }
+    if let Some(rest) = heading.strip_prefix("Fork")
+        && rest.trim_start().starts_with(['—', ':', '-'])
+        && let Some(cleaned) = strip_title_separator(rest)
+    {
+        return cleaned.to_owned();
+    }
     heading.to_owned()
+}
+
+/// What follows a chapter label's `—`/`:`/`-` separator, or `None` if nothing
+/// does.
+fn strip_title_separator(rest: &str) -> Option<&str> {
+    let cleaned = rest.trim_start().trim_start_matches(['—', ':', '-']).trim();
+    (!cleaned.is_empty()).then_some(cleaned)
 }
 
 /// Rewrite the H1 to the cleaned title (so the site's redundant-title stripping
@@ -777,6 +826,66 @@ fn fragment_target_slug(path: &str, slug: &str) -> Option<String> {
     (!stem.is_empty() && !stem.contains('/')).then(|| stem.to_owned())
 }
 
+/// Close heading-level skips: an ATX heading is placed exactly one level below
+/// the nearest preceding heading its author put at a shallower level, so a
+/// `####` straight under a `##` becomes a `###`.
+///
+/// A skipped level breaks the document outline screen-reader users navigate by
+/// — axe reports it as `heading-order`. Upstream authors these by hand, and a
+/// fix made to the vendored copy is lost on the next sync (`harvest-signals`
+/// regressed exactly that way), so it is enforced here instead. Levels are
+/// tracked against the *authored* outline, so headings authored as siblings
+/// stay siblings and deeper nesting under a raised heading moves up with it.
+/// Only the level changes: heading IDs come from the heading text, so no
+/// anchor moves.
+///
+/// Headings are found by the same CommonMark parser, with the same options,
+/// that renders the site, not by scanning lines. This pass rewrites content,
+/// and a `#` line inside a tilde fence, a longer backtick fence, or an
+/// indented code block is code: line heuristics misread each of those in turn.
+fn clamp_heading_levels(markdown: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+
+    // (authored level, emitted level) for each open ancestor heading.
+    let mut ancestors: Vec<(usize, usize)> = Vec::new();
+    // (byte offset of the heading's `#` run, authored level, emitted level).
+    let mut raises: Vec<(usize, usize, usize)> = Vec::new();
+
+    for (event, range) in Parser::new_ext(markdown, options).into_offset_iter() {
+        let Event::Start(Tag::Heading { level, .. }) = event else {
+            continue;
+        };
+        let level = level as usize;
+        while ancestors
+            .last()
+            .is_some_and(|(authored, _)| *authored >= level)
+        {
+            ancestors.pop();
+        }
+        let emitted = ancestors.last().map_or(level, |(_, parent)| parent + 1);
+        ancestors.push((level, emitted));
+
+        // Only an ATX heading carries its level as a `#` run to rewrite. A
+        // setext heading is level 1 or 2 and so never needs raising.
+        if emitted < level && markdown[range.start..].starts_with(&"#".repeat(level)) {
+            raises.push((range.start, level, emitted));
+        }
+    }
+
+    let mut output = String::with_capacity(markdown.len());
+    let mut copied = 0;
+    for (start, level, emitted) in raises {
+        output.push_str(&markdown[copied..start]);
+        output.push_str(&"#".repeat(emitted));
+        copied = start + level;
+    }
+    output.push_str(&markdown[copied..]);
+    output
+}
+
 /// The site slug a guide file is served at: its file stem. Entries in
 /// [`GUIDE_FILES`] may be nested under `docs/guide/` (`observability/`), and the
 /// site's guide namespace is flat, so the directory prefix is dropped.
@@ -875,4 +984,109 @@ fn strip_inline_markdown(value: &str) -> String {
 fn toml_string(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{escaped}\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clamp_heading_levels, clean_harvest_title};
+
+    #[test]
+    fn numbered_chapter_headings_lose_their_chapter_label() {
+        assert_eq!(
+            clean_harvest_title("Chapter 1 — Project skeleton"),
+            "Project skeleton"
+        );
+        assert_eq!(clean_harvest_title("Chapter 12: Webhooks"), "Webhooks");
+    }
+
+    #[test]
+    fn the_fork_chapter_heading_loses_its_fork_label() {
+        assert_eq!(
+            clean_harvest_title("Fork — The first workflow on plain Axum"),
+            "The first workflow on plain Axum"
+        );
+    }
+
+    #[test]
+    fn headings_that_merely_start_with_a_label_word_are_kept() {
+        assert_eq!(
+            clean_harvest_title("Forking workflows"),
+            "Forking workflows"
+        );
+        assert_eq!(clean_harvest_title("Fork"), "Fork");
+        assert_eq!(clean_harvest_title("Chapter 3"), "Chapter 3");
+    }
+
+    #[test]
+    fn a_skipped_heading_level_is_raised_to_one_below_its_parent() {
+        let markdown = "# Title\n\n## Section\n\n#### Skipped\n\n### Sibling\n";
+        assert_eq!(
+            clamp_heading_levels(markdown),
+            "# Title\n\n## Section\n\n### Skipped\n\n### Sibling\n"
+        );
+    }
+
+    #[test]
+    fn headings_authored_as_siblings_stay_siblings_when_raised() {
+        let markdown = "# T\n## A\n#### B\n#### C\n";
+        assert_eq!(clamp_heading_levels(markdown), "# T\n## A\n### B\n### C\n");
+    }
+
+    #[test]
+    fn nesting_under_a_raised_heading_moves_up_with_it() {
+        let markdown = "# T\n## A\n#### B\n##### B1\n## D\n";
+        assert_eq!(
+            clamp_heading_levels(markdown),
+            "# T\n## A\n### B\n#### B1\n## D\n"
+        );
+    }
+
+    #[test]
+    fn hashes_inside_tilde_and_long_backtick_fences_are_code() {
+        // A tilde fence, and a four-backtick fence quoting a ``` line: neither
+        // `####` is a heading, and the `#` shell comment must not reset the
+        // outline so that the real `###` after it gets raised.
+        let markdown = "# T\n## A\n~~~sh\n# install\n#### output\n~~~\n### B\n\
+                        ````md\n```\n#### quoted\n```\n````\n### C\n";
+        assert_eq!(clamp_heading_levels(markdown), markdown);
+    }
+
+    #[test]
+    fn a_fence_closes_only_on_its_own_marker_and_length() {
+        // `~~~` cannot close a backtick fence, nor ``` a ```` one, so the
+        // `####` lines stay code; the heading after the real close is clamped.
+        let markdown = "# T\n## A\n````\n~~~\n```\n#### code\n````\n#### D\n";
+        assert_eq!(
+            clamp_heading_levels(markdown),
+            "# T\n## A\n````\n~~~\n```\n#### code\n````\n### D\n"
+        );
+    }
+
+    #[test]
+    fn an_unmatched_fence_line_in_indented_code_does_not_hide_later_headings() {
+        // The four-space-indented block is code, so its lone ``` opens no
+        // fence, and the `####` after it is still clamped.
+        let markdown = "# T\n\n## A\n\n    ```\n    #### code\n\n#### B\n";
+        assert_eq!(
+            clamp_heading_levels(markdown),
+            "# T\n\n## A\n\n    ```\n    #### code\n\n### B\n"
+        );
+    }
+
+    #[test]
+    fn headings_inside_containers_are_clamped_in_place() {
+        // A heading in a blockquote is part of the outline; only its `#` run
+        // changes, never the `> ` prefix in front of it.
+        let markdown = "# T\n\n## A\n\n> #### Quoted\n";
+        assert_eq!(
+            clamp_heading_levels(markdown),
+            "# T\n\n## A\n\n> ### Quoted\n"
+        );
+    }
+
+    #[test]
+    fn well_ordered_headings_and_fenced_hashes_are_untouched() {
+        let markdown = "# T\n## A\n### B\n## C\n\n```sh\n#### not a heading\n```\n#hashtag\n";
+        assert_eq!(clamp_heading_levels(markdown), markdown);
+    }
 }

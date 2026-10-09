@@ -365,7 +365,7 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.6.0"));
+    assert!(html.contains("Autumn Harvest 0.7.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
@@ -465,7 +465,7 @@ fn bundled_docs_pagination_follows_grouped_sidebar_order() {
         .expect("deployment guide should be bundled");
     let deployment_html = render_docs_page(registry, deployment_page).into_string();
     assert!(deployment_html.contains(
-        r#"<a class="pagination-link previous" href="/docs/fleet-deploys"><span>Previous</span><strong>Fleet Deploys</strong></a>"#
+        r#"<a class="pagination-link previous" href="/docs/sandboxed-plugins"><span>Previous</span><strong>Sandboxed Plugins</strong></a>"#
     ));
     assert!(
         !deployment_html.contains(r#"<a class="pagination-link next""#),
@@ -652,6 +652,99 @@ fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
     );
 }
 
+#[test]
+fn bundled_site_docs_include_the_autumn_080_and_harvest_070_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Every guide new in the 0.8.0 sync, the two held back from 0.7.0 until
+    // the crates shipped their APIs, and Harvest 0.7.0's plain-Axum fork.
+    for slug in [
+        "ledgered-entities",
+        "query-budgets",
+        "platform-support",
+        "extractors",
+        "forms",
+        "cors",
+        "collaboration",
+        "derivations",
+        "cache-coherence",
+        "money",
+        "web-push",
+        "billing",
+        "wire-contracts",
+        "agent-authority",
+        "posture-gate",
+        "supply-chain",
+        "confidential-fields",
+        "data-classification",
+        "data-retention",
+        "data-scrubbing",
+        "cookie-consent",
+        "capacity-contracts",
+        "sla",
+        "hot-upgrades",
+        "architecture-graph",
+        "constela",
+        "plugin-assets",
+        "sandboxed-plugins",
+        "harvest-standalone-axum",
+    ] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(!page.html().is_empty(), "{slug} should render a body");
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+    }
+
+    // The Harvest fork drops its `Fork — ` label like the numbered chapters
+    // drop theirs, and links back into the chapter sequence on-site.
+    let standalone = registry
+        .page("harvest-standalone-axum")
+        .expect("harvest standalone-axum fork should be bundled");
+    assert_eq!(standalone.title, "The first workflow on plain Axum");
+    assert!(
+        standalone
+            .html()
+            .contains(r#"href="/docs/harvest-first-workflow""#)
+    );
+
+    // Chapters 1 and 2 point readers at the fork, and those links stay on-site.
+    for slug in ["harvest-project-skeleton", "harvest-first-workflow"] {
+        assert!(
+            registry
+                .page(slug)
+                .expect("harvest chapter should be bundled")
+                .html()
+                .contains(r#"href="/docs/harvest-standalone-axum""#),
+            "{slug} should link the plain-Axum fork on-site"
+        );
+    }
+}
+
+/// Every bundled guide is claimed by a named sidebar group. A guide no group
+/// claims still renders, but under the "Reference" catch-all at the bottom of
+/// the sidebar — easy to miss when a sync adds a page to the registry and not
+/// to `DOCS_NAV_GROUPS`.
+#[test]
+fn every_bundled_guide_is_slotted_into_a_named_sidebar_group() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let ungrouped: Vec<&str> = registry
+        .pages()
+        .iter()
+        .map(|page| page.slug.as_str())
+        .filter(|slug| !is_grouped_docs_nav_slug(slug))
+        .collect();
+
+    assert!(
+        ungrouped.is_empty(),
+        "guides missing from DOCS_NAV_GROUPS: {ungrouped:?}"
+    );
+}
+
 /// Whether a slug is reachable from the rendered docs sidebar, which only
 /// renders pages that a `DOCS_NAV_GROUPS` entry claims (anything else falls
 /// into the ungrouped "Reference" catch-all).
@@ -740,6 +833,7 @@ fn rendered_home_page_contains_search_social_and_site_schema_metadata() {
     assert!(html.contains(r#"<link rel="icon" href="/static/img/autumn-mark-68.png?v="#));
     assert!(html.contains(r#"<link rel="stylesheet" href="/static/css/site.css?v="#));
     assert!(html.contains(r#"<script src="/static/js/copy-code.js?v="#));
+    assert!(html.contains(r#"<script src="/static/js/webmcp.js?v="#));
     assert!(html.contains(r#"src="/static/img/autumn-mark-68.png?v="#));
     assert!(html.contains("<span style=\"color:"));
     assert!(html.contains(r#"<span class="code-language">Rust</span>"#));
@@ -846,15 +940,20 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
             .contains(r#"href="/docs/extensibility""#)
     );
     assert!(custom_subsystems.html().contains(
-        r#"href="https://github.com/autumn-foundation/autumn/tree/trunk-dev/examples/custom_config_loader""#
-    ));
-    assert!(custom_subsystems.html().contains(
         r#"href="https://github.com/autumn-foundation/autumn/blob/trunk-dev/autumn/src/plugin.rs""#
     ));
+
+    // A relative link to an upstream example directory resolves to a `tree/`
+    // URL on the framework repo. (0.8.0 dropped the `custom_config_loader`
+    // example this used to check, so the edge guide's example stands in.)
+    let edge = registry.page("edge").expect("edge guide should be bundled");
+    assert!(edge.html().contains(
+        r#"href="https://github.com/autumn-foundation/autumn/tree/trunk-dev/examples/edge-greeting""#
+    ));
     assert!(
-        !custom_subsystems
+        !edge
             .html()
-            .contains(r#"href="../../examples/custom_config_loader""#)
+            .contains(r#"href="../../examples/edge-greeting""#)
     );
 
     // The vendored Harvest chapters cross-link back into the autumn-harvest
@@ -1106,6 +1205,20 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .assert_status(200)
         .assert_body_contains("<h1 id=\"page-title\">Broker connectors (Kafka, SQS)</h1>");
 
+    // Harvest 0.7.0's plain-Axum fork and a guide new in Autumn 0.8.0 are
+    // routed at their site slugs.
+    app.get("/docs/harvest-standalone-axum")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("<h1 id=\"page-title\">The first workflow on plain Axum</h1>");
+
+    app.get("/docs/ledgered-entities")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("Ledgered Entities");
+
     // The search guide is served at its own slug; the docs-search UI lives
     // outside the guide namespace and no longer shadows it.
     app.get("/docs/search")
@@ -1168,6 +1281,7 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
     for path in [
         "/static/css/site.css?v=test",
         "/static/js/copy-code.js?v=test",
+        "/static/js/webmcp.js?v=test",
         "/static/img/autumn-social.png?v=test",
         "/static/img/autumn-mark-68.png?v=test",
     ] {
@@ -1197,48 +1311,186 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
 }
 
 #[tokio::test]
-async fn oauth_protected_resource_metadata_is_published() {
+async fn mcp_server_card_is_served_for_agent_discovery() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 
-    let root = app
-        .get("/.well-known/oauth-protected-resource")
-        .send()
-        .await
+    let response = app.get("/.well-known/mcp/server-card.json").send().await;
+    response
         .assert_status(200)
         .assert_header_contains("content-type", "application/json")
-        .text();
-    let root: serde_json::Value = serde_json::from_str(&root).expect("valid JSON");
-    assert_eq!(root["resource"], "https://autumn-web.app/");
-    // RFC 9728 §3.2: zero-valued parameters are omitted, not sent as `[]`.
-    assert!(root.get("authorization_servers").is_none());
-    assert!(root.get("scopes_supported").is_none());
+        .assert_header("access-control-allow-origin", "*")
+        .assert_header("access-control-allow-methods", "GET")
+        .assert_header("access-control-allow-headers", "Content-Type");
+    let card: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
 
-    let mcp = app
-        .get("/.well-known/oauth-protected-resource/mcp")
+    assert_eq!(card["transport"]["endpoint"], autumn_io::MCP_MOUNT_PATH);
+    assert_eq!(card["endpoint"], "https://autumn-web.app/mcp");
+    assert_eq!(card["authentication"]["required"], false);
+    assert_eq!(card["authentication"]["schemes"], serde_json::json!([]));
+    assert_eq!(card["version"], "1.0");
+    assert_eq!(card["protocolVersion"], "2025-06-18");
+    assert!(card["capabilities"]["tools"].is_object());
+    // Tools-only server: no resources/prompts, and a dynamic tool catalog.
+    assert!(card["capabilities"].get("resources").is_none());
+    assert!(card["capabilities"].get("prompts").is_none());
+    assert_eq!(card["tools"], serde_json::json!(["dynamic"]));
+}
+
+#[tokio::test]
+async fn mcp_server_card_answers_cors_preflight() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    app.options("/.well-known/mcp/server-card.json")
         .send()
         .await
-        .assert_status(200)
-        .text();
-    let mcp: serde_json::Value = serde_json::from_str(&mcp).expect("valid JSON");
-    assert_eq!(mcp["resource"], "https://autumn-web.app/mcp");
+        .assert_status(204)
+        .assert_header("access-control-allow-origin", "*")
+        .assert_header("access-control-allow-methods", "GET")
+        .assert_header("access-control-allow-headers", "Content-Type");
+}
+
+#[tokio::test]
+async fn api_catalog_is_a_rfc_9727_linkset() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let response = app.get("/.well-known/api-catalog").send().await;
+    response.assert_status(200).assert_header(
+        "content-type",
+        "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"",
+    );
+    response.assert_header("link", "</.well-known/api-catalog>; rel=\"api-catalog\"");
+    let catalog: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
+    let entry = &catalog["linkset"][0];
+    assert_eq!(entry["anchor"], "https://autumn-web.app/api/");
+    assert_eq!(
+        entry["service-desc"][0]["href"],
+        "https://autumn-web.app/openapi.json"
+    );
+    assert_eq!(
+        entry["service-doc"][0]["href"],
+        "https://autumn-web.app/docs"
+    );
+    assert_eq!(entry["status"][0]["href"], "https://autumn-web.app/health");
+}
+
+#[tokio::test]
+async fn openapi_spec_documents_only_the_cataloged_api() {
+    // `service-desc` in the API catalog points here; the HTML pages and
+    // discovery files are not part of that API and must stay out of it.
+    let app = TestApp::new()
+        .routes(autumn_io::app_routes())
+        .openapi(autumn_web::openapi::OpenApiConfig::new(
+            "Autumn docs API",
+            "0.0.0",
+        ))
+        .build();
+
+    let response = app.get("/openapi.json").send().await;
+    response.assert_status(200);
+    let spec: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
+    let paths: Vec<&String> = spec["paths"].as_object().expect("paths").keys().collect();
+    assert!(!paths.is_empty(), "the docs API should be documented");
+    for path in paths {
+        assert!(path.starts_with("/api/"), "{path} is not part of the API");
+    }
+}
+
+#[tokio::test]
+async fn ard_manifest_is_served_with_cors_and_valid_entries() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let alias = app.get("/.well-known/ai-catalog.json").send().await;
+    alias.assert_status(200);
+    let alias_body: serde_json::Value = alias.json();
+
+    let response = app.get("/.well-known/ard.json").send().await;
+    response.assert_status(200);
+    assert_eq!(response.header("content-type"), Some("application/json"));
+    assert_eq!(response.header("access-control-allow-origin"), Some("*"));
+
+    let catalog: serde_json::Value = response.json();
+    assert_eq!(catalog, alias_body);
+    assert_eq!(
+        catalog["entries"][0]["type"],
+        "application/mcp-server-card+json"
+    );
+    let card = &catalog["entries"][0]["data"];
+    for field in ["$schema", "name", "version", "description"] {
+        assert!(card[field].is_string(), "server card missing {field}");
+    }
+    assert!(
+        !catalog["specVersion"]
+            .as_str()
+            .unwrap_or_default()
+            .is_empty()
+    );
+    assert!(catalog["host"]["displayName"].is_string());
+    assert!(catalog["host"]["identifier"].is_string());
+
+    let entries = catalog["entries"].as_array().expect("entries array");
+    assert!(!entries.is_empty());
+    for entry in entries {
+        let id = entry["identifier"].as_str().expect("identifier");
+        assert!(id.starts_with("urn:air:autumn-web.app:"), "{id}");
+        assert_eq!(id.split(':').count(), 5, "{id}");
+        assert!(entry["displayName"].is_string());
+        assert!(entry["type"].is_string());
+        assert_ne!(
+            entry.get("url").is_some(),
+            entry.get("data").is_some(),
+            "{id} needs exactly one of url or data"
+        );
+        let queries = entry["representativeQueries"].as_array().expect("queries");
+        assert!((2..=5).contains(&queries.len()), "{id}");
+    }
+}
+
+#[tokio::test]
+async fn web_bot_auth_directory_is_a_valid_ed25519_jwks() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let response = app
+        .get("/.well-known/http-message-signatures-directory")
+        .send()
+        .await;
+    response.assert_status(200).assert_header(
+        "content-type",
+        "application/http-message-signatures-directory+json",
+    );
+    let jwks: serde_json::Value = serde_json::from_str(&response.text()).expect("JSON body");
+    let keys = jwks["keys"].as_array().expect("keys array");
+    assert!(!keys.is_empty());
+    for key in keys {
+        assert_eq!(key["kty"], "OKP");
+        assert_eq!(key["crv"], "Ed25519");
+        assert!(key["x"].as_str().is_some_and(|x| x.len() == 43));
+        assert!(
+            key.get("d").is_none(),
+            "private key material must never be published"
+        );
+    }
 }
 
 #[tokio::test]
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 
-    app.get("/robots.txt")
-        .send()
-        .await
+    let response = app.get("/robots.txt").send().await;
+    let robots = response
         .assert_status(200)
         .assert_header_contains("content-type", "text/plain")
         .assert_body_contains("User-agent: *")
+        .assert_body_contains("Content-Signal: ai-train=yes, search=yes, ai-input=yes")
         .assert_body_contains("Allow: /")
-        // The JSON docs API and its MCP envelope serve the same guides as the
-        // HTML pages; indexing them would compete with the pages that rank.
+        // The JSON docs API serves the same guides as the HTML pages; indexing
+        // it would compete with the pages that rank. `/mcp` stays crawlable so
+        // robots-respecting agents can reach it.
         .assert_body_contains("Disallow: /api/")
-        .assert_body_contains("Disallow: /mcp")
         .assert_body_contains("Sitemap: https://autumn-web.app/sitemap.xml");
+    assert!(
+        !robots.text().contains("/mcp"),
+        "/mcp must stay crawlable so robots-respecting agents can reach it"
+    );
 
     let sitemap = app
         .get("/sitemap.xml")
@@ -1254,12 +1506,53 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_body_contains("<loc>https://autumn-web.app/docs/server-timing</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/fleet-deploys</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-broker-connectors</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-standalone-axum</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/query-budgets</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/sandboxed-plugins</loc>")
         .text();
 
     assert!(
         !sitemap.contains("<loc>https://autumn-web.app/docs</loc>"),
         "sitemap should not advertise the redirect-only docs index"
     );
+}
+
+#[tokio::test]
+async fn agent_skills_index_lists_a_skill_whose_digest_matches_the_served_file() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let index = app
+        .get("/.well-known/agent-skills/index.json")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_header_contains("content-type", "application/json")
+        .assert_header("access-control-allow-origin", "*")
+        .text();
+    let index: serde_json::Value = serde_json::from_str(&index).expect("index is JSON");
+    assert_eq!(
+        index["$schema"],
+        "https://schemas.agentskills.io/discovery/0.2.0/schema.json"
+    );
+    let skill = &index["skills"][0];
+    assert_eq!(skill["name"], "autumn-docs");
+    assert_eq!(skill["type"], "skill-md");
+    assert!(!skill["description"].as_str().unwrap_or_default().is_empty());
+    let url = skill["url"].as_str().expect("url");
+    let path = url
+        .strip_prefix("https://autumn-web.app")
+        .expect("site url");
+
+    let body = app
+        .get(path)
+        .send()
+        .await
+        .assert_status(200)
+        .assert_header_contains("content-type", "text/markdown")
+        .assert_header("access-control-allow-origin", "*")
+        .text();
+    let digest = autumn_io::seo::sha256_digest(&body);
+    assert_eq!(skill["digest"], digest.as_str());
 }
 
 #[test]
@@ -1273,9 +1566,21 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     // Every guide, plus the home page.
     assert_eq!(summary.html_pages, registry.pages().len() + 1);
     assert!(summary.static_assets >= 4);
-    // `/`, `/robots.txt`, `/sitemap.xml`, the OAuth metadata, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 4);
-    assert!(dist.join(".well-known/oauth-protected-resource").is_file());
+    // `/`, `/robots.txt`, `/sitemap.xml`, the ARD manifest (two paths), the Web Bot
+    // Auth directory, the agent-skills index and skill file, and one per guide.
+    assert_eq!(summary.routes, registry.pages().len() + 11);
+    assert!(
+        dist.join(".well-known/http-message-signatures-directory")
+            .is_file()
+    );
+    // The file has no extension, so the manifest must carry the required media
+    // type for a static host to serve it correctly.
+    let manifest = std::fs::read_to_string(dist.join("manifest.json")).expect("manifest");
+    let manifest: serde_json::Value = serde_json::from_str(&manifest).expect("manifest JSON");
+    assert_eq!(
+        manifest["routes"]["/.well-known/http-message-signatures-directory"]["content_type"],
+        "application/http-message-signatures-directory+json"
+    );
 
     let home = std::fs::read_to_string(dist.join("index.html")).expect("home html");
     assert!(home.contains("Ship the app, not the plumbing."));
@@ -1297,8 +1602,20 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     let sitemap = std::fs::read_to_string(dist.join("sitemap.xml")).expect("sitemap file");
     assert!(sitemap.contains("<loc>https://autumn-web.app/docs/getting-started</loc>"));
 
+    let auth_md = std::fs::read_to_string(dist.join("auth.md")).expect("auth.md file");
+    assert!(auth_md.starts_with("# auth.md"));
+    assert!(
+        dist.join(".well-known/oauth-protected-resource.json")
+            .exists()
+    );
+    assert!(
+        dist.join(".well-known/oauth-authorization-server.json")
+            .exists()
+    );
+
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
+    assert!(dist.join("static/js/webmcp.js").exists());
     assert!(dist.join("static/img/autumn-social.png").exists());
     assert!(dist.join("static/img/autumn-mark-68.png").exists());
     assert!(dist.join("static/img/autumn-mark-136.png").exists());

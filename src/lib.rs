@@ -162,6 +162,8 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         // in the sidebar, anchored by the `autumn-harvest` intro above.
         guide_doc!("harvest-project-skeleton"),
         guide_doc!("harvest-first-workflow"),
+        // New in Harvest 0.7.0.
+        guide_doc!("harvest-standalone-axum"),
         guide_doc!("harvest-durable-timers"),
         guide_doc!("harvest-signals"),
         guide_doc!("harvest-child-workflows"),
@@ -188,8 +190,11 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("route-auth-coverage"),
         guide_doc!("aggregates"),
         guide_doc!("counter-cache"),
+        // Shipped in the 0.8.0 crates; held back from the 0.7.0 sync.
+        guide_doc!("ledgered-entities"),
         guide_doc!("audit-logging"),
         guide_doc!("retention-sweeps"),
+        guide_doc!("query-budgets"),
         guide_doc!("metrics"),
         guide_doc!("server-timing"),
         guide_doc!("failure-capsules"),
@@ -199,6 +204,33 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("upgrading"),
         guide_doc!("edge"),
         guide_doc!("fleet-deploys"),
+        // New in Autumn 0.8.0.
+        guide_doc!("platform-support"),
+        guide_doc!("extractors"),
+        guide_doc!("forms"),
+        guide_doc!("cors"),
+        guide_doc!("collaboration"),
+        guide_doc!("derivations"),
+        guide_doc!("cache-coherence"),
+        guide_doc!("money"),
+        guide_doc!("web-push"),
+        guide_doc!("billing"),
+        guide_doc!("wire-contracts"),
+        guide_doc!("agent-authority"),
+        guide_doc!("posture-gate"),
+        guide_doc!("supply-chain"),
+        guide_doc!("confidential-fields"),
+        guide_doc!("data-classification"),
+        guide_doc!("data-retention"),
+        guide_doc!("data-scrubbing"),
+        guide_doc!("cookie-consent"),
+        guide_doc!("capacity-contracts"),
+        guide_doc!("sla"),
+        guide_doc!("hot-upgrades"),
+        guide_doc!("architecture-graph"),
+        guide_doc!("constela"),
+        guide_doc!("plugin-assets"),
+        guide_doc!("sandboxed-plugins"),
     ])
 });
 
@@ -336,12 +368,29 @@ fn has_asset_version_query(query: Option<&str>) -> bool {
 /// and so is everything not listed: `/api/*`, `/mcp`, `/health` and the
 /// framework's own `/actuator/*` and `/_stories` are either request-specific or
 /// nobody's business to cache.
+/// Fixed agent-discovery documents (`/auth.md` and the OAuth `.well-known`
+/// pair). Each has exactly one representation whatever `Accept` says, so
+/// `/auth.md` is exempt from the negotiated-Markdown `no-store` safeguard.
+fn is_discovery_document(path: &str) -> bool {
+    matches!(
+        path,
+        seo::AUTH_MD_PATH
+            | seo::OAUTH_PROTECTED_RESOURCE_PATH
+            | seo::OAUTH_AUTHORIZATION_SERVER_PATH
+    )
+}
+
 fn is_cacheable_page(path: &str) -> bool {
     path == "/"
+        || is_discovery_document(path)
         || path == "/robots.txt"
+        || path == "/.well-known/mcp/server-card.json"
         || path == "/sitemap.xml"
-        || path == seo::OAUTH_PROTECTED_RESOURCE_PATH
-        || path == seo::OAUTH_PROTECTED_RESOURCE_MCP_PATH
+        || path == API_CATALOG_PATH
+        || path == seo::ARD_PATH
+        || path == seo::AI_CATALOG_PATH
+        || path == seo::WEB_BOT_AUTH_PATH
+        || path.starts_with("/.well-known/agent-skills/")
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
 
@@ -360,6 +409,8 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
         .strip_prefix(PLUGIN_ASSETS_PREFIX)
         .is_some_and(|rest| rest.starts_with('/'));
     let is_page = is_cacheable_page(path);
+    let path_is_agent_skill = path.starts_with("/.well-known/agent-skills/");
+    let path_is_discovery = is_discovery_document(path);
     let is_search = path == DOCS_SEARCH_PATH;
     let versioned = has_asset_version_query(request.uri().query());
 
@@ -376,12 +427,18 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
 
     // The response's own type is still consulted, as a backstop for any
     // Markdown this site might serve outside the negotiated read path.
-    let is_markdown = wants_markdown
-        || response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.starts_with(negotiate::MARKDOWN_MEDIA_TYPE));
+    //
+    // The skill file is the exception: it is `text/markdown` but has exactly one
+    // representation, the same bytes for every visitor, so it takes the page
+    // policy like `robots.txt` rather than the negotiated-Markdown `no-store`.
+    let is_fixed_artifact = path_is_agent_skill || path_is_discovery;
+    let is_markdown = !is_fixed_artifact
+        && (wants_markdown
+            || response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with(negotiate::MARKDOWN_MEDIA_TYPE)));
 
     let cache_control = if is_markdown {
         Some(UNCACHEABLE)
@@ -431,14 +488,16 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
 ///
 /// Only resources this site actually serves, and only relation types in the
 /// IANA registry: RFC 8288 §3.3 requires an unregistered relation to be an
-/// absolute URI, so `mcp` and `sitemap` are left to `robots.txt`, the
-/// `<link rel="sitemap">` in the page head, and `docs/mcp-server.md`.
+/// absolute URI, so `mcp` and `sitemap` are left to the
+/// `<link rel="sitemap">` in the page head, the sitemap `robots.txt` points at,
+/// and `docs/mcp-server.md`.
 pub const HOME_LINK_HEADER: &str = concat!(
     "</docs/getting-started>; rel=\"service-doc\"; type=\"text/html\", ",
     "</api/docs>; rel=\"describedby\"; type=\"application/json\""
 );
 
 #[get("/")]
+#[api_doc(hidden)]
 pub async fn index(negotiate: MarkdownNegotiate) -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -456,11 +515,13 @@ pub async fn index(negotiate: MarkdownNegotiate) -> Response {
 }
 
 #[get("/docs")]
+#[api_doc(hidden)]
 pub async fn docs_index() -> Redirect {
     Redirect::temporary(DOCS_START_PATH)
 }
 
 #[get("/docs/{slug}")]
+#[api_doc(hidden)]
 pub async fn docs_page(negotiate: MarkdownNegotiate, Path(slug): Path<String>) -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -527,6 +588,7 @@ pub struct DocsSearchQuery {
 ///
 /// Served at [`DOCS_SEARCH_PATH`], outside the `/docs/{slug}` namespace.
 #[get("/search")]
+#[api_doc(hidden)]
 pub async fn docs_search(
     negotiate: MarkdownNegotiate,
     hx: HxRequest,
@@ -608,6 +670,7 @@ fn search_html_response(is_htmx: bool, term: &str, hits: Option<&[SearchHit]>) -
 }
 
 #[get("/robots.txt")]
+#[api_doc(hidden)]
 pub async fn robots_txt() -> Response {
     (
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
@@ -616,7 +679,116 @@ pub async fn robots_txt() -> Response {
         .into_response()
 }
 
+/// CORS headers SEP-1649 requires on discovery endpoints so browser-based
+/// clients can fetch the card.
+const SERVER_CARD_CORS: [(header::HeaderName, &str); 3] = [
+    (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+    (header::ACCESS_CONTROL_ALLOW_METHODS, "GET"),
+    (header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type"),
+];
+
+#[get("/.well-known/mcp/server-card.json")]
+#[api_doc(hidden)]
+pub async fn mcp_server_card() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        SERVER_CARD_CORS,
+        seo::mcp_server_card(),
+    )
+        .into_response()
+}
+
+/// Answers the CORS preflight a browser sends before fetching the card with a
+/// `Content-Type` header. Attached to the card's route in [`app_routes`].
+async fn mcp_server_card_preflight() -> Response {
+    (StatusCode::NO_CONTENT, SERVER_CARD_CORS).into_response()
+}
+
+/// Where RFC 9727 says an API catalog lives.
+pub const API_CATALOG_PATH: &str = "/.well-known/api-catalog";
+
+/// Media type and profile RFC 9727 §3 requires on the catalog response.
+const API_CATALOG_CONTENT_TYPE: &str =
+    "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"";
+
+const API_CATALOG_LINK: &str = "</.well-known/api-catalog>; rel=\"api-catalog\"";
+
+#[get("/.well-known/api-catalog")]
+#[api_doc(hidden)]
+pub async fn api_catalog() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, API_CATALOG_CONTENT_TYPE),
+            // RFC 9727 §2: GET and HEAD responses carry the `api-catalog`
+            // relation, so header-only discovery works.
+            (header::LINK, API_CATALOG_LINK),
+        ],
+        seo::api_catalog(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/ard.json")]
+#[api_doc(hidden)]
+pub async fn ard_manifest() -> Response {
+    ai_catalog().await
+}
+
+#[get("/.well-known/ai-catalog.json")]
+#[api_doc(hidden)]
+pub async fn ai_catalog() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::ai_catalog_json(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/http-message-signatures-directory")]
+#[api_doc(hidden)]
+pub async fn web_bot_auth_directory() -> Response {
+    (
+        [(header::CONTENT_TYPE, seo::WEB_BOT_AUTH_CONTENT_TYPE)],
+        seo::WEB_BOT_AUTH_DIRECTORY,
+    )
+        .into_response()
+}
+
+#[get("/auth.md")]
+#[api_doc(hidden)]
+pub async fn auth_md() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/markdown; charset=utf-8")],
+        seo::auth_md(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/oauth-protected-resource")]
+#[api_doc(hidden)]
+pub async fn oauth_protected_resource() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        seo::oauth_protected_resource(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/oauth-authorization-server")]
+#[api_doc(hidden)]
+pub async fn oauth_authorization_server() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        seo::oauth_authorization_server(),
+    )
+        .into_response()
+}
+
 #[get("/sitemap.xml")]
+#[api_doc(hidden)]
 pub async fn sitemap_xml() -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -637,24 +809,30 @@ pub async fn sitemap_xml() -> Response {
         .into_response()
 }
 
-fn oauth_metadata_response(resource_path: &str) -> Response {
+#[get("/.well-known/agent-skills/index.json")]
+#[api_doc(hidden)]
+pub async fn agent_skills_index() -> Response {
     (
-        [(header::CONTENT_TYPE, "application/json")],
-        seo::oauth_protected_resource_metadata(resource_path),
+        [
+            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::agent_skills_index(),
     )
         .into_response()
 }
 
-/// RFC 9728 metadata for the site origin.
-#[get("/.well-known/oauth-protected-resource")]
-pub async fn oauth_protected_resource() -> Response {
-    oauth_metadata_response("/")
-}
-
-/// RFC 9728 metadata for the `/mcp` resource.
-#[get("/.well-known/oauth-protected-resource/mcp")]
-pub async fn oauth_protected_resource_mcp() -> Response {
-    oauth_metadata_response(MCP_MOUNT_PATH)
+#[get("/.well-known/agent-skills/autumn-docs/SKILL.md")]
+#[api_doc(hidden)]
+pub async fn autumn_docs_skill() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/markdown; charset=utf-8"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::AUTUMN_DOCS_SKILL,
+    )
+        .into_response()
 }
 
 #[must_use]
@@ -665,10 +843,25 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         docs_search,
         docs_page,
         robots_txt,
-        sitemap_xml,
+        mcp_server_card,
+        auth_md,
         oauth_protected_resource,
-        oauth_protected_resource_mcp
+        oauth_authorization_server,
+        sitemap_xml,
+        api_catalog,
+        ard_manifest,
+        ai_catalog,
+        web_bot_auth_directory,
+        agent_skills_index,
+        autumn_docs_skill
     ];
+    for route in &mut routes {
+        if route.name == "mcp_server_card" {
+            route.handler = std::mem::take(&mut route.handler).options(
+                autumn_web::reexports::axum::routing::options(mcp_server_card_preflight),
+            );
+        }
+    }
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.
     // Registered here rather than only in `main` so the test harness exercises
     // the same route set the deployed app serves.

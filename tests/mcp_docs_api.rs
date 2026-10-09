@@ -102,6 +102,29 @@ async fn mcp_initialize_advertises_tool_capability() {
 }
 
 #[tokio::test]
+async fn server_card_matches_the_initialize_handshake() {
+    let app = app();
+
+    let handshake = rpc(
+        &app,
+        "initialize",
+        json!({ "protocolVersion": "2025-06-18" }),
+    )
+    .await;
+    let response = app.get("/.well-known/mcp/server-card.json").send().await;
+    response.assert_status(200);
+    let card: Value = response.json();
+
+    assert_eq!(card["serverInfo"]["name"], handshake["serverInfo"]["name"]);
+    assert_eq!(
+        card["serverInfo"]["version"],
+        handshake["serverInfo"]["version"]
+    );
+    assert_eq!(card["protocolVersion"], handshake["protocolVersion"]);
+    assert_eq!(card["capabilities"], handshake["capabilities"]);
+}
+
+#[tokio::test]
 async fn mcp_catalog_exposes_the_three_docs_tools_as_read_only() {
     let app = app();
 
@@ -196,6 +219,9 @@ async fn mcp_catalog_excludes_the_html_site() {
         "docs_search",
         "sitemap_xml",
         "robots_txt",
+        "api_catalog",
+        "ard_manifest",
+        "ai_catalog",
     ] {
         assert!(
             !paths.contains(&excluded.to_owned()),
@@ -214,8 +240,8 @@ async fn list_tool_returns_every_guide_with_its_group() {
 
     let index = call_tool(&app, "list_autumn_docs", json!({})).await;
 
-    assert_eq!(index["autumn_version"], "0.7.0");
-    assert_eq!(index["harvest_version"], "0.6.0");
+    assert_eq!(index["autumn_version"], "0.8.0");
+    assert_eq!(index["harvest_version"], "0.7.0");
 
     let guides = index["guides"].as_array().expect("guides array");
     assert_eq!(index["count"].as_u64().unwrap() as usize, guides.len());
@@ -373,7 +399,7 @@ async fn get_tool_returns_markdown_and_the_section_list() {
 
     assert_eq!(doc["slug"], "mcp");
     assert_eq!(doc["group"], "APIs and integrations");
-    assert_eq!(doc["autumn_version"], "0.7.0");
+    assert_eq!(doc["autumn_version"], "0.8.0");
     assert!(doc["url"].as_str().unwrap().ends_with("/docs/mcp"));
     assert!(doc["notice"].is_null(), "a guide this size needs no notice");
 
@@ -650,6 +676,28 @@ async fn unknown_slugs_and_sections_come_back_as_readable_tool_errors() {
 // ─────────────────────────────────────────────────────────────────────────
 // The plain HTTP surface
 // ─────────────────────────────────────────────────────────────────────────
+
+/// The OpenAPI spec declares every error status as `application/problem+json`
+/// with the `ProblemDetails` schema, so the API must actually answer that way.
+#[tokio::test]
+async fn api_errors_are_problem_details() {
+    let app = app();
+
+    let response = app.get("/api/docs/no-such-guide").send().await;
+    response.assert_status(404);
+    assert_eq!(
+        response.header("content-type"),
+        Some("application/problem+json")
+    );
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["status"], 404);
+    assert!(
+        body["detail"]
+            .as_str()
+            .is_some_and(|d| d.contains("list_autumn_docs")),
+        "detail should name the tool that returns valid slugs: {body}"
+    );
+}
 
 /// The tools are ordinary endpoints, and stay usable with curl and in a browser
 /// — the MCP layer is a projection of them, not a separate app.
