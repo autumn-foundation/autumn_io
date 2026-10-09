@@ -472,3 +472,23 @@ async fn the_json_api_is_untouched_by_page_negotiation() {
         "the JSON API should keep answering JSON",
     );
 }
+
+#[tokio::test]
+async fn homepage_advertises_agent_resources_in_a_link_header() {
+    let app = app();
+
+    for accept in [BROWSER_ACCEPT, "text/markdown"] {
+        let response = app.get("/").header("accept", accept).send().await;
+
+        response.assert_status(200);
+        let link = response.header("link").expect("homepage sends Link");
+        for expected in [
+            "</docs/getting-started>; rel=\"service-doc\"",
+            "</api/docs>; rel=\"describedby\"",
+            "</mcp>; rel=\"mcp\"",
+            "</sitemap.xml>; rel=\"sitemap\"",
+        ] {
+            assert!(link.contains(expected), "missing {expected} in {link}");
+        }
+    }
+}

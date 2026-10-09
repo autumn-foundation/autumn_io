@@ -423,6 +423,19 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
     response
 }
 
+/// `Link` header (RFC 8288) on the homepage, advertising where an agent should
+/// go next without having to parse the HTML: the getting-started guide, the
+/// JSON docs API, the MCP server, and the sitemap.
+///
+/// Only resources this site actually serves; every target is a path in this
+/// file's own route set, so a relative reference resolves against the origin.
+pub const HOME_LINK_HEADER: &str = concat!(
+    "</docs/getting-started>; rel=\"service-doc\"; type=\"text/html\", ",
+    "</api/docs>; rel=\"describedby\"; type=\"application/json\", ",
+    "</mcp>; rel=\"mcp\", ",
+    "</sitemap.xml>; rel=\"sitemap\"; type=\"application/xml\""
+);
+
 #[get("/")]
 pub async fn index(negotiate: MarkdownNegotiate) -> Response {
     let registry = match site_docs() {
@@ -430,10 +443,14 @@ pub async fn index(negotiate: MarkdownNegotiate) -> Response {
         Err(error) => return docs_load_error_response(negotiate, error),
     };
 
-    negotiate.respond(
+    let mut response = negotiate.respond(
         || site::render_home_page(registry).into_response(),
         || MarkdownPage::new(site::markdown::render_home_page(registry)),
-    )
+    );
+    response
+        .headers_mut()
+        .insert(header::LINK, HeaderValue::from_static(HOME_LINK_HEADER));
+    response
 }
 
 #[get("/docs")]
