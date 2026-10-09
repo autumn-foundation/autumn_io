@@ -10,7 +10,7 @@
 The site is one scale-to-zero Fly machine in `ord`. Every reader anywhere pays
 a round trip to Chicago, and a cold start on top if the machine is asleep, for
 pages whose bytes were fixed at build time: 140 guides, a home page,
-`robots.txt`, `sitemap.xml`. None of them vary by request.
+`robots.txt`, `sitemap.xml`, the `.well-known` OAuth metadata. None of them vary by request.
 
 The domain is already proxied through Cloudflare, so there is already a CDN in
 front of the origin. The question was never "how do we get a CDN" — it was why
@@ -126,6 +126,8 @@ or (http.request.uri.path eq "/docs")
 or (starts_with(http.request.uri.path, "/docs/"))
 or (http.request.uri.path eq "/robots.txt")
 or (http.request.uri.path eq "/sitemap.xml")
+or (http.request.uri.path eq "/.well-known/oauth-protected-resource")
+or (http.request.uri.path eq "/.well-known/oauth-protected-resource/mcp")
 ```
 
 It is an **allow-list of exact paths plus one prefix**, deliberately. `/docs`
