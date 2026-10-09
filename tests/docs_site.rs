@@ -1327,7 +1327,15 @@ async fn mcp_server_card_is_served_for_agent_discovery() {
     assert_eq!(card["endpoint"], "https://autumn-web.app/mcp");
     assert_eq!(card["authentication"]["required"], false);
     assert_eq!(card["authentication"]["schemes"], serde_json::json!([]));
-    assert_eq!(card["version"], "1.0");
+    // Current `ext-server-card` vocabulary alongside the SEP-1649 one.
+    assert_eq!(
+        card["$schema"],
+        "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json"
+    );
+    assert_eq!(card["name"], "app.autumn-web/autumn-mcp");
+    assert_eq!(card["version"], card["serverInfo"]["version"]);
+    assert_eq!(card["remotes"][0]["type"], "streamable-http");
+    assert_eq!(card["remotes"][0]["url"], "https://autumn-web.app/mcp");
     assert_eq!(card["protocolVersion"], "2025-06-18");
     assert!(card["capabilities"]["tools"].is_object());
     // Tools-only server: no resources/prompts, and a dynamic tool catalog.
