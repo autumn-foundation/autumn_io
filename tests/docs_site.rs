@@ -365,7 +365,7 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.6.0"));
+    assert!(html.contains("Autumn Harvest 0.7.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
@@ -465,7 +465,7 @@ fn bundled_docs_pagination_follows_grouped_sidebar_order() {
         .expect("deployment guide should be bundled");
     let deployment_html = render_docs_page(registry, deployment_page).into_string();
     assert!(deployment_html.contains(
-        r#"<a class="pagination-link previous" href="/docs/fleet-deploys"><span>Previous</span><strong>Fleet Deploys</strong></a>"#
+        r#"<a class="pagination-link previous" href="/docs/sandboxed-plugins"><span>Previous</span><strong>Sandboxed Plugins</strong></a>"#
     ));
     assert!(
         !deployment_html.contains(r#"<a class="pagination-link next""#),
@@ -649,6 +649,99 @@ fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
         broker_connectors
             .html()
             .contains(r#"href="/docs/harvest-webhooks""#)
+    );
+}
+
+#[test]
+fn bundled_site_docs_include_the_autumn_080_and_harvest_070_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Every guide new in the 0.8.0 sync, the two held back from 0.7.0 until
+    // the crates shipped their APIs, and Harvest 0.7.0's plain-Axum fork.
+    for slug in [
+        "ledgered-entities",
+        "query-budgets",
+        "platform-support",
+        "extractors",
+        "forms",
+        "cors",
+        "collaboration",
+        "derivations",
+        "cache-coherence",
+        "money",
+        "web-push",
+        "billing",
+        "wire-contracts",
+        "agent-authority",
+        "posture-gate",
+        "supply-chain",
+        "confidential-fields",
+        "data-classification",
+        "data-retention",
+        "data-scrubbing",
+        "cookie-consent",
+        "capacity-contracts",
+        "sla",
+        "hot-upgrades",
+        "architecture-graph",
+        "constela",
+        "plugin-assets",
+        "sandboxed-plugins",
+        "harvest-standalone-axum",
+    ] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(!page.html().is_empty(), "{slug} should render a body");
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+    }
+
+    // The Harvest fork drops its `Fork — ` label like the numbered chapters
+    // drop theirs, and links back into the chapter sequence on-site.
+    let standalone = registry
+        .page("harvest-standalone-axum")
+        .expect("harvest standalone-axum fork should be bundled");
+    assert_eq!(standalone.title, "The first workflow on plain Axum");
+    assert!(
+        standalone
+            .html()
+            .contains(r#"href="/docs/harvest-first-workflow""#)
+    );
+
+    // Chapters 1 and 2 point readers at the fork, and those links stay on-site.
+    for slug in ["harvest-project-skeleton", "harvest-first-workflow"] {
+        assert!(
+            registry
+                .page(slug)
+                .expect("harvest chapter should be bundled")
+                .html()
+                .contains(r#"href="/docs/harvest-standalone-axum""#),
+            "{slug} should link the plain-Axum fork on-site"
+        );
+    }
+}
+
+/// Every bundled guide is claimed by a named sidebar group. A guide no group
+/// claims still renders, but under the "Reference" catch-all at the bottom of
+/// the sidebar — easy to miss when a sync adds a page to the registry and not
+/// to `DOCS_NAV_GROUPS`.
+#[test]
+fn every_bundled_guide_is_slotted_into_a_named_sidebar_group() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+    let ungrouped: Vec<&str> = registry
+        .pages()
+        .iter()
+        .map(|page| page.slug.as_str())
+        .filter(|slug| !is_grouped_docs_nav_slug(slug))
+        .collect();
+
+    assert!(
+        ungrouped.is_empty(),
+        "guides missing from DOCS_NAV_GROUPS: {ungrouped:?}"
     );
 }
 
@@ -846,15 +939,20 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
             .contains(r#"href="/docs/extensibility""#)
     );
     assert!(custom_subsystems.html().contains(
-        r#"href="https://github.com/autumn-foundation/autumn/tree/trunk-dev/examples/custom_config_loader""#
-    ));
-    assert!(custom_subsystems.html().contains(
         r#"href="https://github.com/autumn-foundation/autumn/blob/trunk-dev/autumn/src/plugin.rs""#
     ));
+
+    // A relative link to an upstream example directory resolves to a `tree/`
+    // URL on the framework repo. (0.8.0 dropped the `custom_config_loader`
+    // example this used to check, so the edge guide's example stands in.)
+    let edge = registry.page("edge").expect("edge guide should be bundled");
+    assert!(edge.html().contains(
+        r#"href="https://github.com/autumn-foundation/autumn/tree/trunk-dev/examples/edge-greeting""#
+    ));
     assert!(
-        !custom_subsystems
+        !edge
             .html()
-            .contains(r#"href="../../examples/custom_config_loader""#)
+            .contains(r#"href="../../examples/edge-greeting""#)
     );
 
     // The vendored Harvest chapters cross-link back into the autumn-harvest
@@ -1106,6 +1204,20 @@ async fn autumn_routes_render_home_docs_redirect_and_missing_docs_page() {
         .assert_status(200)
         .assert_body_contains("<h1 id=\"page-title\">Broker connectors (Kafka, SQS)</h1>");
 
+    // Harvest 0.7.0's plain-Axum fork and a guide new in Autumn 0.8.0 are
+    // routed at their site slugs.
+    app.get("/docs/harvest-standalone-axum")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("<h1 id=\"page-title\">The first workflow on plain Axum</h1>");
+
+    app.get("/docs/ledgered-entities")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_body_contains("Ledgered Entities");
+
     // The search guide is served at its own slug; the docs-search UI lives
     // outside the guide namespace and no longer shadows it.
     app.get("/docs/search")
@@ -1254,6 +1366,9 @@ async fn autumn_routes_expose_crawl_discovery_files() {
         .assert_body_contains("<loc>https://autumn-web.app/docs/server-timing</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/fleet-deploys</loc>")
         .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-broker-connectors</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/harvest-standalone-axum</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/query-budgets</loc>")
+        .assert_body_contains("<loc>https://autumn-web.app/docs/sandboxed-plugins</loc>")
         .text();
 
     assert!(
