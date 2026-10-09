@@ -136,12 +136,12 @@ pub fn export_site(
         ("/auth.md", "auth.md", seo::auth_md()),
         (
             "/.well-known/oauth-protected-resource",
-            ".well-known/oauth-protected-resource",
+            ".well-known/oauth-protected-resource.json",
             seo::oauth_protected_resource(),
         ),
         (
             "/.well-known/oauth-authorization-server",
-            ".well-known/oauth-authorization-server",
+            ".well-known/oauth-authorization-server.json",
             seo::oauth_authorization_server(),
         ),
     ] {

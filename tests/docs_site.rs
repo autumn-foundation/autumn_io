@@ -1272,8 +1272,14 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     let auth_md = std::fs::read_to_string(dist.join("auth.md")).expect("auth.md file");
     assert!(auth_md.starts_with("# auth.md"));
-    assert!(dist.join(".well-known/oauth-protected-resource").exists());
-    assert!(dist.join(".well-known/oauth-authorization-server").exists());
+    assert!(
+        dist.join(".well-known/oauth-protected-resource.json")
+            .exists()
+    );
+    assert!(
+        dist.join(".well-known/oauth-authorization-server.json")
+            .exists()
+    );
 
     assert!(dist.join("static/css/site.css").exists());
     assert!(dist.join("static/js/copy-code.js").exists());
