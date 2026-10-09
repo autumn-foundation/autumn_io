@@ -152,13 +152,15 @@ pub fn robots_txt() -> String {
 /// MCP Server Card (SEP-1649), served at `/.well-known/mcp/server-card.json`
 /// so an agent can discover the `/mcp` server without being told about it.
 ///
-/// The tool list mirrors the `#[api_doc(mcp)]` routes in `src/api.rs`; the
-/// `tools/list` response stays authoritative, this is the pre-connection
-/// summary.
+/// Tools-only server: the catalog is derived from the `#[api_doc(mcp)]` routes
+/// in `src/api.rs`, so the card marks it `"dynamic"` rather than duplicating
+/// the descriptors; `tools/list` is the source of truth.
 #[must_use]
 pub fn mcp_server_card() -> String {
     serde_json::json!({
         "$schema": "https://static.modelcontextprotocol.io/schemas/mcp-server-card/v1.json",
+        "version": "1.0",
+        "protocolVersion": "2025-06-18",
         "serverInfo": {
             "name": "autumn-docs",
             "title": "Autumn Docs",
@@ -173,15 +175,9 @@ pub fn mcp_server_card() -> String {
         "endpoint": absolute_url(crate::MCP_MOUNT_PATH),
         "authentication": { "required": false },
         "capabilities": {
-            "tools": { "listChanged": false },
-            "resources": {},
-            "prompts": {}
+            "tools": { "listChanged": false }
         },
-        "tools": [
-            { "name": "list_autumn_docs" },
-            { "name": "search_autumn_docs" },
-            { "name": "get_autumn_doc" }
-        ]
+        "tools": ["dynamic"]
     })
     .to_string()
 }

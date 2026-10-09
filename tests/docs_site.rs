@@ -1211,7 +1211,13 @@ async fn mcp_server_card_is_served_for_agent_discovery() {
     assert_eq!(card["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(card["transport"]["endpoint"], autumn_io::MCP_MOUNT_PATH);
     assert_eq!(card["endpoint"], "https://autumn-web.app/mcp");
+    assert_eq!(card["version"], "1.0");
+    assert_eq!(card["protocolVersion"], "2025-06-18");
     assert!(card["capabilities"]["tools"].is_object());
+    // Tools-only server: no resources/prompts, and a dynamic tool catalog.
+    assert!(card["capabilities"].get("resources").is_none());
+    assert!(card["capabilities"].get("prompts").is_none());
+    assert_eq!(card["tools"], serde_json::json!(["dynamic"]));
 }
 
 #[tokio::test]
