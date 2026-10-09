@@ -948,6 +948,7 @@ fn document_head(meta: &PageMeta) -> Markup {
     let icon_path = versioned_asset_path(BRAND_MARK_1X_PATH);
     let stylesheet_path = versioned_asset_path("/static/css/site.css");
     let copy_code_script_path = versioned_asset_path("/static/js/copy-code.js");
+    let webmcp_script_path = versioned_asset_path("/static/js/webmcp.js");
 
     html! {
         head {
@@ -978,6 +979,7 @@ fn document_head(meta: &PageMeta) -> Markup {
                 script type="application/ld+json" { (PreEscaped(structured_data)) }
             }
             script src=(copy_code_script_path) defer {}
+            script src=(webmcp_script_path) defer {}
             (motion_script())
         }
     }
