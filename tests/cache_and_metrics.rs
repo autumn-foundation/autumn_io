@@ -38,10 +38,14 @@ async fn every_read_path_page_is_cacheable_by_a_shared_cache() {
         "/docs/getting-started",
         "/docs/metrics",
         "/robots.txt",
+        "/.well-known/mcp/server-card.json",
         "/sitemap.xml",
-        "/auth.md",
-        "/.well-known/oauth-protected-resource",
-        "/.well-known/oauth-authorization-server",
+        "/.well-known/api-catalog",
+        "/.well-known/ard.json",
+        "/.well-known/ai-catalog.json",
+        "/.well-known/http-message-signatures-directory",
+        "/.well-known/agent-skills/index.json",
+        "/.well-known/agent-skills/autumn-docs/SKILL.md",
     ] {
         let response = app.get(path).send().await;
         response.assert_status(200);
@@ -96,9 +100,9 @@ async fn no_cacheable_response_sets_a_cookie() {
         "/docs/getting-started",
         "/robots.txt",
         "/sitemap.xml",
-        "/auth.md",
-        "/.well-known/oauth-protected-resource",
-        "/.well-known/oauth-authorization-server",
+        "/.well-known/api-catalog",
+        "/.well-known/ard.json",
+        "/.well-known/ai-catalog.json",
     ] {
         let response = app.get(path).send().await;
         assert_eq!(

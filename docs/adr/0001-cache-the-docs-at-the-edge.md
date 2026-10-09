@@ -126,7 +126,14 @@ or (http.request.uri.path eq "/docs")
 or (starts_with(http.request.uri.path, "/docs/"))
 or (http.request.uri.path eq "/robots.txt")
 or (http.request.uri.path eq "/sitemap.xml")
+or (starts_with(http.request.uri.path, "/.well-known/agent-skills/"))
 ```
+
+The last line covers the Agent Skills discovery index and the skill it points
+to. Cloudflare does not cache JSON or `.md` responses by default, so without it
+those two URLs stay `DYNAMIC` however the origin sets `Cache-Control`. Adding it
+is a dashboard change, like the rest of this section, and is not deployed by
+merging code.
 
 It is an **allow-list of exact paths plus one prefix**, deliberately. `/docs`
 appears on its own line because it is the 307 to the first guide, which is a
