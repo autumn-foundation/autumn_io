@@ -211,7 +211,8 @@ pub fn oauth_protected_resource() -> String {
 /// `/.well-known/oauth-authorization-server` (RFC 8414) with an `agent_auth`
 /// block describing anonymous registration.
 ///
-/// No `authorization_endpoint`, `token_endpoint` or `revocation_uri` is
+/// No `authorization_endpoint`, `token_endpoint`, `revocation_uri` or empty
+/// grant/response-type lists (RFC 8414 §3.2 forbids zero-element claims) are
 /// advertised: this site issues no credentials, so there is nothing to
 /// exchange, claim or revoke. `register_uri` points at `/auth.md`, which
 /// states that registration is unnecessary.
@@ -220,8 +221,6 @@ pub fn oauth_authorization_server() -> String {
     json!({
         "issuer": SITE_BASE_URL,
         "scopes_supported": ["docs:read"],
-        "response_types_supported": [],
-        "grant_types_supported": [],
         "service_documentation": absolute_url(AUTH_MD_PATH),
         "agent_auth": {
             "skill": absolute_url(AUTH_MD_PATH),

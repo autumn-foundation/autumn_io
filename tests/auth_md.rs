@@ -51,6 +51,8 @@ async fn authorization_server_metadata_has_agent_auth_and_matching_issuer() {
     assert_eq!(meta["issuer"], prm["authorization_servers"][0]);
 
     let agent = &meta["agent_auth"];
+    assert!(meta.get("response_types_supported").is_none());
+    assert!(meta.get("grant_types_supported").is_none());
     assert_eq!(agent["register_uri"], "https://autumn-web.app/auth.md");
     assert_eq!(agent["skill"], "https://autumn-web.app/auth.md");
     assert_eq!(agent["identity_types_supported"][0], "anonymous");

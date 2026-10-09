@@ -336,8 +336,21 @@ fn has_asset_version_query(query: Option<&str>) -> bool {
 /// and so is everything not listed: `/api/*`, `/mcp`, `/health` and the
 /// framework's own `/actuator/*` and `/_stories` are either request-specific or
 /// nobody's business to cache.
+/// Fixed agent-discovery documents (`/auth.md` and the OAuth `.well-known`
+/// pair). Each has exactly one representation whatever `Accept` says, so
+/// `/auth.md` is exempt from the negotiated-Markdown `no-store` safeguard.
+fn is_discovery_document(path: &str) -> bool {
+    matches!(
+        path,
+        seo::AUTH_MD_PATH
+            | seo::OAUTH_PROTECTED_RESOURCE_PATH
+            | seo::OAUTH_AUTHORIZATION_SERVER_PATH
+    )
+}
+
 fn is_cacheable_page(path: &str) -> bool {
     path == "/"
+        || is_discovery_document(path)
         || path == "/robots.txt"
         || path == "/sitemap.xml"
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
@@ -358,6 +371,7 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
         .strip_prefix(PLUGIN_ASSETS_PREFIX)
         .is_some_and(|rest| rest.starts_with('/'));
     let is_page = is_cacheable_page(path);
+    let is_discovery = is_discovery_document(path);
     let is_search = path == DOCS_SEARCH_PATH;
     let versioned = has_asset_version_query(request.uri().query());
 
@@ -374,12 +388,13 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
 
     // The response's own type is still consulted, as a backstop for any
     // Markdown this site might serve outside the negotiated read path.
-    let is_markdown = wants_markdown
-        || response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.starts_with(negotiate::MARKDOWN_MEDIA_TYPE));
+    let is_markdown = !is_discovery
+        && (wants_markdown
+            || response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with(negotiate::MARKDOWN_MEDIA_TYPE)));
 
     let cache_control = if is_markdown {
         Some(UNCACHEABLE)

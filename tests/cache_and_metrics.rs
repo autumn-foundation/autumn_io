@@ -39,6 +39,9 @@ async fn every_read_path_page_is_cacheable_by_a_shared_cache() {
         "/docs/metrics",
         "/robots.txt",
         "/sitemap.xml",
+        "/auth.md",
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-authorization-server",
     ] {
         let response = app.get(path).send().await;
         response.assert_status(200);
@@ -93,6 +96,9 @@ async fn no_cacheable_response_sets_a_cookie() {
         "/docs/getting-started",
         "/robots.txt",
         "/sitemap.xml",
+        "/auth.md",
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-authorization-server",
     ] {
         let response = app.get(path).send().await;
         assert_eq!(
