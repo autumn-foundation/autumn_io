@@ -1220,6 +1220,28 @@ async fn api_catalog_is_a_rfc_9727_linkset() {
 }
 
 #[tokio::test]
+async fn openapi_spec_documents_only_the_cataloged_api() {
+    // `service-desc` in the API catalog points here; the HTML pages and
+    // discovery files are not part of that API and must stay out of it.
+    let app = TestApp::new()
+        .routes(autumn_io::app_routes())
+        .openapi(autumn_web::openapi::OpenApiConfig::new(
+            "Autumn docs API",
+            "0.0.0",
+        ))
+        .build();
+
+    let response = app.get("/openapi.json").send().await;
+    response.assert_status(200);
+    let spec: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
+    let paths: Vec<&String> = spec["paths"].as_object().expect("paths").keys().collect();
+    assert!(!paths.is_empty(), "the docs API should be documented");
+    for path in paths {
+        assert!(path.starts_with("/api/"), "{path} is not part of the API");
+    }
+}
+
+#[tokio::test]
 async fn autumn_routes_expose_crawl_discovery_files() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 

@@ -438,6 +438,7 @@ pub const HOME_LINK_HEADER: &str = concat!(
 );
 
 #[get("/")]
+#[api_doc(hidden)]
 pub async fn index(negotiate: MarkdownNegotiate) -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -455,11 +456,13 @@ pub async fn index(negotiate: MarkdownNegotiate) -> Response {
 }
 
 #[get("/docs")]
+#[api_doc(hidden)]
 pub async fn docs_index() -> Redirect {
     Redirect::temporary(DOCS_START_PATH)
 }
 
 #[get("/docs/{slug}")]
+#[api_doc(hidden)]
 pub async fn docs_page(negotiate: MarkdownNegotiate, Path(slug): Path<String>) -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
@@ -526,6 +529,7 @@ pub struct DocsSearchQuery {
 ///
 /// Served at [`DOCS_SEARCH_PATH`], outside the `/docs/{slug}` namespace.
 #[get("/search")]
+#[api_doc(hidden)]
 pub async fn docs_search(
     negotiate: MarkdownNegotiate,
     hx: HxRequest,
@@ -607,6 +611,7 @@ fn search_html_response(is_htmx: bool, term: &str, hits: Option<&[SearchHit]>) -
 }
 
 #[get("/robots.txt")]
+#[api_doc(hidden)]
 pub async fn robots_txt() -> Response {
     (
         [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
@@ -623,6 +628,7 @@ const API_CATALOG_CONTENT_TYPE: &str =
     "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"";
 
 #[get("/.well-known/api-catalog")]
+#[api_doc(hidden)]
 pub async fn api_catalog() -> Response {
     (
         [(header::CONTENT_TYPE, API_CATALOG_CONTENT_TYPE)],
@@ -632,6 +638,7 @@ pub async fn api_catalog() -> Response {
 }
 
 #[get("/sitemap.xml")]
+#[api_doc(hidden)]
 pub async fn sitemap_xml() -> Response {
     let registry = match site_docs() {
         Ok(registry) => registry,
