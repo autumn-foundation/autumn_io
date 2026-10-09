@@ -1,4 +1,5 @@
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 use crate::docs::{DocPage, DocRegistry};
 
@@ -147,6 +148,44 @@ pub fn robots_txt() -> String {
     format!(
         "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /mcp\n\nSitemap: {SITE_BASE_URL}/sitemap.xml\n"
     )
+}
+
+/// Path of the Agent Skills discovery index (Agent Skills Discovery RFC v0.2.0).
+pub const AGENT_SKILLS_INDEX_PATH: &str = "/.well-known/agent-skills/index.json";
+/// Path the `autumn-docs` skill is served from.
+pub const AUTUMN_DOCS_SKILL_PATH: &str = "/.well-known/agent-skills/autumn-docs/SKILL.md";
+/// The `autumn-docs` skill, served verbatim and digested from these same bytes.
+pub const AUTUMN_DOCS_SKILL: &str = include_str!("../content/skills/autumn-docs/SKILL.md");
+const AGENT_SKILLS_SCHEMA: &str = "https://schemas.agentskills.io/discovery/0.2.0/schema.json";
+
+/// `sha256:{hex}` digest of `content`, the form the discovery index uses.
+#[must_use]
+pub fn sha256_digest(content: &str) -> String {
+    use std::fmt::Write as _;
+
+    let hash = Sha256::digest(content.as_bytes());
+    let mut out = String::from("sha256:");
+    for byte in hash {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// The Agent Skills discovery index. The digest is computed from the served
+/// `SKILL.md` bytes, so the two cannot drift apart.
+#[must_use]
+pub fn agent_skills_index() -> String {
+    json!({
+        "$schema": AGENT_SKILLS_SCHEMA,
+        "skills": [{
+            "name": "autumn-docs",
+            "type": "skill-md",
+            "description": "Look up the Autumn Rust web framework documentation for the deployed release via the docs MCP server, JSON API, or Markdown negotiation.",
+            "url": absolute_url(AUTUMN_DOCS_SKILL_PATH),
+            "digest": sha256_digest(AUTUMN_DOCS_SKILL)
+        }]
+    })
+    .to_string()
 }
 
 #[must_use]

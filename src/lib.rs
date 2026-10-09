@@ -340,6 +340,7 @@ fn is_cacheable_page(path: &str) -> bool {
     path == "/"
         || path == "/robots.txt"
         || path == "/sitemap.xml"
+        || path.starts_with("/.well-known/agent-skills/")
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
 
@@ -635,6 +636,24 @@ pub async fn sitemap_xml() -> Response {
         .into_response()
 }
 
+#[get("/.well-known/agent-skills/index.json")]
+pub async fn agent_skills_index() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+        seo::agent_skills_index(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/agent-skills/autumn-docs/SKILL.md")]
+pub async fn autumn_docs_skill() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/markdown; charset=utf-8")],
+        seo::AUTUMN_DOCS_SKILL,
+    )
+        .into_response()
+}
+
 #[must_use]
 pub fn app_routes() -> Vec<autumn_web::Route> {
     let mut routes = routes![
@@ -643,7 +662,9 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         docs_search,
         docs_page,
         robots_txt,
-        sitemap_xml
+        sitemap_xml,
+        agent_skills_index,
+        autumn_docs_skill
     ];
     // The JSON docs API, which `main` projects into the `/mcp` MCP server.
     // Registered here rather than only in `main` so the test harness exercises
