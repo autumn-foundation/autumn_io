@@ -377,6 +377,7 @@ fn is_cacheable_page(path: &str) -> bool {
         || path == seo::ARD_PATH
         || path == seo::AI_CATALOG_PATH
         || path == seo::WEB_BOT_AUTH_PATH
+        || path.starts_with("/.well-known/agent-skills/")
         || (path.starts_with("/docs") && path != DOCS_SEARCH_PATH)
 }
 
@@ -395,6 +396,7 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
         .strip_prefix(PLUGIN_ASSETS_PREFIX)
         .is_some_and(|rest| rest.starts_with('/'));
     let is_page = is_cacheable_page(path);
+    let path_is_agent_skill = path.starts_with("/.well-known/agent-skills/");
     let is_search = path == DOCS_SEARCH_PATH;
     let versioned = has_asset_version_query(request.uri().query());
 
@@ -411,12 +413,18 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
 
     // The response's own type is still consulted, as a backstop for any
     // Markdown this site might serve outside the negotiated read path.
-    let is_markdown = wants_markdown
-        || response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.starts_with(negotiate::MARKDOWN_MEDIA_TYPE));
+    //
+    // The skill file is the exception: it is `text/markdown` but has exactly one
+    // representation, the same bytes for every visitor, so it takes the page
+    // policy like `robots.txt` rather than the negotiated-Markdown `no-store`.
+    let is_fixed_artifact = path_is_agent_skill;
+    let is_markdown = !is_fixed_artifact
+        && (wants_markdown
+            || response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with(negotiate::MARKDOWN_MEDIA_TYPE)));
 
     let cache_control = if is_markdown {
         Some(UNCACHEABLE)
@@ -757,6 +765,32 @@ pub async fn sitemap_xml() -> Response {
         .into_response()
 }
 
+#[get("/.well-known/agent-skills/index.json")]
+#[api_doc(hidden)]
+pub async fn agent_skills_index() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::agent_skills_index(),
+    )
+        .into_response()
+}
+
+#[get("/.well-known/agent-skills/autumn-docs/SKILL.md")]
+#[api_doc(hidden)]
+pub async fn autumn_docs_skill() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/markdown; charset=utf-8"),
+            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+        ],
+        seo::AUTUMN_DOCS_SKILL,
+    )
+        .into_response()
+}
+
 #[must_use]
 pub fn app_routes() -> Vec<autumn_web::Route> {
     let mut routes = routes![
@@ -770,7 +804,9 @@ pub fn app_routes() -> Vec<autumn_web::Route> {
         api_catalog,
         ard_manifest,
         ai_catalog,
-        web_bot_auth_directory
+        web_bot_auth_directory,
+        agent_skills_index,
+        autumn_docs_skill
     ];
     for route in &mut routes {
         if route.name == "mcp_server_card" {

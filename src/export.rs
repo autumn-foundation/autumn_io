@@ -139,6 +139,24 @@ pub fn export_site(
     )?;
     routes.insert("/sitemap.xml".to_owned(), ManifestEntry::new("sitemap.xml"));
 
+    write_text(
+        &output_dir,
+        Path::new(".well-known/agent-skills/index.json"),
+        seo::agent_skills_index(),
+    )?;
+    routes.insert(
+        seo::AGENT_SKILLS_INDEX_PATH.to_owned(),
+        ManifestEntry::new(".well-known/agent-skills/index.json"),
+    );
+    write_text(
+        &output_dir,
+        Path::new(".well-known/agent-skills/autumn-docs/SKILL.md"),
+        seo::AUTUMN_DOCS_SKILL.to_string(),
+    )?;
+    routes.insert(
+        seo::AUTUMN_DOCS_SKILL_PATH.to_owned(),
+        ManifestEntry::new(".well-known/agent-skills/autumn-docs/SKILL.md"),
+    );
     for (route, file) in [
         (seo::ARD_PATH, ".well-known/ard.json"),
         (seo::AI_CATALOG_PATH, ".well-known/ai-catalog.json"),

@@ -44,6 +44,8 @@ async fn every_read_path_page_is_cacheable_by_a_shared_cache() {
         "/.well-known/ard.json",
         "/.well-known/ai-catalog.json",
         "/.well-known/http-message-signatures-directory",
+        "/.well-known/agent-skills/index.json",
+        "/.well-known/agent-skills/autumn-docs/SKILL.md",
     ] {
         let response = app.get(path).send().await;
         response.assert_status(200);

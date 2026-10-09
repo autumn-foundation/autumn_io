@@ -1517,6 +1517,44 @@ async fn autumn_routes_expose_crawl_discovery_files() {
     );
 }
 
+#[tokio::test]
+async fn agent_skills_index_lists_a_skill_whose_digest_matches_the_served_file() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let index = app
+        .get("/.well-known/agent-skills/index.json")
+        .send()
+        .await
+        .assert_status(200)
+        .assert_header_contains("content-type", "application/json")
+        .assert_header("access-control-allow-origin", "*")
+        .text();
+    let index: serde_json::Value = serde_json::from_str(&index).expect("index is JSON");
+    assert_eq!(
+        index["$schema"],
+        "https://schemas.agentskills.io/discovery/0.2.0/schema.json"
+    );
+    let skill = &index["skills"][0];
+    assert_eq!(skill["name"], "autumn-docs");
+    assert_eq!(skill["type"], "skill-md");
+    assert!(!skill["description"].as_str().unwrap_or_default().is_empty());
+    let url = skill["url"].as_str().expect("url");
+    let path = url
+        .strip_prefix("https://autumn-web.app")
+        .expect("site url");
+
+    let body = app
+        .get(path)
+        .send()
+        .await
+        .assert_status(200)
+        .assert_header_contains("content-type", "text/markdown")
+        .assert_header("access-control-allow-origin", "*")
+        .text();
+    let digest = autumn_io::seo::sha256_digest(&body);
+    assert_eq!(skill["digest"], digest.as_str());
+}
+
 #[test]
 fn export_site_writes_static_dist_tree_from_shared_renderers() {
     let workspace = unique_temp_dir("autumn-io-export");
@@ -1529,8 +1567,8 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
     assert_eq!(summary.html_pages, registry.pages().len() + 1);
     assert!(summary.static_assets >= 4);
     // `/`, `/robots.txt`, `/sitemap.xml`, the ARD manifest (two paths), the Web Bot
-    // Auth directory, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 6);
+    // Auth directory, the agent-skills index and skill file, and one per guide.
+    assert_eq!(summary.routes, registry.pages().len() + 8);
     assert!(
         dist.join(".well-known/http-message-signatures-directory")
             .is_file()
