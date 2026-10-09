@@ -149,6 +149,15 @@ pub fn robots_txt() -> String {
     )
 }
 
+/// Identity the mounted MCP server reports in `initialize.serverInfo`.
+///
+/// `autumn-web` hard-codes both (its own package name and version) and offers
+/// no accessor, so they are mirrored here; `tests/mcp_docs_api.rs` compares
+/// them with a live `initialize` response, so an `autumn-web` upgrade that
+/// changes either fails CI instead of leaving the card stale.
+pub const MCP_SERVER_NAME: &str = "autumn-mcp";
+pub const MCP_SERVER_VERSION: &str = "0.8.0";
+
 /// MCP Server Card (SEP-1649), served at `/.well-known/mcp/server-card.json`
 /// so an agent can discover the `/mcp` server without being told about it.
 ///
@@ -162,9 +171,9 @@ pub fn mcp_server_card() -> String {
         "version": "1.0",
         "protocolVersion": "2025-06-18",
         "serverInfo": {
-            "name": "autumn-docs",
+            "name": MCP_SERVER_NAME,
             "title": "Autumn Docs",
-            "version": env!("CARGO_PKG_VERSION")
+            "version": MCP_SERVER_VERSION
         },
         "description": "Search and read the Autumn and Autumn Harvest guides as Markdown.",
         "documentationUrl": absolute_url("/docs/mcp"),
