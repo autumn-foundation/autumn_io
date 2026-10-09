@@ -28,8 +28,7 @@ autumn-web = { version = "0.8.0", default-features = false, features = [
 # landing page's entrances, the docs reading-progress bar, and the htmx search
 # results cascade. Vendors Motion and serves it from memory under
 # `/static/_plugins/motion/`, so no npm and no CDN — see
-# `docs/adr/0003-motion-plugin.md`. It requires autumn-web 0.8, which is why
-# the runtime dependency above is ahead of the 0.7.0 docs line.
+# `docs/adr/0003-motion-plugin.md`. It requires autumn-web 0.8.
 autumn-plugin-motion = "0.2.0"
 maud = "0.27.0"
 memchr = "2.8.0"

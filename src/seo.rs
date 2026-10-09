@@ -10,11 +10,11 @@ pub const GITHUB_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/au
 pub const WEBSITE_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn_io";
 pub const CRATES_IO_URL: &str = "https://crates.io/crates/autumn-web";
 pub const RUSTDOC_URL: &str = "https://docs.rs/autumn-web";
-pub const AUTUMN_VERSION: &str = "0.7.0";
+pub const AUTUMN_VERSION: &str = "0.8.0";
 pub const HARVEST_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn-harvest";
 pub const HARVEST_CRATES_IO_URL: &str = "https://crates.io/crates/autumn-harvest";
 pub const HARVEST_RUSTDOC_URL: &str = "https://docs.rs/autumn-harvest";
-pub const HARVEST_VERSION: &str = "0.6.0";
+pub const HARVEST_VERSION: &str = "0.7.0";
 
 #[must_use]
 pub fn absolute_url(path: &str) -> String {
@@ -142,10 +142,14 @@ pub fn docs_structured_data(page: &DocPage) -> String {
 /// would put a second, uglier copy of every guide in the index competing with
 /// the HTML page that should rank — so they are disallowed here while staying
 /// fully open to the clients they exist for, which do not read `robots.txt`.
+///
+/// The `Content-Signal` line declares AI-usage preferences (see
+/// <https://contentsignals.org/>): these are public framework docs, so search
+/// indexing, AI grounding/input, and AI training are all welcome.
 #[must_use]
 pub fn robots_txt() -> String {
     format!(
-        "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /mcp\n\nSitemap: {SITE_BASE_URL}/sitemap.xml\n"
+        "User-agent: *\nContent-Signal: ai-train=yes, search=yes, ai-input=yes\nAllow: /\nDisallow: /api/\nDisallow: /mcp\n\nSitemap: {SITE_BASE_URL}/sitemap.xml\n"
     )
 }
 
@@ -183,6 +187,20 @@ pub fn api_catalog() -> String {
     })
     .to_string()
 }
+
+/// Path of the Web Bot Auth key directory.
+pub const WEB_BOT_AUTH_PATH: &str = "/.well-known/http-message-signatures-directory";
+
+/// Media type the Web Bot Auth draft assigns to the key directory.
+pub const WEB_BOT_AUTH_CONTENT_TYPE: &str = "application/http-message-signatures-directory+json";
+
+/// The site's Web Bot Auth key directory: a JWKS holding the Ed25519 public
+/// key (`kid` is its RFC 7638 thumbprint) that receiving sites use to verify
+/// requests this site signs as a bot or agent.
+///
+/// Only the public half lives here. To rotate, generate a new Ed25519 key,
+/// replace the entry, and keep the old one listed until signed traffic drains.
+pub const WEB_BOT_AUTH_DIRECTORY: &str = r#"{"keys":[{"kty":"OKP","crv":"Ed25519","x":"54vmrf8D78z2CRDIIjBEsd0Zzer3JgcjU8yIi6y5JuY","kid":"L8BOcML4IEa9Bcz6_cmkOlrDESF06ZmJqfKfkp2LA1E"}]}"#;
 
 #[must_use]
 pub fn sitemap_xml(registry: &DocRegistry) -> String {
