@@ -423,6 +423,19 @@ async fn apply_cache_control(request: Request, next: Next) -> Response {
     response
 }
 
+/// `Link` header (RFC 8288) on the homepage, advertising where an agent should
+/// go next without having to parse the HTML: the getting-started guide and the
+/// JSON docs API.
+///
+/// Only resources this site actually serves, and only relation types in the
+/// IANA registry: RFC 8288 §3.3 requires an unregistered relation to be an
+/// absolute URI, so `mcp` and `sitemap` are left to `robots.txt`, the
+/// `<link rel="sitemap">` in the page head, and `docs/mcp-server.md`.
+pub const HOME_LINK_HEADER: &str = concat!(
+    "</docs/getting-started>; rel=\"service-doc\"; type=\"text/html\", ",
+    "</api/docs>; rel=\"describedby\"; type=\"application/json\""
+);
+
 #[get("/")]
 pub async fn index(negotiate: MarkdownNegotiate) -> Response {
     let registry = match site_docs() {
@@ -430,10 +443,14 @@ pub async fn index(negotiate: MarkdownNegotiate) -> Response {
         Err(error) => return docs_load_error_response(negotiate, error),
     };
 
-    negotiate.respond(
+    let mut response = negotiate.respond(
         || site::render_home_page(registry).into_response(),
         || MarkdownPage::new(site::markdown::render_home_page(registry)),
-    )
+    );
+    response
+        .headers_mut()
+        .insert(header::LINK, HeaderValue::from_static(HOME_LINK_HEADER));
+    response
 }
 
 #[get("/docs")]
