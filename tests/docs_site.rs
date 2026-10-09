@@ -1311,6 +1311,52 @@ async fn autumn_routes_cache_static_assets_for_repeat_visits() {
 }
 
 #[tokio::test]
+async fn api_catalog_is_a_rfc_9727_linkset() {
+    let app = TestApp::new().routes(autumn_io::app_routes()).build();
+
+    let response = app.get("/.well-known/api-catalog").send().await;
+    response.assert_status(200).assert_header(
+        "content-type",
+        "application/linkset+json; profile=\"https://www.rfc-editor.org/info/rfc9727\"",
+    );
+    response.assert_header("link", "</.well-known/api-catalog>; rel=\"api-catalog\"");
+    let catalog: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
+    let entry = &catalog["linkset"][0];
+    assert_eq!(entry["anchor"], "https://autumn-web.app/api/");
+    assert_eq!(
+        entry["service-desc"][0]["href"],
+        "https://autumn-web.app/openapi.json"
+    );
+    assert_eq!(
+        entry["service-doc"][0]["href"],
+        "https://autumn-web.app/docs"
+    );
+    assert_eq!(entry["status"][0]["href"], "https://autumn-web.app/health");
+}
+
+#[tokio::test]
+async fn openapi_spec_documents_only_the_cataloged_api() {
+    // `service-desc` in the API catalog points here; the HTML pages and
+    // discovery files are not part of that API and must stay out of it.
+    let app = TestApp::new()
+        .routes(autumn_io::app_routes())
+        .openapi(autumn_web::openapi::OpenApiConfig::new(
+            "Autumn docs API",
+            "0.0.0",
+        ))
+        .build();
+
+    let response = app.get("/openapi.json").send().await;
+    response.assert_status(200);
+    let spec: serde_json::Value = serde_json::from_str(&response.text()).expect("valid JSON");
+    let paths: Vec<&String> = spec["paths"].as_object().expect("paths").keys().collect();
+    assert!(!paths.is_empty(), "the docs API should be documented");
+    for path in paths {
+        assert!(path.starts_with("/api/"), "{path} is not part of the API");
+    }
+}
+
+#[tokio::test]
 async fn ard_manifest_is_served_with_cors_and_valid_entries() {
     let app = TestApp::new().routes(autumn_io::app_routes()).build();
 

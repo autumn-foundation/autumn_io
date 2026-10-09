@@ -14,6 +14,12 @@ async fn main() {
         // coding agent can read the guides for the release that is deployed.
         // Deliberately unauthenticated: this is public documentation, and the
         // three tools it exposes are all reads.
+        // Serve the generated OpenAPI document at `/openapi.json`, the
+        // `service-desc` target of `/.well-known/api-catalog`.
+        .openapi(autumn_web::openapi::OpenApiConfig::new(
+            "Autumn docs API",
+            env!("CARGO_PKG_VERSION"),
+        ))
         .mount_mcp(autumn_io::MCP_MOUNT_PATH)
         .run()
         .await;

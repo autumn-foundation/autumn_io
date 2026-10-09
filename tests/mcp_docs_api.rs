@@ -196,6 +196,7 @@ async fn mcp_catalog_excludes_the_html_site() {
         "docs_search",
         "sitemap_xml",
         "robots_txt",
+        "api_catalog",
         "ard_manifest",
         "ai_catalog",
     ] {
@@ -652,6 +653,28 @@ async fn unknown_slugs_and_sections_come_back_as_readable_tool_errors() {
 // ─────────────────────────────────────────────────────────────────────────
 // The plain HTTP surface
 // ─────────────────────────────────────────────────────────────────────────
+
+/// The OpenAPI spec declares every error status as `application/problem+json`
+/// with the `ProblemDetails` schema, so the API must actually answer that way.
+#[tokio::test]
+async fn api_errors_are_problem_details() {
+    let app = app();
+
+    let response = app.get("/api/docs/no-such-guide").send().await;
+    response.assert_status(404);
+    assert_eq!(
+        response.header("content-type"),
+        Some("application/problem+json")
+    );
+    let body: serde_json::Value = response.json();
+    assert_eq!(body["status"], 404);
+    assert!(
+        body["detail"]
+            .as_str()
+            .is_some_and(|d| d.contains("list_autumn_docs")),
+        "detail should name the tool that returns valid slugs: {body}"
+    );
+}
 
 /// The tools are ordinary endpoints, and stay usable with curl and in a browser
 /// — the MCP layer is a projection of them, not a separate app.
