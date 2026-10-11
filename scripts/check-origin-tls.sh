@@ -18,7 +18,13 @@
 # Usage: scripts/check-origin-tls.sh [<hostname>...]   (default: autumn-web.app)
 # Env:   ORIGIN    host[:port] to connect to       (default: autumn-io.fly.dev:443)
 #        MIN_DAYS  fail if the cert expires sooner  (default: 14)
-#        CAFILE    trust store for chain checks     (default: openssl's own)
+#        ORIGIN_TRUST  which CA the origin cert must chain to:
+#                  public               - publicly trusted, e.g. Fly's Let's
+#                                         Encrypt certs (default)
+#                  cloudflare-origin-ca - Cloudflare Origin CA, for an imported
+#                                         origin certificate; uses the roots in
+#                                         scripts/cloudflare-origin-ca.pem
+#        CAFILE    explicit trust store; overrides ORIGIN_TRUST
 #        TIMEOUT   seconds per handshake            (default: 30)
 set -euo pipefail
 
@@ -29,8 +35,17 @@ timeout_secs="${TIMEOUT:-30}"
 hosts=("$@")
 [ ${#hosts[@]} -ge 1 ] || hosts=(autumn-web.app)
 
+cafile="${CAFILE:-}"
+case "${ORIGIN_TRUST:-public}" in
+  public) ;;
+  cloudflare-origin-ca)
+    [ -n "$cafile" ] || cafile="$(dirname "$0")/cloudflare-origin-ca.pem" ;;
+  *)
+    echo "ORIGIN_TRUST must be 'public' or 'cloudflare-origin-ca', got '$ORIGIN_TRUST'" >&2
+    exit 2 ;;
+esac
 verify_args=()
-[ -n "${CAFILE:-}" ] && verify_args=(-CAfile "$CAFILE")
+[ -n "$cafile" ] && verify_args=(-CAfile "$cafile")
 
 status=0
 for host in "${hosts[@]}"; do

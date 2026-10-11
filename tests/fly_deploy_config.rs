@@ -408,6 +408,19 @@ fn origin_tls_check_targets_the_deployed_fly_app_and_a_trusted_host() {
         "origin-tls.yml must connect to {app}.fly.dev, the app fly.toml deploys"
     );
 
+    let trust = WORKFLOW
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("ORIGIN_TRUST: "))
+        .expect("origin-tls.yml sets ORIGIN_TRUST");
+    assert!(
+        ["public", "cloudflare-origin-ca"].contains(&trust),
+        "ORIGIN_TRUST must be a mode scripts/check-origin-tls.sh accepts, got {trust:?}"
+    );
+    assert!(
+        std::path::Path::new("scripts/cloudflare-origin-ca.pem").is_file(),
+        "ORIGIN_TRUST=cloudflare-origin-ca reads scripts/cloudflare-origin-ca.pem"
+    );
+
     let (_, checked) = WORKFLOW
         .split_once("scripts/check-origin-tls.sh")
         .expect("origin-tls.yml runs scripts/check-origin-tls.sh");

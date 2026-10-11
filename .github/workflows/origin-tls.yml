@@ -35,6 +35,11 @@ jobs:
       - env:
           ORIGIN: autumn-io.fly.dev:443
           MIN_DAYS: 14
+          # `public` while Fly issues the cert through Let's Encrypt. Switch to
+          # `cloudflare-origin-ca` if a Cloudflare Origin CA cert is imported
+          # into Fly instead (the runbook's no-renewal alternative): only
+          # Cloudflare trusts that cert, so a public trust store would fail it.
+          ORIGIN_TRUST: public
         run: scripts/check-origin-tls.sh autumn-web.app
 
   # The check above is the early warning; this one is the symptom. It is a

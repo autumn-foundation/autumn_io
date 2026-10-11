@@ -103,6 +103,13 @@ ownership with the same `_fly-ownership` TXT record. This takes renewal off the
 table, but only Cloudflare trusts that certificate, so the origin can never be
 reached directly over the custom name.
 
+If you take this route, set `ORIGIN_TRUST: cloudflare-origin-ca` in
+`.github/workflows/origin-tls.yml` in the same change. The check then verifies
+against the Origin CA roots in `scripts/cloudflare-origin-ca.pem` instead of
+the public trust store. Without that edit it fails every day on a certificate
+that Cloudflare accepts. Locally, run
+`ORIGIN_TRUST=cloudflare-origin-ca scripts/check-origin-tls.sh`.
+
 ## Don't do this
 
 - **Cloudflare SSL mode → Flexible.** Cloudflare would then talk plain HTTP to
