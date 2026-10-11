@@ -48,6 +48,21 @@ verify_args=()
 [ -n "$cafile" ] && verify_args=(-CAfile "$cafile")
 
 status=0
+
+# A pinned trust store expires too, and OpenSSL rejects a chain whose root has
+# lapsed however long the leaf has left. Give the roots the same warning.
+if [ -n "$cafile" ]; then
+  while IFS= read -r -d '' root; do
+    if ! openssl x509 -noout -checkend $((min_days * 86400)) <<<"$root" >/dev/null; then
+      echo "FAIL trust root [$(openssl x509 -noout -subject <<<"$root" |
+        sed 's/^subject=//')] in $cafile expires" \
+        "$(openssl x509 -noout -enddate <<<"$root" | cut -d= -f2), within $min_days days." >&2
+      status=1
+    fi
+  done < <(awk '/-----BEGIN CERTIFICATE-----/{c=""} {c=c $0 "\n"}
+    /-----END CERTIFICATE-----/{printf "%s%c", c, 0}' "$cafile")
+fi
+
 for host in "${hosts[@]}"; do
   # No `-verify_return_error`: fetch whatever is presented, then judge it, so
   # "no certificate at all" and "certificate is wrong" read differently.
