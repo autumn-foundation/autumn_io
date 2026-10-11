@@ -384,3 +384,51 @@ fn csp_nonce_config_stays_wired_for_cloudflare_js_detections() {
          above the setting in autumn.toml"
     );
 }
+
+/// The origin TLS check must ask the Fly app this repo actually deploys, for a
+/// hostname the app actually serves.
+///
+/// `.github/workflows/origin-tls.yml` exists because Fly's certificate for
+/// `autumn-web.app` expired on 2026-10-09 and the only symptom was Cloudflare's
+/// `525` (docs/runbooks/cloudflare-525.md). A check pointed at a renamed app or
+/// a dropped hostname would go on passing — a failed handshake is what it is
+/// looking for, and a stale target fails differently or not at all — so the
+/// target is pinned to `fly.toml` and `autumn.toml` here rather than trusted.
+#[test]
+fn origin_tls_check_targets_the_deployed_fly_app_and_a_trusted_host() {
+    const WORKFLOW: &str = include_str!("../.github/workflows/origin-tls.yml");
+
+    let app = FLY_TOML
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("app = "))
+        .map(|value| value.trim_matches(['\'', '"']))
+        .expect("fly.toml names its app");
+    assert!(
+        WORKFLOW.contains(&format!("ORIGIN: {app}.fly.dev:443")),
+        "origin-tls.yml must connect to {app}.fly.dev, the app fly.toml deploys"
+    );
+
+    let (_, checked) = WORKFLOW
+        .split_once("scripts/check-origin-tls.sh")
+        .expect("origin-tls.yml runs scripts/check-origin-tls.sh");
+    let hosts: Vec<&str> = checked
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect();
+    assert!(
+        !hosts.is_empty(),
+        "origin-tls.yml must name the hosts it checks"
+    );
+
+    let (_, trusted) = AUTUMN_TOML
+        .split_once("[security.trusted_hosts]")
+        .expect("autumn.toml lists trusted hosts");
+    for host in hosts {
+        assert!(
+            trusted.contains(&format!("\"{host}\"")),
+            "origin-tls.yml checks {host}, which autumn.toml does not trust"
+        );
+    }
+}
