@@ -24,14 +24,23 @@ sequenceDiagram
 Certificate Transparency logs (`crt.sh/?q=autumn-web.app`) show Fly's Let's
 Encrypt pair for `autumn-web.app` (issued 2026-07-11) expired on 2026-10-09 with
 no renewal ever issued. Fly tries to renew about 30 days before expiry, so it
-had been failing since early September. Both ACME challenges were blocked by
-Cloudflare:
+had been failing since early September.
 
-| Challenge | Why it failed |
+Fly will only issue or renew once it can verify the domain through at least one
+of three records ([Fly docs](https://fly.io/docs/networking/custom-domain/)).
+None of them worked with this zone:
+
+| Verification route | State on 2026-10-11 |
 | --- | --- |
-| DNS-01 | `_acme-challenge.autumn-web.app` was a **proxied** (orange-cloud) record, so it answered with Cloudflare's IPs. Let's Encrypt never saw the CNAME to Fly's `flydns.net` validation name. |
-| HTTP-01 | Cloudflare redirects `http://` to `https://` (`301`), so the challenge never reached Fly on port 80 in plain HTTP. |
-| TLS-ALPN-01 | Can't work behind any TLS-terminating proxy. |
+| AAAA record pointing at the app | The apex is proxied, so its AAAA records are Cloudflare's, not Fly's. |
+| `_acme-challenge` CNAME (DNS-01) | The record is **proxied** (orange cloud) and answers with Cloudflare's IPs. Nobody can see a CNAME to Fly's `flydns.net` name. |
+| `_fly-ownership` TXT | Doesn't exist. |
+
+The HTTP→HTTPS redirect at Cloudflare is *not* the blocker. Let's Encrypt
+follows it, and Fly supports HTTP-01 through Cloudflare's proxy once ownership
+is verified with `_fly-ownership`. HTTP-01 can't help now, though: the
+redirected request goes Cloudflare → Fly over HTTPS, and that leg is what's
+returning 525. DNS-01 doesn't touch that path, so it's the way out.
 
 `.github/workflows/origin-tls.yml` now checks this every day, so a stalled
 renewal turns CI red with about two weeks to spare.
@@ -55,11 +64,15 @@ them.
 2. **Point the challenge record at Fly, unproxied.** In Cloudflare, go to
    **DNS → Records** and edit (or create) `_acme-challenge`:
    - Type **CNAME**, target exactly the `…flydns.net` name from step 1.
-   - Proxy status **DNS only** (grey cloud). This is the setting that broke
-     renewal. A proxied record hides the CNAME from Let's Encrypt.
+   - Proxy status **DNS only** (grey cloud). A proxied record hides the CNAME
+     from Let's Encrypt.
 
    Leave the apex `autumn-web.app` record proxied. Only the challenge record
    must be grey.
+
+   Also add the `_fly-ownership` **TXT** record that `fly certs show` lists.
+   It gives Fly a second verification route, so renewal no longer depends on
+   one record staying grey.
 
 3. **Ask Fly to validate and issue.**
 
@@ -81,6 +94,14 @@ them.
 
    Then run the **Origin TLS** workflow manually (Actions → Origin TLS → Run
    workflow) to confirm it's green.
+
+**Alternative with no renewals at all.** Fly can import a certificate instead
+of issuing one through ACME. Create a Cloudflare Origin CA certificate for
+`autumn-web.app` (SSL/TLS → Origin Server; valid for up to 15 years and trusted
+by Cloudflare's Full (strict) mode), import it into the app on Fly, and verify
+ownership with the same `_fly-ownership` TXT record. This takes renewal off the
+table, but only Cloudflare trusts that certificate, so the origin can never be
+reached directly over the custom name.
 
 ## Don't do this
 

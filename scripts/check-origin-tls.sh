@@ -19,11 +19,13 @@
 # Env:   ORIGIN    host[:port] to connect to       (default: autumn-io.fly.dev:443)
 #        MIN_DAYS  fail if the cert expires sooner  (default: 14)
 #        CAFILE    trust store for chain checks     (default: openssl's own)
+#        TIMEOUT   seconds per handshake            (default: 30)
 set -euo pipefail
 
 origin="${ORIGIN:-autumn-io.fly.dev:443}"
 [[ "$origin" == *:* ]] || origin="$origin:443"
 min_days="${MIN_DAYS:-14}"
+timeout_secs="${TIMEOUT:-30}"
 hosts=("$@")
 [ ${#hosts[@]} -ge 1 ] || hosts=(autumn-web.app)
 
@@ -34,7 +36,10 @@ status=0
 for host in "${hosts[@]}"; do
   # No `-verify_return_error`: fetch whatever is presented, then judge it, so
   # "no certificate at all" and "certificate is wrong" read differently.
-  out="$(openssl s_client -connect "$origin" -servername "$host" \
+  # `timeout` because s_client has no TLS handshake timeout of its own (its
+  # `-timeout` is DTLS-only): a peer that accepts TCP and then stalls would
+  # otherwise hang the check until the runner kills it, hours later.
+  out="$(timeout "$timeout_secs" openssl s_client -connect "$origin" -servername "$host" \
     -verify_hostname "$host" "${verify_args[@]}" </dev/null 2>/dev/null || true)"
   cert="$(openssl x509 <<<"$out" 2>/dev/null || true)"
 

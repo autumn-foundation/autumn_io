@@ -27,6 +27,9 @@ jobs:
   origin-certificate:
     name: Fly certificate for the custom domain
     runs-on: ubuntu-latest
+    # A stalled check is a failed check. Without this, a hang runs to the
+    # 6-hour default before anyone hears about it.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - env:
@@ -40,6 +43,7 @@ jobs:
   public-site:
     name: Site answers through Cloudflare
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - run: |
           code="$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --retry-all-errors \
