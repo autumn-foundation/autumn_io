@@ -1,0 +1,60 @@
+name: Origin TLS
+
+# Catches the outage of 2026-10-09 weeks before it can recur.
+#
+# Fly's certificate for `autumn-web.app` expired that day. Renewal had been
+# failing silently for a month because neither ACME challenge could get through
+# Cloudflare, and the first signal anyone saw was every visitor getting
+# Cloudflare's `525 SSL handshake failed`. `autumn-io.fly.dev` answered 200 the
+# whole time, so nothing that looked at the app itself could have noticed.
+#
+# This runs daily against Fly's edge directly, with the custom domain as SNI —
+# exactly the handshake Cloudflare makes — and fails once the certificate is
+# within `MIN_DAYS` of expiry. Fly renews about 30 days out, so a red run here
+# means renewal is broken with roughly two weeks to fix it. A failed scheduled
+# run emails whoever last edited the `schedule` below.
+#
+# Fix procedure: docs/runbooks/cloudflare-525.md.
+on:
+  schedule:
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  origin-certificate:
+    name: Fly certificate for the custom domain
+    runs-on: ubuntu-latest
+    # A stalled check is a failed check. Without this, a hang runs to the
+    # 6-hour default before anyone hears about it.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          ORIGIN: autumn-io.fly.dev:443
+          MIN_DAYS: 14
+          # `public` while Fly issues the cert through Let's Encrypt. Switch to
+          # `cloudflare-origin-ca` if a Cloudflare Origin CA cert is imported
+          # into Fly instead (the runbook's no-renewal alternative): only
+          # Cloudflare trusts that cert, so a public trust store would fail it.
+          ORIGIN_TRUST: public
+        run: scripts/check-origin-tls.sh autumn-web.app
+
+  # The check above is the early warning; this one is the symptom. It is a
+  # separate job so a 525 still reports even when the certificate check has
+  # already failed, and so the two failures read as two different facts.
+  public-site:
+    name: Site answers through Cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --retry-all-errors \
+            --max-time 30 https://autumn-web.app/health || true)"
+          echo "https://autumn-web.app/health -> $code"
+          if [ "$code" = 525 ]; then
+            echo "::error::Cloudflare 525: Fly's edge refused the TLS handshake for autumn-web.app. See docs/runbooks/cloudflare-525.md."
+          fi
+          test "$code" = 200
