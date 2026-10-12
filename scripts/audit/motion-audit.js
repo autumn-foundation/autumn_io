@@ -1,5 +1,5 @@
 // Motion audit (tier 1): axe at two moments (mid-animation, settled), CLS/LCP, and content visibility
-// under prefers-reduced-motion on/off, at 1280 and 320 wide. Serve on :3000 first.
+// (elements carrying data-motion and their descendants, since stagger animates children) under prefers-reduced-motion on/off, at 1280 and 320 wide. Serve on :3000 first.
 // Usage: npm i playwright-core axe-core && CHROMIUM_PATH=... node scripts/audit/motion-audit.js
 const { chromium } = require('playwright-core');
 const axeSrc = require('fs').readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
@@ -28,7 +28,7 @@ const AXE = { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', '
     await p.evaluate(() => scrollTo(0, 0));
     const late = await p.evaluate(o => axe.run(document, o), AXE);
     const m = await p.evaluate(() => ({ cls: +window.__cls.toFixed(4), lcp: Math.round(window.__lcp),
-      hidden: [...document.querySelectorAll('[data-motion]')].filter(e => +getComputedStyle(e).opacity < 1).length,
+      hidden: [...document.querySelectorAll('[data-motion], [data-motion] *')].filter(e => +getComputedStyle(e).opacity < 1).length,
       motionEls: document.querySelectorAll('[data-motion]').length }));
     const f = v => v.violations.map(x => x.id + '(' + x.impact + ',' + x.nodes.length + ')').join(' ') || '0';
     console.log(`rm=${rm} ${w}px ${u} | axe early: ${f(early)} | settled: ${f(late)} | CLS ${m.cls} LCP ${m.lcp}ms | motion els ${m.motionEls}, still<1 opacity after scrolling: ${m.hidden}`);
@@ -39,7 +39,7 @@ const AXE = { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', '
     const ctx = await b.newContext({ viewport: { width: w, height: h }, javaScriptEnabled: false });
     const p = await ctx.newPage();
     await p.goto('http://127.0.0.1:3000' + u, { waitUntil: 'load' });
-    const n = await p.locator('[data-motion]').evaluateAll(els => els.filter(e => +getComputedStyle(e).opacity < 1 || getComputedStyle(e).visibility === 'hidden').length);
+    const n = await p.locator('[data-motion], [data-motion] *').evaluateAll(els => els.filter(e => +getComputedStyle(e).opacity < 1 || getComputedStyle(e).visibility === 'hidden').length);
     console.log(`js=off ${w}px ${u} | [data-motion] hidden: ${n}`);
     await ctx.close();
   }
