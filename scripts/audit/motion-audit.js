@@ -21,12 +21,26 @@ const AXE = { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', '
     await p.addScriptTag({ content: axeSrc });
     const early = await p.evaluate(o => axe.run(document, o), AXE);       // as soon as load fires
     await p.waitForTimeout(3000);
+    // Scroll-reveal elements below the fold only animate once reached, so walk the page before measuring.
+    const sh = await p.evaluate(() => document.documentElement.scrollHeight);
+    for (let y = 0; y <= sh; y += h / 2) { await p.evaluate(y => scrollTo(0, y), y); await p.waitForTimeout(150); }
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => scrollTo(0, 0));
     const late = await p.evaluate(o => axe.run(document, o), AXE);
     const m = await p.evaluate(() => ({ cls: +window.__cls.toFixed(4), lcp: Math.round(window.__lcp),
       hidden: [...document.querySelectorAll('[data-motion]')].filter(e => +getComputedStyle(e).opacity < 1).length,
       motionEls: document.querySelectorAll('[data-motion]').length }));
     const f = v => v.violations.map(x => x.id + '(' + x.impact + ',' + x.nodes.length + ')').join(' ') || '0';
-    console.log(`rm=${rm} ${w}px ${u} | axe early: ${f(early)} | settled: ${f(late)} | CLS ${m.cls} LCP ${m.lcp}ms | motion els ${m.motionEls}, still<1 opacity after 3s: ${m.hidden}`);
+    console.log(`rm=${rm} ${w}px ${u} | axe early: ${f(early)} | settled: ${f(late)} | CLS ${m.cls} LCP ${m.lcp}ms | motion els ${m.motionEls}, still<1 opacity after scrolling: ${m.hidden}`);
+    await ctx.close();
+  }
+  // No-JS pass: the motion initializer must not be what makes content visible.
+  for (const [w, h] of VPS) for (const u of URLS) {
+    const ctx = await b.newContext({ viewport: { width: w, height: h }, javaScriptEnabled: false });
+    const p = await ctx.newPage();
+    await p.goto('http://127.0.0.1:3000' + u, { waitUntil: 'load' });
+    const n = await p.locator('[data-motion]').evaluateAll(els => els.filter(e => +getComputedStyle(e).opacity < 1 || getComputedStyle(e).visibility === 'hidden').length);
+    console.log(`js=off ${w}px ${u} | [data-motion] hidden: ${n}`);
     await ctx.close();
   }
   await b.close();
