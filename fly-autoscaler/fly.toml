@@ -27,15 +27,34 @@ primary_region = "ord"
 [env]
   FAS_APP_NAME = "autumn-io"
 
-  # autumn-web's built-in `autumn_http_requests_total` counter — already
-  # scraped by Fly via `[metrics]` in the root fly.toml, no app code change
-  # needed.
-  #
-  # TODO: replace <ORG_SLUG> with the Fly org autumn-io deploys under
-  # (`fly orgs list`).
+  # The Fly org's built-in Prometheus. `personal` is the org autumn-io deploys
+  # under (`fly orgs list`); FAS_PROMETHEUS_TOKEN must be a read-only token for
+  # this same org.
   FAS_PROMETHEUS_ADDRESS = "https://api.fly.io/prometheus/personal"
   FAS_PROMETHEUS_METRIC_NAME = "reqrate"
-  FAS_PROMETHEUS_QUERY = "sum(rate(autumn_http_requests_total{app=\"autumn-io\"}[1m]))"
+
+  # Origin request rate, counted by Fly's own proxy — not by the app.
+  #
+  # This used to query autumn-web's `autumn_http_requests_total`, and that
+  # never worked: the series reached Fly's Prometheus only through the
+  # `[metrics]` scrape of `/actuator/prometheus`, and the app answers that
+  # scrape with `400 Invalid Host header`. Fly's scraper addresses the machine
+  # by its private IP, and the prod profile's `[security.trusted_hosts]` admits
+  # only the public hostnames (`autumn.toml`). The query came back empty, and
+  # fly-autoscaler fails every reconcile on an empty result
+  # ("empty prometheus result").
+  #
+  # `fly_edge_http_responses_count` is published by fly-proxy for every app
+  # with an HTTP service, with no scrape of the app at all — so trusted hosts
+  # cannot block it and it does not need a running machine to exist.
+  #
+  # `or vector(0)`: with no traffic in the window (or no machines up, which is
+  # this app's normal idle state at `min_machines_running = 0`), the series
+  # goes stale and `sum(rate(...))` returns no sample. fly-autoscaler treats
+  # that as an error, not as zero, so the fallback is load-bearing.
+  #
+  # `$APP_NAME` is expanded by fly-autoscaler itself, from FAS_APP_NAME.
+  FAS_PROMETHEUS_QUERY = "sum(rate(fly_edge_http_responses_count{app=\"$APP_NAME\"}[1m])) or vector(0)"
 
   # Pool size, not started-machine count (see the file header). Floor of 1 —
   # a docs site is cheap to keep one machine object provisioned for — ceiling

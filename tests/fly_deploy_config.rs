@@ -165,15 +165,107 @@ fn release_profile_keeps_unwinding_for_autumn_panic_isolation() {
     );
 }
 
-/// Fly's built-in Prometheus scraping needs to be told where the scrape
-/// endpoint lives. Without this block Fly never learns about
-/// `/actuator/prometheus`, and the `fly-autoscaler` companion app
-/// (`fly-autoscaler/fly.toml`) has nothing to query — see
-/// `fly-autoscaler/README.md`.
+const AUTOSCALER_FLY_TOML: &str = include_str!("../fly-autoscaler/fly.toml");
+
+/// Why `fly.toml` has no `[metrics]` scrape block, pinned against the real
+/// prod middleware stack.
+///
+/// Fly's scraper addresses the machine by its private IP, so the Host it sends
+/// is an IP literal. The prod trusted-host allow-list rejects that before the
+/// actuator runs, and the autoscaler that queried the scraped series failed
+/// every reconcile on an empty result. If this test starts failing because the
+/// IP-addressed scrape now gets a 200, autumn-web has exempted the endpoint,
+/// and a `[metrics]` block would work again.
+#[tokio::test]
+async fn prod_trusted_hosts_reject_a_scrape_addressed_by_private_ip() {
+    let env = MockEnv::new()
+        .with("AUTUMN_MANIFEST_DIR", env!("CARGO_MANIFEST_DIR"))
+        .with("AUTUMN_PROFILE", "prod")
+        .with("AUTUMN_SECURITY__SIGNING_SECRET", &"a".repeat(64));
+    let config = AutumnConfig::load_with_env(&env).expect("prod config should load");
+    let app = autumn_web::test::TestApp::new()
+        .config(config)
+        .routes(autumn_io::app_routes())
+        .build();
+
+    for fly_scraper_host in ["[fdaa:0:1::3]:3000", "172.19.0.10:3000"] {
+        app.get("/actuator/prometheus")
+            .header("host", fly_scraper_host)
+            .send()
+            .await
+            .assert_status(400);
+    }
+    app.get("/actuator/prometheus")
+        .header("host", "autumn-io.fly.dev")
+        .send()
+        .await
+        .assert_status(200);
+}
+
+/// A `[metrics]` block would only log a rejected-host warning every 15s; see
+/// `prod_trusted_hosts_reject_a_scrape_addressed_by_private_ip`.
 #[test]
-fn fly_toml_exposes_the_prometheus_scrape_endpoint() {
-    assert!(FLY_TOML.contains("[metrics]"));
-    assert!(FLY_TOML.contains(r#"path = "/actuator/prometheus""#));
+fn fly_toml_does_not_ask_fly_to_scrape_the_host_checked_actuator() {
+    assert!(
+        !FLY_TOML.lines().any(|line| line.trim() == "[metrics]"),
+        "Fly's scrape of /actuator/prometheus gets 400 from the prod trusted-host check"
+    );
+}
+
+/// The value of one `KEY = "..."` line in the autoscaler's `[env]`, unescaped.
+fn autoscaler_env(key: &str) -> String {
+    AUTOSCALER_FLY_TOML
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(&format!("{key} = ")))
+        .map(|value| value.trim_matches('"').replace("\\\"", "\""))
+        .unwrap_or_else(|| panic!("fly-autoscaler/fly.toml sets {key}"))
+}
+
+/// The autoscaler must count requests with a series Fly publishes itself.
+/// Anything that depends on scraping the app is blocked by trusted hosts.
+#[test]
+fn autoscaler_queries_fly_proxy_metrics_not_an_app_scrape() {
+    let query = autoscaler_env("FAS_PROMETHEUS_QUERY");
+    assert!(
+        query.contains("fly_edge_http_responses_count"),
+        "query fly-proxy's own counter, got {query:?}"
+    );
+    assert!(
+        !query.contains("autumn_"),
+        "autumn_* series reach Fly only through the blocked scrape, got {query:?}"
+    );
+}
+
+/// fly-autoscaler fails the whole reconcile on an empty vector
+/// ("empty prometheus result"). Idle and scaled to zero is this app's normal
+/// state, and then the rate has no sample.
+#[test]
+fn autoscaler_query_falls_back_to_zero_when_idle() {
+    let query = autoscaler_env("FAS_PROMETHEUS_QUERY");
+    assert!(
+        query.trim_end().ends_with("or vector(0)"),
+        "an idle app must read as 0 req/s, not as an error, got {query:?}"
+    );
+}
+
+/// The autoscaler sizes the pool only; the proxy keeps start/stop. A started
+/// count driven by a different signal would fight `auto_stop_machines`.
+#[test]
+fn autoscaler_targets_the_deployed_app_and_only_sizes_the_pool() {
+    let app = FLY_TOML
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("app = "))
+        .map(|value| value.trim_matches(['\'', '"']))
+        .expect("fly.toml names its app");
+    assert_eq!(autoscaler_env("FAS_APP_NAME"), app);
+    let query = autoscaler_env("FAS_PROMETHEUS_QUERY");
+    assert!(
+        query.contains(r#"app="$APP_NAME""#),
+        "filter on the scaled app, got {query:?}"
+    );
+    assert!(AUTOSCALER_FLY_TOML.contains("FAS_CREATED_MACHINE_COUNT"));
+    assert!(!AUTOSCALER_FLY_TOML.contains("FAS_STARTED_MACHINE_COUNT ="));
+    assert!(FLY_TOML.contains("min_machines_running = 0"));
 }
 
 /// Stripping the release binary is deliberate; the guarantee it used to carry
