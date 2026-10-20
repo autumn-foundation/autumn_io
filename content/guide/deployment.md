@@ -2962,6 +2962,18 @@ The generated `fly.toml` wires Fly's `[metrics]` block to this endpoint:
   path = "/actuator/prometheus"
 ```
 
+> **Trusted hosts block this scrape in `prod`.** Fly's scraper reaches the
+> machine by its private IP, so the request's `Host` is an IP literal such as
+> `[fdaa:0:1::3]:3000`. The prod profile requires a non-empty
+> `[security.trusted_hosts]` list, and `/actuator/prometheus` is not on the
+> probe bypass list (only the health paths are), so the scrape gets
+> `400 Invalid Host header` and Fly stores nothing. The app logs
+> `trusted host rejected request` every 15 seconds. To count requests on Fly
+> (for dashboards, or to drive
+> [fly-autoscaler](https://fly.io/docs/launch/autoscale-by-metric/)), query
+> the series fly-proxy publishes itself, such as
+> `fly_edge_http_responses_count{app="<app>"}`. They need no scrape of the app.
+
 ### Keeping metrics off the public HTTP service
 
 `/actuator/prometheus` carries operational counters, not secrets, but you may
