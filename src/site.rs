@@ -17,7 +17,7 @@ pub mod markdown;
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
-const VERSION_LABEL: &str = "Autumn 0.8.0";
+const VERSION_LABEL: &str = "Autumn 0.9.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const HARVEST_GUIDE_START_PATH: &str = "/docs/harvest-project-skeleton";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
@@ -159,6 +159,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "derivations",
             "cache-coherence",
             "money",
+            "connection-poolers",
         ],
     },
     DocsNavGroup {
@@ -173,6 +174,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "admin",
             "presence",
             "web-push",
+            "outbox",
         ],
     },
     DocsNavGroup {
@@ -185,6 +187,8 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "openapi",
             "billing",
             "wire-contracts",
+            "aeo",
+            "webmcp",
         ],
     },
     DocsNavGroup {
@@ -198,6 +202,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "data-retention",
             "data-scrubbing",
             "cookie-consent",
+            "data-capsules",
         ],
     },
     DocsNavGroup {
@@ -227,6 +232,12 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "capacity-contracts",
             "sla",
             "hot-upgrades",
+            "timeouts-and-budgets",
+            "connection-limits",
+            "overload-signals",
+            "slo",
+            "fault-injection",
+            "cost",
         ],
     },
     DocsNavGroup {
@@ -255,6 +266,8 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "tenant-cells",
             "sqlite-in-production",
             "clustering",
+            "cell-isolation",
+            "sqlite-fleet",
         ],
     },
     DocsNavGroup {
@@ -273,6 +286,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "extensibility",
             "media",
             "cloud-native",
+            "kubernetes",
             "i18n",
             "upgrading",
             "edge",

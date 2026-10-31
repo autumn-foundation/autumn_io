@@ -205,6 +205,22 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("constela.md", 1640),
     ("plugin-assets.md", 1650),
     ("sandboxed-plugins.md", 1660),
+    // New in Autumn 0.9.0. Synced from the `v0.9.0` tag. The tutorial and
+    // `index.md` stay unvendored: the tutorial chapters are still outlines.
+    ("aeo.md", 1670),
+    ("webmcp.md", 1680),
+    ("connection-poolers.md", 1690),
+    ("outbox.md", 1700),
+    ("data-capsules.md", 1710),
+    ("timeouts-and-budgets.md", 1720),
+    ("connection-limits.md", 1730),
+    ("observability/overload-signals.md", 1740),
+    ("slo.md", 1750),
+    ("fault-injection.md", 1760),
+    ("cost.md", 1770),
+    ("cell-isolation.md", 1780),
+    ("sqlite-fleet.md", 1790),
+    ("kubernetes.md", 1800),
 ];
 
 const DEFAULT_HARVEST_REPO: &str = "../autumn-harvest";

@@ -1,12 +1,12 @@
 +++
 title = "Autumn Harvest"
-description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.7.0."
+description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.8.0."
 order = 1015
 +++
 
 # Autumn Harvest
 
-Autumn Harvest 0.7.0 is the durable workflow engine for Autumn apps. Use it
+Autumn Harvest 0.8.0 is the durable workflow engine for Autumn apps. Use it
 when a request should start work that must survive restarts, retries, timers,
 signals, child workflows, and scheduled dependency graphs.
 
@@ -44,26 +44,39 @@ history instead of a hopeful background task.
   optional per-client API rate limiting.
 - `HarvestEmbedding`, a single entry point for running Harvest inside a plain
   Axum service with no autumn-web at all.
+- Keyed entities: serialized handlers over durable state for each key.
+- Durable routes: an Autumn route that hands its work to a keyed workflow, so a
+  retry with the same `Idempotency-Key` gets the stored result.
+- `autumn-harvest-agent`, an optional crate that runs an LLM agent loop as a
+  workflow, with token and cost budgets and replay-as-evaluation.
 
-## What's New in 0.7.0
+## What's New in 0.8.0
 
-Harvest 0.7.0 moves to autumn-web 0.8, so an app bumps `autumn-web`,
+Harvest 0.8.0 moves to autumn-web 0.9, so an app bumps `autumn-web`,
 `autumn-harvest`, and `autumn-harvest-plugin` in one change. A leftover
-`autumn-web = "0.7"` compiles a second copy of the framework whose `Plugin`
-trait `HarvestPlugin` does not implement. `HarvestPlugin` now declares a plugin
-contract, so `autumn plugin-check` and `AppBuilder::plugin` both catch a
-mismatched framework version up front.
+`autumn-web = "0.8"` compiles a second copy of the framework whose `Plugin`
+trait `HarvestPlugin` does not implement. The plugin contract declares
+`autumn-web = "0.9"`, so `AppBuilder::plugin` catches a mismatch at boot.
 
 ```toml
 [dependencies]
-autumn-harvest = "0.7"
-autumn-harvest-plugin = "0.7"
-autumn-web = "0.8"
+autumn-harvest = "0.8"
+autumn-harvest-plugin = "0.8"
+autumn-web = "0.9"
 ```
 
-Several defaults changed, and some fail closed. Before you deploy, read the
-[0.7.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.7.0.md).
-Each change has its own section, opt-out, and check.
+`HarvestPlugin` now declares `[harvest]` as its own config root. Autumn 0.9's
+`prod` profile turns on `server.strict_config`, which refuses an undeclared
+table and stops the boot.
+
+The SQLite backend now runs child workflows, signals, updates, queries,
+cancellation, schedules and retention, and a conformance suite checks it
+against Postgres. A worker runs up to two claims at once by default. The AEAD
+codec now encrypts every payload column.
+
+Some defaults and APIs changed. Before you deploy, read the
+[0.8.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.8.0.md).
+Each change has its own section and check.
 
 ## Autumn Integration
 

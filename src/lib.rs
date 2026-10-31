@@ -231,6 +231,21 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("constela"),
         guide_doc!("plugin-assets"),
         guide_doc!("sandboxed-plugins"),
+        // New in Autumn 0.9.0.
+        guide_doc!("aeo"),
+        guide_doc!("webmcp"),
+        guide_doc!("connection-poolers"),
+        guide_doc!("outbox"),
+        guide_doc!("data-capsules"),
+        guide_doc!("timeouts-and-budgets"),
+        guide_doc!("connection-limits"),
+        guide_doc!("overload-signals"),
+        guide_doc!("slo"),
+        guide_doc!("fault-injection"),
+        guide_doc!("cost"),
+        guide_doc!("cell-isolation"),
+        guide_doc!("sqlite-fleet"),
+        guide_doc!("kubernetes"),
     ])
 });
 

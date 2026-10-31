@@ -365,7 +365,7 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.7.0"));
+    assert!(html.contains("Autumn Harvest 0.8.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
@@ -650,6 +650,40 @@ fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
             .html()
             .contains(r#"href="/docs/harvest-webhooks""#)
     );
+}
+
+#[test]
+fn bundled_site_docs_include_the_autumn_090_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Every guide new in the 0.9.0 sync. `overload-signals` is nested under
+    // `observability/` upstream and is served at its file stem.
+    for slug in [
+        "aeo",
+        "webmcp",
+        "connection-poolers",
+        "outbox",
+        "data-capsules",
+        "timeouts-and-budgets",
+        "connection-limits",
+        "overload-signals",
+        "slo",
+        "fault-injection",
+        "cost",
+        "cell-isolation",
+        "sqlite-fleet",
+        "kubernetes",
+    ] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(!page.html().is_empty(), "{slug} should render a body");
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+    }
 }
 
 #[test]

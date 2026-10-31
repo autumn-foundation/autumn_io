@@ -42,15 +42,15 @@ fn docker_build_uses_the_committed_dependency_lockfile() {
 #[test]
 fn runtime_versions_reflect_current_published_autumn_dependency() {
     assert!(CARGO_TOML.contains("autumn-web"));
-    assert!(CARGO_TOML.contains(r#"version = "0.8.0""#));
-    assert!(EXPORT_RS.contains(r#"const AUTUMN_WEB_VERSION: &str = "0.8.0";"#));
+    assert!(CARGO_TOML.contains(r#"version = "0.9.0""#));
+    assert!(EXPORT_RS.contains(r#"const AUTUMN_WEB_VERSION: &str = "0.9.0";"#));
 }
 
 #[test]
 fn site_copy_targets_the_published_autumn_docs_line() {
-    assert!(SEO_RS.contains(r#"pub const AUTUMN_VERSION: &str = "0.8.0";"#));
-    assert!(SITE_RS.contains(r#"const VERSION_LABEL: &str = "Autumn 0.8.0";"#));
-    assert!(SEO_RS.contains(r#"pub const HARVEST_VERSION: &str = "0.7.0";"#));
+    assert!(SEO_RS.contains(r#"pub const AUTUMN_VERSION: &str = "0.9.0";"#));
+    assert!(SITE_RS.contains(r#"const VERSION_LABEL: &str = "Autumn 0.9.0";"#));
+    assert!(SEO_RS.contains(r#"pub const HARVEST_VERSION: &str = "0.8.0";"#));
 }
 
 /// `fly.toml` once set both `memory = '1gb'` and `memory_mb = 256` in the same
