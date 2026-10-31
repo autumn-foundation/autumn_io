@@ -16,7 +16,7 @@ Workflows, activities, timers, signals and child workflows are the same on
 both paths. Three things change: how the process starts the engine, how it
 serves the management API, and how the migrations run.
 
-[`embedding.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md) is the reference for this path. This chapter
+[`embedding.md`](/docs/harvest-embedding) is the reference for this path. This chapter
 is the short version.
 
 > **Prerequisites**
@@ -189,7 +189,7 @@ async fn shutdown_signal() {
 ```
 
 `HarvestEmbedding::start` runs the same startup steps as `HarvestPlugin`.
-[Start the runtime](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md#start-the-runtime) lists them.
+[Start the runtime](/docs/harvest-embedding#start-the-runtime) lists them.
 
 `harvest.router()` is a plain `axum::Router`. Nest it under any path.
 `harvest.stop()` drains the worker after the server stops.
@@ -289,13 +289,13 @@ logs `Harvest stopped`.
 The `dev` profile is for this chapter only. Read these sections of the
 reference before you deploy:
 
-- [Authenticate](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md#authenticate): declare a profile, a
+- [Authenticate](/docs/harvest-embedding#authenticate): declare a profile, a
   credential and your own auth layer. Tokens alone do not pass preflight.
-- [What you own](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md#what-you-own): the work that
+- [What you own](/docs/harvest-embedding#what-you-own): the work that
   `HarvestPlugin` does and this path does not.
-- [Scrape metrics](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md#scrape-metrics) and
-  [Shut down](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md#shut-down).
-- [What is not available](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md#what-is-not-available): MCP tools,
+- [Scrape metrics](/docs/harvest-embedding#scrape-metrics) and
+  [Shut down](/docs/harvest-embedding#shut-down).
+- [What is not available](/docs/harvest-embedding#what-is-not-available): MCP tools,
   the outbox relay and broker connectors need autumn-web.
 
 ## Back to the main path
@@ -309,9 +309,9 @@ These chapters differ on this path:
 
 - [Chapter 10](/docs/harvest-operations): use `harvest migrate run`, not
   `autumn migrate`. Where it says that a call needs admin auth, see
-  [Authenticate](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md#authenticate).
+  [Authenticate](/docs/harvest-embedding#authenticate).
 - [Chapter 12](/docs/harvest-webhooks): mount receivers with `build_webhook_router`.
-  See [Receive webhooks](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/embedding.md#receive-webhooks).
+  See [Receive webhooks](/docs/harvest-embedding#receive-webhooks).
 - [Chapter 13](/docs/harvest-broker-connectors): broker connectors are available on
   the plugin path only.
 

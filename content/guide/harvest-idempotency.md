@@ -77,7 +77,7 @@ happened; a fresh key or an unkeyed signal to a terminal run still gets the
 terminal error). Omitting the key preserves the legacy at-least-once behavior
 exactly. Full contract and curl examples:
 [signals chapter](/docs/harvest-signals#idempotent-standalone-signals-over-http-issue-521)
-and the [signal-delivery section of the management-API reference](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/management-api.md#signal-delivery-post-workflowsidsignalsignal_name).
+and the [signal-delivery section of the management-API reference](/docs/harvest-management-api#signal-delivery-post-workflows-id-signal-signal-name).
 
 ## Idempotent workflow start — `idempotency_key` vs `workflow_id` (issue #808)
 
@@ -224,5 +224,5 @@ the full request/response schema.
 An Autumn route can start a workflow from the `Idempotency-Key` of its own
 request, wait for the result, and replay that result on a retry. The route
 keeps its own authentication and body extractors. See
-[Durable routes](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/durable-routes.md).
+[Durable routes](/docs/harvest-durable-routes).
 

@@ -603,7 +603,7 @@ dispatches, zero extra events.
 A node rejected **before dispatch** — a mapped node fed a non-array upstream
 output, or an input over the [payload cap](/docs/harvest-reliability-knobs) — counts as
 `Failed`, so the rollback still runs for every node that *did* succeed. See
-[the saga guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/saga.md#what-triggers-the-unwind-and-what-it-covers) for the
+[the saga guide](/docs/harvest-saga#what-triggers-the-unwind-and-what-it-covers) for the
 full rule, including the errors that deliberately bypass the rollback.
 
 ### What a compensator receives
@@ -638,7 +638,7 @@ array it can be much larger than the node's own input was.
 **Compensate by ID, read out of `output`.** Compensations re-run wholesale on
 replay, so a compensator must be idempotent — `release_inventory(rsv-9001)` is
 safe, `release_most_recent_reservation()` is not. See
-[`docs/saga.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/saga.md) for the full idempotency contract.
+[`docs/saga.md`](/docs/harvest-saga) for the full idempotency contract.
 
 ```rust
 #[activity(start_to_close = "30s")]
@@ -682,7 +682,7 @@ activity, so a missing compensator is caught before rollout.
 
 A **cancelled** run does not roll back: it returns the original DAG error and
 dispatches zero compensators, consistent with Harvest's cancellation contract
-("cancellation does not auto-compensate" — see [`docs/saga.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/saga.md)).
+("cancellation does not auto-compensate" — see [`docs/saga.md`](/docs/harvest-saga)).
 
 ### Known limitation — rollback is node-granular
 
@@ -713,12 +713,12 @@ self-compensating.
   runs, and still replays deterministically).
 * **Rolling the engine back past this feature mid-unwind truncates it
   silently** — drain in-flight compensating runs first. See
-  [`docs/saga.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/saga.md).
+  [`docs/saga.md`](/docs/harvest-saga).
 
 A worked end-to-end example lives in
 `autumn-harvest/examples/dag_compensation.rs`; the full contract (unwind order,
 failure semantics, observability counters, rollback ordering) is in
-[`docs/saga.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/saga.md).
+[`docs/saga.md`](/docs/harvest-saga).
 
 ## Signal / approval gates
 
@@ -909,7 +909,7 @@ a cron expression before committing it), and
 (fire one run immediately without disturbing the normal cadence). A schedule's
 `calendar` field skips fires landing on excluded dates (holidays, maintenance
 windows) per a configurable policy — see
-[`docs/calendars.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/calendars.md).
+[`docs/calendars.md`](/docs/harvest-calendars).
 
 ## Incremental scheduled jobs — last-completion-result carryover
 

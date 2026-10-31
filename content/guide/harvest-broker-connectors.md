@@ -464,7 +464,7 @@ the bound knowingly.
 ### The dedupe guarantee is shard-local
 
 Coordinate dedupe holds **unconditionally on a single-shard deployment** — the
-default, and what most deployments are. On a [multi-shard](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/sharding.md)
+default, and what most deployments are. On a [multi-shard](/docs/harvest-sharding)
 deployment it narrows to *"holds while the mapping function's `workflow_id` is
 deterministic"*, for a mechanical reason worth understanding:
 
@@ -488,7 +488,7 @@ concurrency (#247), the start throttle (#607), the durable mutex (#691). Cross-
 shard coordination is out of scope engine-wide, so the connector does not
 attempt it either: probing every shard on the dispatch hot path would fan a
 query out per message, and unilaterally pinning the start to a key-derived
-shard would trip the ["be consistent — always pin or never pin"](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/sharding.md)
+shard would trip the ["be consistent — always pin or never pin"](/docs/harvest-sharding)
 hazard against every *other* producer that starts the same `workflow_id`.
 
 The remedy is the one the `WorkflowId` mode already documents, and it is cheap:
