@@ -29,8 +29,9 @@ fn app() -> TestClient {
 }
 
 /// Every read-path page an agent would fetch.
-const NEGOTIATED_PATHS: [&str; 4] = [
+const NEGOTIATED_PATHS: [&str; 5] = [
     "/",
+    "/plugins",
     "/docs/getting-started",
     "/docs/metrics",
     "/search?q=jobs",

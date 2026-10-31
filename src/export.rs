@@ -119,6 +119,16 @@ pub fn export_site(
     )?;
     routes.insert("/".to_owned(), ManifestEntry::new("index.html"));
 
+    write_html(
+        &output_dir,
+        Path::new("plugins/index.html"),
+        site::render_plugins_page().into_string(),
+    )?;
+    routes.insert(
+        crate::plugins::PLUGINS_PATH.to_owned(),
+        ManifestEntry::new("plugins/index.html"),
+    );
+
     for page in registry.pages() {
         let file = format!("docs/{}/index.html", page.slug);
         write_html(
@@ -197,7 +207,7 @@ pub fn export_site(
     write_manifest(&output_dir, Path::new("manifest.json"), routes.clone())?;
 
     Ok(ExportSummary {
-        html_pages: registry.pages().len() + 1,
+        html_pages: registry.pages().len() + 2,
         static_assets,
         routes: routes.len(),
     })

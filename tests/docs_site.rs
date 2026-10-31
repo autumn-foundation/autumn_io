@@ -1608,12 +1608,16 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     let summary = export_site(registry, &ExportConfig::new(&dist)).expect("site should export");
 
-    // Every guide, plus the home page.
-    assert_eq!(summary.html_pages, registry.pages().len() + 1);
+    // Every guide, plus the home page and the plugin catalog.
+    assert_eq!(summary.html_pages, registry.pages().len() + 2);
     assert!(summary.static_assets >= 4);
-    // `/`, `/robots.txt`, `/sitemap.xml`, the ARD manifest (two paths), the Web Bot
-    // Auth directory, the agent-skills index and skill file, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 11);
+    // `/`, `/plugins`, `/robots.txt`, `/sitemap.xml`, the ARD manifest (two
+    // paths), the Web Bot Auth directory, the agent-skills index and skill
+    // file, and one per guide.
+    assert_eq!(summary.routes, registry.pages().len() + 12);
+    let plugins = std::fs::read_to_string(dist.join("plugins/index.html")).expect("plugins html");
+    assert!(plugins.contains(r#"<link rel="canonical" href="https://autumn-web.app/plugins">"#));
+    assert!(plugins.contains("autumn-plugin-motion"));
     assert!(
         dist.join(".well-known/http-message-signatures-directory")
             .is_file()

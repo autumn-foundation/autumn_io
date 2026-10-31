@@ -440,6 +440,7 @@ pub fn sitemap_xml(registry: &DocRegistry) -> String {
     );
 
     push_sitemap_url(&mut sitemap, &absolute_url("/"));
+    push_sitemap_url(&mut sitemap, &absolute_url(crate::plugins::PLUGINS_PATH));
     for page in registry.pages() {
         push_sitemap_url(&mut sitemap, &absolute_url(&docs_path(&page.slug)));
     }

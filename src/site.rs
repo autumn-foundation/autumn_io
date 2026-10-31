@@ -7,6 +7,7 @@ use autumn_web::widgets::{ActiveSearchConfig, active_search, active_search_empty
 use autumn_web::{Markup, PreEscaped, html};
 
 use crate::docs::{DocPage, DocRegistry, SearchHit, render_highlighted_code_block};
+use crate::plugins::{self, PLUGINS_LEDE, PLUGINS_PATH, Plugin, PluginCategory};
 use crate::{DOCS_SEARCH_PATH, DOCS_START_PATH, seo};
 
 /// The Markdown representation of these same pages, served to agents that ask
@@ -367,6 +368,7 @@ pub fn render_home_page(registry: &DocRegistry) -> Markup {
                         }))
                     }
                     (home_harvest_release())
+                    (home_plugins_band())
                     section class="home-featured" aria-labelledby="featured-guides-title" {
                         div class="home-section-header" {
                             p class="eyebrow" { "Start with intent" }
@@ -417,6 +419,77 @@ fn home_harvest_release() -> Markup {
                 a class="button button-secondary" href=(HARVEST_GUIDE_START_PATH) { "Guide" }
                 a class="button button-secondary" href=(seo::HARVEST_RUSTDOC_URL) { "API docs" }
                 a class="button button-secondary" href=(seo::HARVEST_CRATES_IO_URL) { "Crate" }
+            }
+        }
+    }
+}
+
+/// Home-page band that points at the plugin catalog.
+fn home_plugins_band() -> Markup {
+    html! {
+        section class="home-harvest home-plugins" aria-labelledby="home-plugins-title" data-motion="fade-up" {
+            div class="home-harvest-copy" {
+                p class="eyebrow" { "Ecosystem" }
+                h2 id="home-plugins-title" { (plugins::PLUGINS.len()) " published plugins" }
+                p { (PLUGINS_LEDE) }
+            }
+            div class="home-harvest-actions" {
+                a class="button button-primary" href=(PLUGINS_PATH) { "Browse plugins" }
+            }
+        }
+    }
+}
+
+/// The plugin catalog: one section for each category, one card for each
+/// crate.
+#[must_use]
+pub fn render_plugins_page() -> Markup {
+    html! {
+        (doctype())
+        html lang="en" {
+            (document_head(&PageMeta::plugins()))
+            body class="site-shell home-shell" {
+                (skip_link())
+                (site_header("plugins"))
+                main id="main-content" class="home-main plugins-main" tabindex="-1" aria-labelledby="page-title" {
+                    header class="plugins-header" {
+                        p class="eyebrow" { (VERSION_LABEL) " ecosystem" }
+                        h1 id="page-title" { "Plugins" }
+                        p class="hero-lede" { (PLUGINS_LEDE) }
+                        nav class="plugins-jump" aria-label="Plugin categories" {
+                            @for category in PluginCategory::ALL {
+                                a href={ "#" (category.id()) } { (category.label()) }
+                            }
+                        }
+                    }
+                    @for category in PluginCategory::ALL {
+                        section class="plugins-section" id=(category.id()) aria-labelledby={ (category.id()) "-title" } {
+                            div class="home-section-header" {
+                                h2 id={ (category.id()) "-title" } { (category.label()) }
+                            }
+                            ul class="plugins-grid" role="list" {
+                                @for plugin in plugins::plugins_in(category) {
+                                    (plugin_card(plugin))
+                                }
+                            }
+                        }
+                    }
+                }
+                (site_footer())
+            }
+        }
+    }
+}
+
+fn plugin_card(plugin: &Plugin) -> Markup {
+    html! {
+        li class="plugin-card" {
+            h3 class="plugin-name" { code { (plugin.crate_name) } }
+            p class="feature-description" { (plugin.summary) }
+            p class="plugin-links" {
+                a href=(plugin.crates_io_url()) aria-label={ (plugin.crate_name) " on crates.io" } { "crates.io" }
+                a href=(plugin.docs_rs_url()) aria-label={ (plugin.crate_name) " API docs" } { "API docs" }
+                a href=(plugin.repository) aria-label={ (plugin.crate_name) " source" } { "Source" }
             }
         }
     }
@@ -974,6 +1047,17 @@ impl PageMeta {
         }
     }
 
+    fn plugins() -> Self {
+        Self {
+            title: "Plugins | Autumn Rust Web Framework".to_owned(),
+            description: PLUGINS_LEDE.to_owned(),
+            canonical_path: PLUGINS_PATH.to_owned(),
+            robots: "index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1",
+            og_type: "website",
+            structured_data: None,
+        }
+    }
+
     fn noindex(title: &str, description: &str, canonical_path: &str) -> Self {
         Self {
             title: title.to_owned(),
@@ -1071,6 +1155,11 @@ fn site_header(active: &str) -> Markup {
                     a href=(DOCS_START_PATH) { "Docs" }
                 }
                 a href=(HARVEST_DOC_PATH) { "Harvest" }
+                @if active == "plugins" {
+                    a class="active" aria-current="page" href=(PLUGINS_PATH) { "Plugins" }
+                } @else {
+                    a href=(PLUGINS_PATH) { "Plugins" }
+                }
                 a href=(DOCS_START_PATH) { (seo::AUTUMN_VERSION) }
                 a href=(seo::GITHUB_REPOSITORY_URL) { "GitHub" }
                 a href=(seo::CRATES_IO_URL) { "crates.io" }
@@ -1092,6 +1181,7 @@ fn site_footer() -> Markup {
             a href=(DOCS_START_PATH) { "Getting Started" }
             a href=(HARVEST_DOC_PATH) { "Harvest" }
             a href=(seo::HARVEST_REPOSITORY_URL) { "Harvest source" }
+            a href=(PLUGINS_PATH) { "Plugins" }
             a href="/docs/deployment" { "Deployment" }
         }
     }

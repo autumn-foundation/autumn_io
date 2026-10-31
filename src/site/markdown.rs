@@ -19,6 +19,7 @@ use std::error::Error;
 use std::fmt::Write as _;
 
 use crate::docs::{DocPage, DocRegistry, SearchHit};
+use crate::plugins::{self, PLUGINS_LEDE, PluginCategory};
 use crate::seo;
 use crate::{DOCS_SEARCH_PATH, DOCS_START_SLUG};
 
@@ -67,6 +68,13 @@ pub fn render_home_page(registry: &DocRegistry) -> String {
     let _ = writeln!(out, "- [Harvest API docs]({})", seo::HARVEST_RUSTDOC_URL);
     let _ = writeln!(out, "- [Harvest crate]({})\n", seo::HARVEST_CRATES_IO_URL);
 
+    let _ = writeln!(
+        out,
+        "## Plugins\n\n{PLUGINS_LEDE}\n\n- [Browse {} published plugins]({})\n",
+        plugins::PLUGINS.len(),
+        seo::absolute_url(plugins::PLUGINS_PATH),
+    );
+
     let _ = writeln!(out, "## Start here\n");
     for page in HOME_FEATURED_DOC_SLUGS
         .iter()
@@ -91,6 +99,33 @@ pub fn render_home_page(registry: &DocRegistry) -> String {
     let _ = writeln!(out, "{MARKDOWN_NEGOTIATION_NOTE}\n");
 
     let _ = write!(out, "{}", guide_index(registry));
+    let _ = write!(out, "{}", project_links());
+
+    out
+}
+
+/// The plugin catalog: one section for each category, one list item for each
+/// crate, with its crates.io, API docs and source links.
+#[must_use]
+pub fn render_plugins_page() -> String {
+    let mut out = String::new();
+
+    let _ = writeln!(out, "# Plugins\n\n{PLUGINS_LEDE}\n");
+    for category in PluginCategory::ALL {
+        let _ = writeln!(out, "## {}\n", category.label());
+        for plugin in plugins::plugins_in(category) {
+            let _ = writeln!(
+                out,
+                "- **{}**: {} [crates.io]({}) · [API docs]({}) · [Source]({})",
+                plugin.crate_name,
+                plugin.summary,
+                plugin.crates_io_url(),
+                plugin.docs_rs_url(),
+                plugin.repository,
+            );
+        }
+        let _ = writeln!(out);
+    }
     let _ = write!(out, "{}", project_links());
 
     out

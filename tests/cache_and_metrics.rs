@@ -35,6 +35,7 @@ async fn every_read_path_page_is_cacheable_by_a_shared_cache() {
 
     for path in [
         "/",
+        "/plugins",
         "/docs/getting-started",
         "/docs/metrics",
         "/robots.txt",
@@ -97,6 +98,7 @@ async fn no_cacheable_response_sets_a_cookie() {
     for path in [
         "/",
         "/docs",
+        "/plugins",
         "/docs/getting-started",
         "/robots.txt",
         "/sitemap.xml",
