@@ -125,7 +125,7 @@ async fn approve(ctx: &WorkflowContext, request: String) -> HarvestResult<String
 ```
 
 The caller settles it with `durable_promise::resolve` or
-`durable_promise::reject`. See [Durable promises](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/durable-promises.md) for
+`durable_promise::reject`. See [Durable promises](/docs/harvest-durable-promises) for
 the token format, the HTTP path and the guarantees.
 
 ## Condition Waiting: `await_condition` and `await_condition_timeout`
@@ -206,7 +206,7 @@ async fn collect_approvals_clean(ctx: &WorkflowContext) -> HarvestResult<Value> 
 ```
 
 ### Determinism Warning
-The predicate closure passed to `await_condition` is evaluated multiple times during replay. It **must be deterministic** and rely purely on rehydrated local variables. Never read system time (`Instant::now()`) or generate random values inside the closure, otherwise you will trigger non-determinism replay failures (see rule `HVG008` in the [Workflow Determinism Guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/workflow-determinism-guide.md)).
+The predicate closure passed to `await_condition` is evaluated multiple times during replay. It **must be deterministic** and rely purely on rehydrated local variables. Never read system time (`Instant::now()`) or generate random values inside the closure, otherwise you will trigger non-determinism replay failures (see rule `HVG008` in the [Workflow Determinism Guide](/docs/harvest-workflow-determinism)).
 
 Racing two ctx-managed awaitables with `futures::future::select` (as above) is
 a second, separate determinism concern: `HVG010` hard-blocks that combinator
@@ -217,7 +217,7 @@ across iterations instead of being dropped -- which is what
 comment above assert. Prefer `ctx.race()` for a new workflow that only needs
 to race a signal against a deadline; reach for this pattern when you also
 need `await_condition`'s local-state predicate. See `HVG010` in the
-[Workflow Determinism Guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/workflow-determinism-guide.md).
+[Workflow Determinism Guide](/docs/harvest-workflow-determinism).
 
 ---
 
@@ -278,7 +278,7 @@ reused verbatim on replay, so a later code change to the key expression cannot
 diverge an in-flight delivery. Omitting the key (the plain
 `signal_external_workflow` method) keeps the legacy at-least-once behavior. Dedupe
 scope is shard-local, keyed on `(target_execution_id, idempotency_key)` — the same
-scope as [signal-with-start](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/management-api.md).
+scope as [signal-with-start](/docs/harvest-management-api).
 
 From a typed client, the `#[signal]` macro generates both a plain
 `signal_[name]` stub method and an idempotent `signal_[name]_idempotent` sibling
@@ -357,7 +357,7 @@ whose key already landed while the run was still active dedupes to a no-op
 success (`202 { "signal_delivered": false }`) even after the run has since
 gone terminal — the retry acknowledges a delivery that already happened.
 See also the [idempotency chapter](/docs/harvest-idempotency#idempotent-signal-delivery)
-and the [signal-delivery section of the management-API reference](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/management-api.md#signal-delivery-post-workflowsidsignalsignal_name).
+and the [signal-delivery section of the management-API reference](/docs/harvest-management-api#signal-delivery-post-workflows-id-signal-signal-name).
 
 ### The saga-choreography example
 
@@ -474,6 +474,6 @@ validated — its route behaves exactly as before.
 
 See
 `examples/interface_schema_workflow.rs` (run with `--features schema`) for a
-complete worked example, and the [queries](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/management-api.md) and updates
+complete worked example, and the [queries](/docs/harvest-management-api) and updates
 chapters for the request/response envelopes.
 

@@ -698,6 +698,93 @@ fn bundled_site_docs_include_the_autumn_090_guides() {
 }
 
 #[test]
+fn bundled_site_docs_include_the_harvest_reference_docs() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Harvest's topic docs (`docs/*.md` upstream), vendored beside the
+    // chapter sequence. Durable agents and durable routes were the first
+    // ones readers looked for.
+    for slug in [
+        "harvest-durable-agents",
+        "harvest-agent-mesh",
+        "harvest-agent-cost-ledger",
+        "harvest-mcp-tools",
+        "harvest-remote-tasks",
+        "harvest-sandbox-activities",
+        "harvest-durable-routes",
+        "harvest-durable-promises",
+        "harvest-saga",
+        "harvest-transactional-start",
+        "harvest-transactional-activities",
+        "harvest-typed-workflow-failures",
+        "harvest-completion-callbacks",
+        "harvest-completion-triggers",
+        "harvest-calendars",
+        "harvest-search-attributes",
+        "harvest-streaming-progress",
+        "harvest-workflow-logs",
+        "harvest-logical-handle",
+        "harvest-decision-boundaries",
+        "harvest-sticky-routing",
+        "harvest-fairness-keys",
+        "harvest-retry-jitter",
+        "harvest-embedding",
+        "harvest-sqlite-backend",
+        "harvest-why-deterministic-replay",
+        "harvest-workflow-determinism",
+        "harvest-workflow-schema-contract",
+        "harvest-verify",
+        "harvest-replay-verify",
+        "harvest-replay-drift-gate",
+        "harvest-replay-debugger",
+        "harvest-upgrade-check",
+        "harvest-workflow-reset",
+        "harvest-management-api",
+        "harvest-openapi",
+        "harvest-api-contract",
+        "harvest-vantage-ui",
+        "harvest-operator-role",
+        "harvest-security-posture",
+        "harvest-telemetry",
+        "harvest-sharding",
+        "harvest-partitioned-events",
+        "harvest-archival",
+        "harvest-audit-export",
+        "harvest-cross-region-dr",
+        "harvest-comparison",
+        "harvest-migrating-from-temporal",
+    ] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} reference doc should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(
+            !page.title.contains("(issue"),
+            "{slug} should drop the upstream issue number from its title"
+        );
+        assert!(!page.html().is_empty(), "{slug} should render a body");
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+    }
+
+    // A link between two reference docs, written as a reference-style
+    // definition upstream, resolves to a site route.
+    let drift_gate = registry
+        .page("harvest-replay-drift-gate")
+        .expect("replay drift gate should be bundled")
+        .html();
+    assert!(drift_gate.contains(r#"href="/docs/harvest-replay-verify""#));
+    assert!(!drift_gate.contains(r#"href="./replay-verify.md""#));
+
+    let agents = registry
+        .page("harvest-durable-agents")
+        .expect("durable agents should be bundled");
+    assert_eq!(agents.title, "Durable agents: the agent adapter");
+}
+
+#[test]
 fn bundled_site_docs_include_the_autumn_080_and_harvest_070_guides() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
 
@@ -1002,8 +1089,8 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
     );
 
     // The vendored Harvest chapters cross-link back into the autumn-harvest
-    // repo for files this site does not vendor; those links are resolved to
-    // absolute upstream URLs at sync time.
+    // repo. A link to a vendored reference doc becomes a site route; a link to
+    // any other file resolves to an absolute upstream URL at sync time.
     let harvest_signals = registry
         .page("harvest-signals")
         .expect("harvest signals chapter should be bundled");
@@ -1013,7 +1100,13 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
             .contains(r#"href="/docs/harvest-idempotency#idempotent-signal-delivery""#)
     );
     assert!(harvest_signals.html().contains(
-        r#"href="https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/management-api.md""#
+        r#"href="/docs/harvest-management-api#signal-delivery-post-workflows-id-signal-signal-name""#
+    ));
+    let harvest_telemetry = registry
+        .page("harvest-telemetry")
+        .expect("harvest telemetry reference should be bundled");
+    assert!(harvest_telemetry.html().contains(
+        r#"href="https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0009-decision-owner.md""#
     ));
     // A sibling-chapter link rendered as a bare site route.
     let harvest_first_workflow = registry
@@ -1049,9 +1142,13 @@ fn bundled_guide_links_are_rewritten_for_site_routes_and_upstream_source() {
                 "{} should not render repo-relative href {href}",
                 page.slug
             );
+            // A third-party page (`https://github.com/firecracker-microvm/…/jailer.md`)
+            // is an external link, not a site-local Markdown path.
             let is_upstream_markdown = upstream_markdown_prefixes
                 .iter()
-                .any(|prefix| href.starts_with(prefix));
+                .any(|prefix| href.starts_with(prefix))
+                || (href.contains("://")
+                    && !href.starts_with("https://github.com/autumn-foundation/"));
             assert!(
                 !href.ends_with(".md") || is_upstream_markdown,
                 "{} should not render site-local Markdown href {href}",

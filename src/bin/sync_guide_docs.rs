@@ -269,6 +269,109 @@ const HARVEST_GUIDE_FILES: &[(&str, &str, u32)] = &[
     ("13-broker-connectors.md", "harvest-broker-connectors", 1140),
 ];
 
+/// Harvest's topic docs (`docs/*.md` in autumn-harvest): the reference for each
+/// feature, outside the chapter sequence. Each entry maps an upstream file to
+/// its site slug and registry `order`. The sidebar groups them in `site.rs`.
+///
+/// Internal engineering records stay upstream: the architecture documents,
+/// `shipped-work.md`, the benchmark and performance notes, and the safety
+/// report.
+const HARVEST_REFERENCE_FILES: &[(&str, &str, u32)] = &[
+    // Agents and AI.
+    ("agent-adapter.md", "harvest-durable-agents", 1200),
+    ("agent-mesh.md", "harvest-agent-mesh", 1210),
+    ("llm-cost-ledger.md", "harvest-agent-cost-ledger", 1220),
+    ("mcp-tools.md", "harvest-mcp-tools", 1230),
+    ("remote-tasks.md", "harvest-remote-tasks", 1240),
+    ("sandbox-activities.md", "harvest-sandbox-activities", 1250),
+    // Workflow patterns.
+    ("durable-routes.md", "harvest-durable-routes", 1300),
+    ("durable-promises.md", "harvest-durable-promises", 1310),
+    ("saga.md", "harvest-saga", 1320),
+    (
+        "transactional-start.md",
+        "harvest-transactional-start",
+        1330,
+    ),
+    (
+        "transactional-activities.md",
+        "harvest-transactional-activities",
+        1340,
+    ),
+    (
+        "typed-workflow-failures.md",
+        "harvest-typed-workflow-failures",
+        1350,
+    ),
+    (
+        "completion-callbacks.md",
+        "harvest-completion-callbacks",
+        1360,
+    ),
+    (
+        "completion-triggers.md",
+        "harvest-completion-triggers",
+        1370,
+    ),
+    ("calendars.md", "harvest-calendars", 1380),
+    ("search-attributes.md", "harvest-search-attributes", 1390),
+    ("streaming-progress.md", "harvest-streaming-progress", 1400),
+    ("workflow-logs.md", "harvest-workflow-logs", 1410),
+    ("logical-handle.md", "harvest-logical-handle", 1420),
+    (
+        "decision-boundaries.md",
+        "harvest-decision-boundaries",
+        1430,
+    ),
+    ("sticky-routing.md", "harvest-sticky-routing", 1440),
+    ("fairness-keys.md", "harvest-fairness-keys", 1450),
+    ("retry-jitter.md", "harvest-retry-jitter", 1460),
+    ("embedding.md", "harvest-embedding", 1470),
+    ("sqlite-backend.md", "harvest-sqlite-backend", 1480),
+    // Determinism and replay.
+    (
+        "why-deterministic-replay.md",
+        "harvest-why-deterministic-replay",
+        1500,
+    ),
+    (
+        "workflow-determinism-guide.md",
+        "harvest-workflow-determinism",
+        1510,
+    ),
+    (
+        "workflow-schema-contract-guide.md",
+        "harvest-workflow-schema-contract",
+        1520,
+    ),
+    ("harvest-verify.md", "harvest-verify", 1530),
+    ("replay-verify.md", "harvest-replay-verify", 1540),
+    ("replay-drift-gate.md", "harvest-replay-drift-gate", 1550),
+    ("replay-debugger.md", "harvest-replay-debugger", 1560),
+    ("upgrade-check.md", "harvest-upgrade-check", 1570),
+    ("workflow-reset.md", "harvest-workflow-reset", 1580),
+    // Operations.
+    ("management-api.md", "harvest-management-api", 1600),
+    ("openapi.md", "harvest-openapi", 1610),
+    ("api-contract-guide.md", "harvest-api-contract", 1620),
+    ("vantage-ui.md", "harvest-vantage-ui", 1630),
+    ("operator-role.md", "harvest-operator-role", 1640),
+    ("security-posture.md", "harvest-security-posture", 1650),
+    ("telemetry.md", "harvest-telemetry", 1660),
+    ("sharding.md", "harvest-sharding", 1670),
+    ("partitioned-events.md", "harvest-partitioned-events", 1680),
+    ("archival.md", "harvest-archival", 1690),
+    ("audit-export.md", "harvest-audit-export", 1700),
+    ("cross-region-dr.md", "harvest-cross-region-dr", 1710),
+    // Adoption.
+    ("comparison.md", "harvest-comparison", 1800),
+    (
+        "migrating-from-temporal.md",
+        "harvest-migrating-from-temporal",
+        1810,
+    ),
+];
+
 /// A guide read from upstream and massaged for the site, held before writing so
 /// the whole set's headings are known — [`normalize_fragments`] needs the target
 /// page's headings to resolve a cross-page fragment.
@@ -346,7 +449,7 @@ fn prepare_harvest_guide(harvest_source: &Path) -> Result<Vec<PreparedGuide>, Bo
         let raw = fs::read_to_string(&source_file)
             .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
         let raw = rewrite_org_urls(&raw);
-        let raw = rewrite_harvest_links(&raw);
+        let raw = rewrite_harvest_links(&raw, HARVEST_GUIDE_DIR);
 
         let heading = first_heading(&raw).ok_or_else(|| {
             format!(
@@ -367,7 +470,70 @@ fn prepare_harvest_guide(harvest_source: &Path) -> Result<Vec<PreparedGuide>, Bo
         });
     }
 
+    let reference = source
+        .parent()
+        .ok_or("the harvest guide directory has no parent `docs/` directory")?;
+    for (file_name, slug, order) in HARVEST_REFERENCE_FILES {
+        let source_file = reference.join(file_name);
+        let raw = fs::read_to_string(&source_file)
+            .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
+        let raw = rewrite_harvest_links(&rewrite_org_urls(&raw), HARVEST_DOCS_DIR);
+
+        let heading = first_heading(&raw).ok_or_else(|| {
+            format!(
+                "harvest reference file {} must start with a level-one heading",
+                source_file.display()
+            )
+        })?;
+        let title = clean_reference_title(&heading);
+        let body = replace_first_heading(&raw, &title);
+        let description = first_description(&body).unwrap_or_else(|| title.clone());
+
+        guides.push(PreparedGuide {
+            slug: (*slug).to_owned(),
+            title,
+            description,
+            order: *order,
+            body,
+        });
+    }
+
     Ok(guides)
+}
+
+/// Make a sidebar label from a Harvest reference heading. The label drops
+/// the upstream issue number (`Calendar-Aware Schedules (issue #337)`), the
+/// subtitle after an em dash (`MCP Tools — expose …`) and code backticks,
+/// which a plain-text label shows as literal characters.
+fn clean_reference_title(heading: &str) -> String {
+    let mut title = heading.trim();
+    if let Some(open) = title.rfind(" (issue")
+        && title.ends_with(')')
+    {
+        title = title[..open].trim_end();
+    }
+    if let Some((head, _)) = title.split_once(" — ") {
+        title = head.trim_end();
+    }
+    title.replace('`', "")
+}
+
+/// Set the first level-one heading to `title`, so that the site's
+/// redundant-title step removes it.
+fn replace_first_heading(markdown: &str, title: &str) -> String {
+    let mut replaced = false;
+    let mut output = String::with_capacity(markdown.len());
+    for line in markdown.lines() {
+        if !replaced && line.starts_with("# ") {
+            output.push_str("# ");
+            output.push_str(title);
+            replaced = true;
+        } else {
+            output.push_str(line);
+        }
+        output.push('\n');
+    }
+    output
 }
 
 fn write_guide(
@@ -484,8 +650,10 @@ fn strip_trailing_divider(lines: &mut Vec<String>) {
 /// their site route, the guide index maps to the Harvest intro, and every other
 /// relative path resolves to an absolute `autumn-harvest` source URL (so the
 /// runtime rewriter, which only knows the framework repo, leaves it alone).
-fn rewrite_harvest_links(markdown: &str) -> String {
-    rewrite_links(markdown, rewrite_harvest_destination)
+fn rewrite_harvest_links(markdown: &str, base: &str) -> String {
+    rewrite_links(markdown, |destination| {
+        rewrite_harvest_destination(destination, base)
+    })
 }
 
 /// Rewrite the destination of each inline Markdown link outside fenced code.
@@ -506,11 +674,37 @@ fn rewrite_links(markdown: &str, rewrite: impl Fn(&str) -> String) -> String {
             continue;
         }
 
-        output.push_str(&rewrite_links_in_line(line, &rewrite));
+        match rewrite_reference_definition(line, &rewrite) {
+            Some(rewritten) => output.push_str(&rewritten),
+            None => output.push_str(&rewrite_links_in_line(line, &rewrite)),
+        }
         output.push('\n');
     }
 
     output
+}
+
+/// Rewrite the destination of a link reference definition
+/// (`[label]: ./replay-verify.md "title"`), or return `None` when `line` is
+/// not one.
+fn rewrite_reference_definition(line: &str, rewrite: &impl Fn(&str) -> String) -> Option<String> {
+    let indent = line.len() - line.trim_start().len();
+    let rest = line[indent..].strip_prefix('[')?;
+    let close = rest.find("]:")?;
+    if close == 0 || indent > 3 {
+        return None;
+    }
+    let after = &rest[close + 2..];
+    let destination_start = after.len() - after.trim_start().len();
+    let destination = after[destination_start..].split_whitespace().next()?;
+    let tail = &after[destination_start + destination.len()..];
+    Some(format!(
+        "{}[{}]:{}{}{tail}",
+        &line[..indent],
+        &rest[..close],
+        &after[..destination_start],
+        rewrite(destination),
+    ))
 }
 
 fn rewrite_links_in_line(line: &str, rewrite: &impl Fn(&str) -> String) -> String {
@@ -532,7 +726,12 @@ fn rewrite_links_in_line(line: &str, rewrite: &impl Fn(&str) -> String) -> Strin
     output
 }
 
-fn rewrite_harvest_destination(destination: &str) -> String {
+/// The repository directory of the Harvest chapters.
+const HARVEST_GUIDE_DIR: &str = "docs/getting-started";
+/// The repository directory of the Harvest reference docs.
+const HARVEST_DOCS_DIR: &str = "docs";
+
+fn rewrite_harvest_destination(destination: &str, base: &str) -> String {
     let destination = destination.trim();
     let lower = destination.to_ascii_lowercase();
     if destination.is_empty()
@@ -550,20 +749,12 @@ fn rewrite_harvest_destination(destination: &str) -> String {
         .map_or((destination, String::new()), |(path, fragment)| {
             (path, format!("#{fragment}"))
         });
-    let path = path.strip_prefix("./").unwrap_or(path);
 
-    if let Some((_, slug, _)) = HARVEST_GUIDE_FILES
-        .iter()
-        .find(|(file_name, _, _)| *file_name == path)
-    {
+    let resolved = resolve_harvest_source_path(path, base);
+    if let Some(slug) = harvest_site_slug(&resolved) {
         return format!("/docs/{slug}{fragment}");
     }
 
-    if path == "README.md" {
-        return format!("/docs/{HARVEST_INTRO_SLUG}{fragment}");
-    }
-
-    let resolved = resolve_harvest_source_path(path);
     let mode = if resolved
         .rsplit('/')
         .next()
@@ -576,10 +767,34 @@ fn rewrite_harvest_destination(destination: &str) -> String {
     format!("{HARVEST_REPOSITORY_URL}/{mode}/{HARVEST_REPOSITORY_BRANCH}/{resolved}{fragment}")
 }
 
-/// Resolve a chapter-relative path (from `docs/getting-started/`) into a
+/// The site slug that serves a repository-root Harvest path, if the site
+/// vendors that file.
+fn harvest_site_slug(resolved: &str) -> Option<&'static str> {
+    if let Some(file_name) = resolved
+        .strip_prefix(HARVEST_GUIDE_DIR)
+        .and_then(|rest| rest.strip_prefix('/'))
+    {
+        if file_name == "README.md" {
+            return Some(HARVEST_INTRO_SLUG);
+        }
+        return HARVEST_GUIDE_FILES
+            .iter()
+            .find(|(name, _, _)| *name == file_name)
+            .map(|(_, slug, _)| *slug);
+    }
+    let file_name = resolved
+        .strip_prefix(HARVEST_DOCS_DIR)
+        .and_then(|rest| rest.strip_prefix('/'))?;
+    HARVEST_REFERENCE_FILES
+        .iter()
+        .find(|(name, _, _)| *name == file_name)
+        .map(|(_, slug, _)| *slug)
+}
+
+/// Resolve a path relative to `base` (a repository directory) into a
 /// repository-root path for an absolute `autumn-harvest` source link.
-fn resolve_harvest_source_path(path: &str) -> String {
-    let mut segments = vec!["docs", "getting-started"];
+fn resolve_harvest_source_path(path: &str, base: &str) -> String {
+    let mut segments: Vec<&str> = base.split('/').collect();
     for segment in path.split('/') {
         match segment {
             "" | "." => {}
@@ -1060,7 +1275,102 @@ fn toml_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{clamp_heading_levels, clean_harvest_title, rebase_nested_links};
+    use super::{
+        HARVEST_DOCS_DIR, HARVEST_GUIDE_DIR, HARVEST_GUIDE_FILES, HARVEST_REFERENCE_FILES,
+        clamp_heading_levels, clean_harvest_title, clean_reference_title, rebase_nested_links,
+        replace_first_heading, rewrite_harvest_destination,
+    };
+
+    #[test]
+    fn harvest_links_resolve_to_site_pages_from_both_directories() {
+        // A chapter links to a reference doc one level up.
+        assert_eq!(
+            rewrite_harvest_destination("../durable-routes.md#keys", HARVEST_GUIDE_DIR),
+            "/docs/harvest-durable-routes#keys"
+        );
+        // A reference doc links to a chapter, a sibling and the guide index.
+        assert_eq!(
+            rewrite_harvest_destination("getting-started/03-durable-timers.md", HARVEST_DOCS_DIR),
+            "/docs/harvest-durable-timers"
+        );
+        assert_eq!(
+            rewrite_harvest_destination("./agent-mesh.md", HARVEST_DOCS_DIR),
+            "/docs/harvest-agent-mesh"
+        );
+        assert_eq!(
+            rewrite_harvest_destination("getting-started/README.md", HARVEST_DOCS_DIR),
+            "/docs/autumn-harvest"
+        );
+        // A file the site does not vendor goes to the source repository.
+        assert_eq!(
+            rewrite_harvest_destination("architecture.md#locks", HARVEST_DOCS_DIR),
+            "https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/architecture.md#locks"
+        );
+        assert_eq!(
+            rewrite_harvest_destination("../autumn-harvest-agent/src", HARVEST_DOCS_DIR),
+            "https://github.com/autumn-foundation/autumn-harvest/tree/trunk-dev/autumn-harvest-agent/src"
+        );
+        // Chapter links keep working.
+        assert_eq!(
+            rewrite_harvest_destination("04-signals.md", HARVEST_GUIDE_DIR),
+            "/docs/harvest-signals"
+        );
+    }
+
+    #[test]
+    fn reference_definitions_are_rewritten_too() {
+        let body = "[replay canary]: ./replay-verify.md \"Canary\"\n\
+                    [up]: https://example.com/a.md\n\
+                    ```\n[code]: ./replay-verify.md\n```\n";
+        assert_eq!(
+            super::rewrite_harvest_links(body, HARVEST_DOCS_DIR),
+            "[replay canary]: /docs/harvest-replay-verify \"Canary\"\n\
+             [up]: https://example.com/a.md\n\
+             ```\n[code]: ./replay-verify.md\n```\n"
+        );
+    }
+
+    #[test]
+    fn harvest_slugs_are_unique_and_prefixed() {
+        let mut slugs: Vec<&str> = HARVEST_GUIDE_FILES
+            .iter()
+            .chain(HARVEST_REFERENCE_FILES)
+            .map(|(_, slug, _)| *slug)
+            .collect();
+        assert!(slugs.iter().all(|slug| slug.starts_with("harvest-")));
+        let count = slugs.len();
+        slugs.sort_unstable();
+        slugs.dedup();
+        assert_eq!(slugs.len(), count, "two Harvest files share a slug");
+    }
+
+    #[test]
+    fn reference_titles_drop_the_issue_suffix() {
+        assert_eq!(
+            clean_reference_title("Calendar-Aware Schedules (issue #337)"),
+            "Calendar-Aware Schedules"
+        );
+        assert_eq!(
+            clean_reference_title("Retry jitter (issues #342, #1792)"),
+            "Retry jitter"
+        );
+        assert_eq!(clean_reference_title("Durable routes"), "Durable routes");
+        assert_eq!(
+            clean_reference_title("MCP Tools — expose `#[workflow]`s to AI agents (issue #597)"),
+            "MCP Tools"
+        );
+        assert_eq!(
+            clean_reference_title("`harvest-verify` — semantic determinism verification"),
+            "harvest-verify"
+        );
+        assert_eq!(
+            replace_first_heading(
+                "# Fairness keys (issue #1976)\n\nBody\n# Two\n",
+                "Fairness keys"
+            ),
+            "# Fairness keys\n\nBody\n# Two\n"
+        );
+    }
 
     #[test]
     fn nested_guide_links_are_rebased_onto_the_guide_root() {

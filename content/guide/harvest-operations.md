@@ -195,7 +195,7 @@ the target database:
   for the ownership table and complete procedure.
 - **Multi-shard deployments** — each Harvest shard database needs the full set
   applied; repeat `--database-url` once per shard. See
-  [`sharding.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/sharding.md).
+  [`sharding.md`](/docs/harvest-sharding).
 
 ## TLS for LISTEN/NOTIFY connections
 
@@ -232,7 +232,7 @@ and refuses plaintext. The default `prefer` reaches it over TLS. Set
 
 `http://localhost:3000/api/harvest/ui` shows live executions, event histories,
 the DLQ, schedules, and the worker fleet. It's served by the plugin — no
-separate process. See [`docs/vantage-ui.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/vantage-ui.md) for a
+separate process. See [`docs/vantage-ui.md`](/docs/harvest-vantage-ui) for a
 page-by-page reference to every tab.
 
 ## CLI

@@ -190,7 +190,7 @@ soon as all positive-weight queues are drained.
 Weights share a worker between queues. To share **one** queue between
 tenants, give each run a fairness key and turn on
 `WorkerConfig::with_fairness_keys(true)`. The claim then serves the keys of
-the queue in weighted round robin. See [Fairness keys](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/fairness-keys.md).
+the queue in weighted round robin. See [Fairness keys](/docs/harvest-fairness-keys).
 
 ### Composition with within-queue priority (#249)
 

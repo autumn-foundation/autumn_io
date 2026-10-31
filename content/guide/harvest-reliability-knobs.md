@@ -14,7 +14,7 @@ These come up in roughly the order you'll need them.
 for a flat retry, or build a `RetryPolicy` directly when you need a custom
 shape (max interval, backoff coefficient, non-retryable error filters). For
 retry-storm avoidance across many concurrent executions, see
-[`docs/retry-jitter.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/retry-jitter.md). Retry jitter is deterministic
+[`docs/retry-jitter.md`](/docs/harvest-retry-jitter). Retry jitter is deterministic
 and on by default. Set it with `RetryPolicy::jitter`.
 
 **A fleet-wide reliability floor (builder-default retry / `start_to_close`).**

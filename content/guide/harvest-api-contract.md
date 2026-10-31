@@ -1,0 +1,228 @@
++++
+title = "Harvest Management API Contract"
+description = "This guide is for plugin embedders, CLI authors, and UI developers who consume the Harvest management API. It explains how to inspect the published contract, validate your client against it, and understand what counts as a breaking change."
+order = 1620
++++
+
+# Harvest Management API Contract
+
+This guide is for plugin embedders, CLI authors, and UI developers who consume
+the Harvest management API.  It explains how to inspect the published contract,
+validate your client against it, and understand what counts as a breaking change.
+
+---
+
+## Prefer a generated client?
+
+`docs/openapi.json` is an OpenAPI 3.1 document generated from this contract, and
+`GET {api_path}/openapi.json` serves the same document. Point an OpenAPI
+generator at either one and skip hand-written HTTP entirely. See
+[`openapi.md`](/docs/harvest-openapi). Read on when you want the contract itself: its
+compatibility rules, its categories, and how to validate a hand-written client
+against it.
+
+---
+
+## Where to find the contract
+
+`docs/api-contract.json` is the single source of truth.  It is checked into the
+repository, so it is always available without running a server or starting a
+worker process.  The file version matches the `autumn-harvest-plugin` crate
+version (e.g. `"version": "0.4.0"`).
+
+```bash
+# Inspect the full route list
+jq '.routes[] | {method, path, category, read_only}' docs/api-contract.json
+
+# List only mutating routes
+jq '[.routes[] | select(.read_only == false) | {method, path, category}]' \
+   docs/api-contract.json
+
+# List only read-only admin routes
+jq '[.routes[] | select(.read_only == true and .category == "admin") | .path]' \
+   docs/api-contract.json
+```
+
+---
+
+## Contract format
+
+| Top-level key | Meaning |
+|---|---|
+| `version` | Crate version this contract was published with |
+| `contract_version` | Contract schema version (currently `"2"`) |
+| `compatibility` | Breaking vs. non-breaking change rules |
+| `routes` | Array of route entries |
+
+Each route entry:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `method` | string | HTTP method: `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` |
+| `path` | string | Path template using `{param}` placeholders |
+| `category` | string | Route group, such as `workflow`, `dag`, `dlq` or `admin`. The command below this table lists every group. |
+| `read_only` | bool | `true` for GET endpoints; `false` for mutating operations |
+| `description` | string | Human-readable description |
+| `params` | array | Query and path parameters with name, location, required flag, and description |
+| `request_body` | object | `required` flag and field schema (null when not applicable) |
+| `success_response` | object | HTTP status and response schema description |
+| `error_responses` | array | Documented error status codes and conditions |
+| `idempotency` | string | (Optional) Idempotency semantics for the route |
+
+To list every route group:
+
+```bash
+jq '[.routes[].category] | unique' docs/api-contract.json
+```
+
+### Field lists
+
+A `fields` entry is a bare name or an object. Request and response lists both
+use it. The object form takes these keys, and no others (issue #1616):
+
+| Key | Meaning |
+|---|---|
+| `name` | The JSON key. |
+| `type` | `string`, `integer`, `number`, `boolean`, `object`, `array`, or `any`. The transform rejects other names. |
+| `nullable` | `true` when the value can be `null`. It needs a concrete `type`. |
+| `required` | `true` when the key is in every body. |
+| `fields` | The properties of an `object` field, in this same form. |
+| `items` | The element type of an `array` field: an object with `type`, and `nullable`, `fields`, `items` or `description` as needed. |
+| `description` | Text for the generated client. |
+
+Use `any` for a value the handler passes through, such as workflow input. The
+document marks it `x-harvest-any`, so a reader can tell it from a field with no
+type yet. A bare name has no type.
+
+The transform rejects an unknown key, a type outside the list, `nullable`
+without a concrete type, and a non-boolean `required` or `nullable`. It also
+rejects an empty `fields` list, because that closes the object.
+
+The routes in `autumn_harvest_plugin::openapi::CORE_CLIENT_ROUTES` must type
+every field, and every array element. `tests/openapi_response_conformance.rs`
+checks each type against the live handler.
+
+---
+
+## Compatibility rules
+
+These rules are stated in the `compatibility` section of the contract:
+
+**Non-breaking (safe to ship without a major contract bump):**
+- Adding a new optional response field
+- Adding a new optional query parameter
+- Adding a new read-only route
+- Narrowing an existing error response to be more specific
+
+**Breaking (requires updating the contract, bumping `contract_version`, and a
+CHANGELOG entry before release):**
+- Removing a response field
+- Renaming a response field
+- Changing the type of a response field
+- Removing a route
+- Renaming a route (path or method change)
+- Changing a query parameter from optional to required
+- Adding a new mutating route without classifying it in the contract
+
+---
+
+## Generating or validating a client
+
+An OpenAPI generator is the shortest path: see
+[`openapi.md`](/docs/harvest-openapi). The recipes below are for the cases a generator
+does not cover, such as scaffolding a client in a language with no OpenAPI
+tooling. Because the contract is plain JSON, any JSON-aware toolchain can read
+it:
+
+```bash
+# 1. Extract routes into a simple TSV for code generation scaffolding
+jq -r '.routes[] | [.method, .path, .category, (.read_only | tostring)] | @tsv' \
+   docs/api-contract.json
+
+# 2. Validate that a hand-written client covers every contract route
+#    (example: check that a list of client methods covers all paths)
+contract_paths=$(jq -r '.routes[].path' docs/api-contract.json | sort)
+# compare against your method list ...
+```
+
+For languages with OpenAPI tooling, do not translate this file by hand. The
+translation already ships: `docs/openapi.json` is an OpenAPI 3.1 document
+generated from this contract, and `GET {api_path}/openapi.json` serves the same
+document. Point a generator at either. See [`openapi.md`](/docs/harvest-openapi).
+
+---
+
+## Content negotiation: match each route's declared content type
+
+Send `Accept: application/json` to a route whose contract
+`content_type` is JSON (issue #1579). `curl` sends a bare `Accept: */*`
+by default. Autumn's error-page content negotiation treats that as
+browser navigation, and answers a validation error with a styled HTML
+page, not the JSON body this contract documents. The `harvest` CLI
+sends the explicit header for this reason, on every request its own
+commands make.
+
+Two route shapes are the exception, and want their own `Accept`
+instead of `application/json`. `docs/api-contract.json` marks each
+one's `content_type`:
+
+- A streaming route: send `Accept: text/event-stream` to
+  `.../events/stream`, `.../stream` or `.../stream/durable`.
+- A Prometheus-format route: `GET /admin/metrics` and
+  `GET /admin/queues/scaling?format=prometheus` return plain text, not
+  JSON.
+
+---
+
+## Using the contract alongside the CLI
+
+The `harvest` CLI uses `api_request()` to translate every subcommand into an
+`(method, path, body)` triple.  The contract coverage test in
+`autumn-harvest-cli/tests/integration/contract_coverage.rs` asserts that
+every CLI subcommand maps to a documented contract route.
+
+To verify a specific CLI command manually:
+
+```bash
+# See which route a command uses (dry-run print, no network)
+harvest workflow cancel 00000000-0000-0000-0000-000000000001 --dry-run 2>&1 || true
+
+# Cross-reference against the contract
+jq '.routes[] | select(.path == "/workflows/{id}/cancel")' docs/api-contract.json
+```
+
+---
+
+## Integration with auth posture and audit trail
+
+- **Auth posture (issue #174):** The `category` and `read_only` fields in this
+  contract are the input to the auth classification layer.  Read-only routes
+  and admin routes can be assigned different auth requirements.  The contract
+  records the route surface; auth enforcement is owned by issue #174.
+
+- **Audit trail (issue #158):** Every route where `read_only: false` is
+  automatically included in the audit trail when `HarvestPlugin` is active.
+  The `GET /admin/audit` endpoint is the read surface for that log.
+
+---
+
+## Regression test
+
+`autumn-harvest-plugin/tests/contract_regression.rs` uses
+`management_api_routes()` (from `autumn_harvest_plugin::api`) to compare the
+live route set registered in `harvest_api_router` against `docs/api-contract.json`.
+
+**When you add, remove, rename, or change a route:**
+
+1. Update `harvest_api_router` in `autumn-harvest-plugin/src/api.rs`.
+2. Update `management_api_routes()` in the same file (keeps the canonical list
+   in sync with the router).
+3. Update `docs/api-contract.json` to reflect the new route or schema change.
+4. Run `scripts/regenerate-openapi.sh`. It rewrites both generated OpenAPI
+   copies from the contract (issue #694). Skipping it fails CI.
+5. Add a changelog fragment in `docs/changelog.d/` that marks the change as
+   breaking or non-breaking per the compatibility rules above.
+6. Run `cargo test -p autumn-harvest-plugin --test contract_regression --test openapi_spec`
+   to confirm the regression tests pass.
+
+The CI job will catch any drift between these artefacts.

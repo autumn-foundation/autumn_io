@@ -1,0 +1,214 @@
++++
+title = "Calendar-Aware Schedules"
+description = "Harvest schedules can be attached to a named calendar — a set of excluded dates (holidays, maintenance windows, shutdown days) — so that fires landing on excluded dates are handled according to a configurable skip policy instead of being silently dispatched or silently skipped with no visibility into why."
+order = 1380
++++
+
+# Calendar-Aware Schedules
+
+Harvest schedules can be attached to a **named calendar** — a set of excluded dates (holidays, maintenance windows, shutdown days) — so that fires landing on excluded dates are handled according to a configurable **skip policy** instead of being silently dispatched or silently skipped with no visibility into why.
+
+---
+
+## Built-in Calendars
+
+Three calendars are seeded by the `20260519000000_harvest_calendar_awareness` migration:
+
+| Name | Description |
+|------|-------------|
+| `weekends-off` | Saturday and Sunday (rolling; no fixed exclusion rows — the `exclude_weekends` flag of `apply_skip_policy` covers it) |
+| `us-federal-holidays` | US federal public holidays for 2025–2026 |
+| `nyse` | NYSE market holidays for 2025–2026 |
+
+Built-in calendars (`built_in = true`) cannot be deleted via `DELETE /calendars/{name}`. Operators can extend them by calling `PUT /calendars/{name}` to replace the exclusion set.
+
+---
+
+## Skip Policies
+
+| Value | Behaviour when fire date is excluded |
+|-------|--------------------------------------|
+| `skip` (default) | Drop the firing; record `harvest.schedule.skipped` metric with `reason = "calendar"`. The schedule advances to the next computed fire time. |
+| `run_next_business_day` | Advance to the nearest non-excluded weekday **after** the excluded date. The target is never a Saturday or Sunday. The scan covers up to 365 days. |
+| `run_prev_business_day` | Retreat to the nearest non-excluded weekday **before** the excluded date. The target is never a Saturday or Sunday. The scan covers up to 365 days. |
+
+---
+
+## Attaching a Calendar to a Schedule
+
+### Via the management API
+
+```http
+POST /api/harvest/admin/schedules/workflow
+Content-Type: application/json
+
+{
+  "workflow_name": "generate_payroll",
+  "schedule_expr": "cron:0 9 * * 1",
+  "timezone": "America/New_York",
+  "calendar": "us-federal-holidays",
+  "skip_policy": "run_next_business_day"
+}
+```
+
+When `calendar` is `null` (the default) no filtering is applied and all fires dispatch as usual.
+
+### Via `WorkflowSchedule` builder
+
+```rust
+use autumn_harvest::prelude::*;
+
+let schedule = WorkflowSchedule::new(
+    "generate_payroll",
+    Schedule::CronInTimezone {
+        expr: "0 9 * * 1".into(),
+        tz: "America/New_York".into(),
+    },
+)
+.with_calendar(Some("us-federal-holidays".into()))
+.with_skip_policy(SkipPolicy::RunNextBusinessDay);
+```
+
+---
+
+## Calendar CRUD API
+
+### List calendars
+
+```http
+GET /api/harvest/calendars
+```
+
+Response: array of `{ name, description, built_in, created_at, updated_at }`.
+
+### Get calendar with exclusions
+
+```http
+GET /api/harvest/calendars/{name}
+```
+
+Response: `{ name, description, built_in, created_at, updated_at, exclusion_dates: ["YYYY-MM-DD", ...] }`.
+
+### Create a custom calendar
+
+```http
+POST /api/harvest/calendars          (admin required)
+Content-Type: application/json
+
+{ "name": "plant-shutdown", "description": "Annual factory downtime" }
+```
+
+Response: `201 Created` with the calendar object.
+
+### Replace exclusion dates
+
+```http
+PUT /api/harvest/calendars/{name}    (admin required)
+Content-Type: application/json
+
+{
+  "exclusion_dates": ["2026-12-24", "2026-12-25", "2026-12-26"]
+}
+```
+
+Response: `204 No Content`. The call **replaces** the full set; omitting a date removes it.
+
+For a timezone schedule, each date is a date in the schedule's timezone. See [Which date a calendar tests](#which-date-a-calendar-tests).
+
+### Delete a calendar
+
+```http
+DELETE /api/harvest/calendars/{name}  (admin required)
+```
+
+Returns `204 No Content`. Fails with `409 Conflict` if the calendar is `built_in`.
+
+---
+
+## Schedule Fire Preview
+
+Preview the next N effective fire times for any schedule, respecting its calendar and skip policy:
+
+```http
+GET /api/harvest/admin/schedules/{id}/preview?count=10
+```
+
+Response:
+
+```json
+{
+  "entries": [
+    { "scheduled_at": "2026-01-05T09:00:00Z", "effective_at": "2026-01-05T09:00:00Z", "reason": "on schedule" },
+    { "scheduled_at": "2026-01-19T09:00:00Z", "effective_at": null,                    "reason": "excluded by calendar (skip)" },
+    { "scheduled_at": "2026-01-26T09:00:00Z", "effective_at": "2026-01-26T09:00:00Z", "reason": "on schedule" }
+  ]
+}
+```
+
+`effective_at: null` means the fire is suppressed (`skip` policy). `effective_at` differs from `scheduled_at` when the date was shifted by a `run_next_business_day` / `run_prev_business_day` policy.
+
+---
+
+## Programmatic Helpers
+
+Pure functions are available without the `db` feature:
+
+```rust
+use autumn_harvest::calendar::{apply_skip_policy, calendar_excludes_weekends};
+use autumn_harvest::policy::SkipPolicy;
+use chrono::NaiveDate;
+
+let excluded = vec![
+    NaiveDate::from_ymd_opt(2026, 1, 19).unwrap(), // MLK Day
+];
+
+// The scheduler derives this flag from the calendar name.
+let exclude_weekends = calendar_excludes_weekends("us-federal-holidays");
+assert!(!exclude_weekends);
+
+let fire_date = NaiveDate::from_ymd_opt(2026, 1, 19).unwrap();
+
+// Returns None → skip
+assert!(apply_skip_policy(fire_date, SkipPolicy::Skip, &excluded, exclude_weekends).is_none());
+
+// Returns Some(2026-01-20) → Tuesday after the holiday
+let next = apply_skip_policy(
+    fire_date,
+    SkipPolicy::RunNextBusinessDay,
+    &excluded,
+    exclude_weekends,
+);
+assert_eq!(next, NaiveDate::from_ymd_opt(2026, 1, 20));
+```
+
+Pass `calendar_excludes_weekends(name)` as the fourth argument to match the scheduler.
+That function returns `true` only for `weekends-off`.
+
+---
+
+## Observability
+
+When a firing is suppressed by the calendar, the scheduler emits:
+
+```text
+harvest.schedule.skipped{workflow="generate_payroll", queue="default", reason="calendar"}
+```
+
+This is separate from `reason="overlap"` skips (overlap policy) so dashboards can distinguish holiday-driven suppression from concurrency-driven suppression.
+
+---
+
+## Which date a calendar tests
+
+A calendar tests the **local date** of the fire time. For a `CronInTimezone` schedule, that is the date in the schedule's timezone. For every other schedule, it is the UTC date.
+
+A Mon–Fri `0 8 * * 1-5` schedule in `Asia/Tokyo` fires at 23:00 UTC on the day before. The calendar still tests the Tokyo date, so `weekends-off` never suppresses a local weekday. A holiday date means that day in the schedule's timezone.
+
+An unknown timezone falls back to the UTC date.
+
+## Notes
+
+- Calendar filtering happens **after** jitter is applied and **before** overlap policy evaluation. The effective fire time shown in the preview already includes jitter.
+- `weekends-off` sets `exclude_weekends = true` in `apply_skip_policy`. Saturday and Sunday are then excluded whatever the exclusion rows say.
+- A shift target is a weekday for every calendar, not only `weekends-off`. A weekend slot that is not excluded keeps its date, because only the shift scan applies the weekday rule.
+- If a calendar is deleted while schedules still reference it, those schedules degrade gracefully to no filtering (the calendar lookup returns an empty exclusion set).
