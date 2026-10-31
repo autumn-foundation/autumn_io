@@ -684,6 +684,17 @@ fn bundled_site_docs_include_the_autumn_090_guides() {
             "{slug} should be slotted into a docs sidebar group"
         );
     }
+
+    // `observability/overload-signals.md` is flattened to its file stem, so
+    // the sync rebases its relative links onto `docs/guide/`.
+    let overload = registry
+        .page("overload-signals")
+        .expect("overload-signals guide should be bundled")
+        .html();
+    assert!(overload.contains(r#"href="/docs/metrics""#));
+    assert!(overload.contains(
+        r#"href="https://github.com/autumn-foundation/autumn/blob/trunk-dev/docs/migrations/0.9.0.md""#
+    ));
 }
 
 #[test]

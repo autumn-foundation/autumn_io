@@ -9,7 +9,7 @@ order = 1740
 Autumn exports the signals that show overload: request latency, job backlog
 and database pool pressure. It also gives each request an ID that you can
 follow through logs, traces and other services. To scrape the endpoint, see
-[Metrics](../metrics.md).
+[Metrics](metrics.md).
 
 ## HTTP latency histogram
 
@@ -51,7 +51,7 @@ non-standard method is counted under `_other <route>`.
 `autumn_http_request_duration_quantiles_seconds` keeps the old p50, p95 and
 p99 lines. It is a summary over the last 10,000 requests of one replica. You
 cannot add summaries from different replicas. A later release removes it.
-See the [migration guide](../../migrations/0.9.0.md).
+See the [migration guide](../migrations/0.9.0.md).
 
 ## Job queue metrics
 

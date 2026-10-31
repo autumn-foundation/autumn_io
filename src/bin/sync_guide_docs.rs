@@ -289,7 +289,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let source_file = source.join(file_name);
         let raw = fs::read_to_string(&source_file)
             .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
-        let raw = rewrite_org_urls(&raw);
+        let raw = rebase_nested_links(&rewrite_org_urls(&raw), file_name);
         let title = first_heading(&raw).ok_or_else(|| {
             format!(
                 "guide file {} must start with a level-one heading",
@@ -485,6 +485,11 @@ fn strip_trailing_divider(lines: &mut Vec<String>) {
 /// relative path resolves to an absolute `autumn-harvest` source URL (so the
 /// runtime rewriter, which only knows the framework repo, leaves it alone).
 fn rewrite_harvest_links(markdown: &str) -> String {
+    rewrite_links(markdown, rewrite_harvest_destination)
+}
+
+/// Rewrite the destination of each inline Markdown link outside fenced code.
+fn rewrite_links(markdown: &str, rewrite: impl Fn(&str) -> String) -> String {
     let mut output = String::with_capacity(markdown.len());
     let mut in_fence = false;
 
@@ -501,14 +506,14 @@ fn rewrite_harvest_links(markdown: &str) -> String {
             continue;
         }
 
-        output.push_str(&rewrite_harvest_links_in_line(line));
+        output.push_str(&rewrite_links_in_line(line, &rewrite));
         output.push('\n');
     }
 
     output
 }
 
-fn rewrite_harvest_links_in_line(line: &str) -> String {
+fn rewrite_links_in_line(line: &str, rewrite: &impl Fn(&str) -> String) -> String {
     let mut output = String::with_capacity(line.len());
     let mut rest = line;
 
@@ -518,7 +523,7 @@ fn rewrite_harvest_links_in_line(line: &str) -> String {
             break;
         };
         output.push_str(&rest[..open + 2]);
-        output.push_str(&rewrite_harvest_destination(&after[..close]));
+        output.push_str(&rewrite(&after[..close]));
         output.push(')');
         rest = &after[close + 1..];
     }
@@ -585,6 +590,57 @@ fn resolve_harvest_source_path(path: &str) -> String {
         }
     }
     segments.join("/")
+}
+
+/// Rebase the relative links of a guide nested under `docs/guide/` (for
+/// example `observability/`). The site serves every guide at its file stem,
+/// and the renderer resolves relative links from `docs/guide/`. A link such as
+/// `../metrics.md` in `observability/overload-signals.md` must therefore
+/// become `metrics.md`.
+fn rebase_nested_links(markdown: &str, file_name: &str) -> String {
+    match file_name.rsplit_once('/') {
+        Some((dir, _)) => rewrite_links(markdown, |destination| {
+            rebase_nested_destination(destination, dir)
+        }),
+        None => markdown.to_owned(),
+    }
+}
+
+fn rebase_nested_destination(destination: &str, dir: &str) -> String {
+    let destination = destination.trim();
+    let lower = destination.to_ascii_lowercase();
+    if destination.is_empty()
+        || destination.starts_with('#')
+        || destination.starts_with('/')
+        || lower.contains("://")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("tel:")
+    {
+        return destination.to_owned();
+    }
+
+    let (path, fragment) = destination
+        .split_once('#')
+        .map_or((destination, ""), |(path, _)| {
+            (path, &destination[path.len()..])
+        });
+    let mut segments: Vec<&str> = dir.split('/').filter(|s| !s.is_empty()).collect();
+    let mut above = 0_usize;
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                if segments.pop().is_none() {
+                    above += 1;
+                }
+            }
+            segment => segments.push(segment),
+        }
+    }
+    let mut rebased = "../".repeat(above);
+    rebased.push_str(&segments.join("/"));
+    rebased.push_str(fragment);
+    rebased
 }
 
 fn harvest_guide_source_dir(source: &Path) -> Result<PathBuf, Box<dyn Error>> {
@@ -1004,7 +1060,24 @@ fn toml_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{clamp_heading_levels, clean_harvest_title};
+    use super::{clamp_heading_levels, clean_harvest_title, rebase_nested_links};
+
+    #[test]
+    fn nested_guide_links_are_rebased_onto_the_guide_root() {
+        let body = "See [metrics](../metrics.md#counters), [guide](../../migrations/0.9.0.md), \
+                    [peer](server-timing.md), [up](https://example.com/a.md) and [top](#top).\n";
+        assert_eq!(
+            rebase_nested_links(body, "observability/overload-signals.md"),
+            "See [metrics](metrics.md#counters), [guide](../migrations/0.9.0.md), \
+             [peer](observability/server-timing.md), [up](https://example.com/a.md) and [top](#top).\n"
+        );
+    }
+
+    #[test]
+    fn top_level_guide_links_are_unchanged() {
+        let body = "[a](../x.md)\n";
+        assert_eq!(rebase_nested_links(body, "metrics.md"), body);
+    }
 
     #[test]
     fn numbered_chapter_headings_lose_their_chapter_label() {
