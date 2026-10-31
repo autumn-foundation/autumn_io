@@ -219,3 +219,10 @@ retention window.
 See the [start route in the management-API contract](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/api-contract.json) for
 the full request/response schema.
 
+## Durable routes — keyed starts from an Autumn route
+
+An Autumn route can start a workflow from the `Idempotency-Key` of its own
+request, wait for the result, and replay that result on a retry. The route
+keeps its own authentication and body extractors. See
+[Durable routes](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/durable-routes.md).
+

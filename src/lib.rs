@@ -12,6 +12,7 @@ pub mod docs;
 pub mod export;
 pub mod metrics;
 pub mod negotiate;
+pub mod plugins;
 pub mod security;
 pub mod seo;
 pub mod site;
@@ -231,6 +232,21 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("constela"),
         guide_doc!("plugin-assets"),
         guide_doc!("sandboxed-plugins"),
+        // New in Autumn 0.9.0.
+        guide_doc!("aeo"),
+        guide_doc!("webmcp"),
+        guide_doc!("connection-poolers"),
+        guide_doc!("outbox"),
+        guide_doc!("data-capsules"),
+        guide_doc!("timeouts-and-budgets"),
+        guide_doc!("connection-limits"),
+        guide_doc!("overload-signals"),
+        guide_doc!("slo"),
+        guide_doc!("fault-injection"),
+        guide_doc!("cost"),
+        guide_doc!("cell-isolation"),
+        guide_doc!("sqlite-fleet"),
+        guide_doc!("kubernetes"),
     ])
 });
 
@@ -383,6 +399,7 @@ fn is_discovery_document(path: &str) -> bool {
 fn is_cacheable_page(path: &str) -> bool {
     path == "/"
         || is_discovery_document(path)
+        || path == plugins::PLUGINS_PATH
         || path == "/robots.txt"
         || path == "/.well-known/mcp/server-card.json"
         || path == "/sitemap.xml"
@@ -512,6 +529,16 @@ pub async fn index(negotiate: MarkdownNegotiate) -> Response {
         .headers_mut()
         .insert(header::LINK, HeaderValue::from_static(HOME_LINK_HEADER));
     response
+}
+
+/// The plugin catalog, as HTML or as Markdown.
+#[get("/plugins")]
+#[api_doc(hidden)]
+pub async fn plugins_page(negotiate: MarkdownNegotiate) -> Response {
+    negotiate.respond(
+        || site::render_plugins_page().into_response(),
+        || MarkdownPage::new(site::markdown::render_plugins_page()),
+    )
 }
 
 #[get("/docs")]
@@ -839,6 +866,7 @@ pub async fn autumn_docs_skill() -> Response {
 pub fn app_routes() -> Vec<autumn_web::Route> {
     let mut routes = routes![
         index,
+        plugins_page,
         docs_index,
         docs_search,
         docs_page,

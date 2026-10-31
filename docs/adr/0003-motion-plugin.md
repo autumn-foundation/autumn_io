@@ -67,3 +67,10 @@ plan is to refresh them for 0.8 alongside Harvest 0.7.0.
 The docs line moved to Autumn 0.8.0 / Harvest 0.7.0, as the last consequence
 above anticipated: the docs-line constants and the guides changed, and nothing
 else in the runtime did. Runtime and docs line now pin the same version.
+
+## Follow-up (2026-10-31)
+
+Autumn 0.9.0 and motion 0.3.0 shipped. The runtime and the docs line moved
+together this time: `autumn-web` 0.9.0, `autumn-plugin-motion` 0.3.0, and the
+docs synced from the `v0.9.0` tag and Harvest 0.8.0. The plugin API that the
+site uses did not change.

@@ -11,11 +11,11 @@ pub const GITHUB_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/au
 pub const WEBSITE_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn_io";
 pub const CRATES_IO_URL: &str = "https://crates.io/crates/autumn-web";
 pub const RUSTDOC_URL: &str = "https://docs.rs/autumn-web";
-pub const AUTUMN_VERSION: &str = "0.8.0";
+pub const AUTUMN_VERSION: &str = "0.9.0";
 pub const HARVEST_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn-harvest";
 pub const HARVEST_CRATES_IO_URL: &str = "https://crates.io/crates/autumn-harvest";
 pub const HARVEST_RUSTDOC_URL: &str = "https://docs.rs/autumn-harvest";
-pub const HARVEST_VERSION: &str = "0.7.0";
+pub const HARVEST_VERSION: &str = "0.8.0";
 
 #[must_use]
 pub fn absolute_url(path: &str) -> String {
@@ -440,6 +440,7 @@ pub fn sitemap_xml(registry: &DocRegistry) -> String {
     );
 
     push_sitemap_url(&mut sitemap, &absolute_url("/"));
+    push_sitemap_url(&mut sitemap, &absolute_url(crate::plugins::PLUGINS_PATH));
     for page in registry.pages() {
         push_sitemap_url(&mut sitemap, &absolute_url(&docs_path(&page.slug)));
     }

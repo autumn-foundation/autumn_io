@@ -365,7 +365,7 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.7.0"));
+    assert!(html.contains("Autumn Harvest 0.8.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
@@ -650,6 +650,51 @@ fn bundled_site_docs_include_the_autumn_070_and_harvest_060_guides() {
             .html()
             .contains(r#"href="/docs/harvest-webhooks""#)
     );
+}
+
+#[test]
+fn bundled_site_docs_include_the_autumn_090_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Every guide new in the 0.9.0 sync. `overload-signals` is nested under
+    // `observability/` upstream and is served at its file stem.
+    for slug in [
+        "aeo",
+        "webmcp",
+        "connection-poolers",
+        "outbox",
+        "data-capsules",
+        "timeouts-and-budgets",
+        "connection-limits",
+        "overload-signals",
+        "slo",
+        "fault-injection",
+        "cost",
+        "cell-isolation",
+        "sqlite-fleet",
+        "kubernetes",
+    ] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(!page.html().is_empty(), "{slug} should render a body");
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+    }
+
+    // `observability/overload-signals.md` is flattened to its file stem, so
+    // the sync rebases its relative links onto `docs/guide/`.
+    let overload = registry
+        .page("overload-signals")
+        .expect("overload-signals guide should be bundled")
+        .html();
+    assert!(overload.contains(r#"href="/docs/metrics""#));
+    assert!(overload.contains(
+        r#"href="https://github.com/autumn-foundation/autumn/blob/trunk-dev/docs/migrations/0.9.0.md""#
+    ));
 }
 
 #[test]
@@ -1563,12 +1608,16 @@ fn export_site_writes_static_dist_tree_from_shared_renderers() {
 
     let summary = export_site(registry, &ExportConfig::new(&dist)).expect("site should export");
 
-    // Every guide, plus the home page.
-    assert_eq!(summary.html_pages, registry.pages().len() + 1);
+    // Every guide, plus the home page and the plugin catalog.
+    assert_eq!(summary.html_pages, registry.pages().len() + 2);
     assert!(summary.static_assets >= 4);
-    // `/`, `/robots.txt`, `/sitemap.xml`, the ARD manifest (two paths), the Web Bot
-    // Auth directory, the agent-skills index and skill file, and one per guide.
-    assert_eq!(summary.routes, registry.pages().len() + 11);
+    // `/`, `/plugins`, `/robots.txt`, `/sitemap.xml`, the ARD manifest (two
+    // paths), the Web Bot Auth directory, the agent-skills index and skill
+    // file, and one per guide.
+    assert_eq!(summary.routes, registry.pages().len() + 12);
+    let plugins = std::fs::read_to_string(dist.join("plugins/index.html")).expect("plugins html");
+    assert!(plugins.contains(r#"<link rel="canonical" href="https://autumn-web.app/plugins">"#));
+    assert!(plugins.contains("autumn-plugin-motion"));
     assert!(
         dist.join(".well-known/http-message-signatures-directory")
             .is_file()
