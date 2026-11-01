@@ -71,7 +71,7 @@ management API, worker sessions, or sharding.
 | Wake-ups | Polling (you drive it) | `LISTEN`/`NOTIFY` push |
 | Crash recovery | Single-process reopen | Multi-server heartbeat/reclaim |
 | Throughput | Modest, single-writer | High, horizontally scaled |
-| Schedules, retention | Yes (issue #2031) | Yes |
+| Schedules, retention | Yes | Yes |
 | Extras (DAGs, mgmt API, sharding) | v0.1 non-goals | Yes |
 
 ---
@@ -125,7 +125,7 @@ async fn reserve_inventory(ctx: &ActivityContext, order: Order) -> Result<String
 }
 ```
 
-> **The `#[activity]` body runs (issue #2024).** `register_activity(&info)` runs
+> **The `#[activity]` body runs.** `register_activity(&info)` runs
 > the async body itself, on the drive's async runtime, with a real
 > `ActivityContext`. The same fn runs unchanged on this backend and on Postgres.
 > `ctx.info()` reports the same values as the Postgres worker for one process.
@@ -198,9 +198,9 @@ rt.register_activity(&reserve_inventory_info());
   (`heartbeat_timeout`, `schedule_to_start`, `circuit_breaker`, `rate_limit_*`,
   `max_concurrent`, …). This keeps a declared setting from taking
   silently-wrong effect. A `local = true` activity runs inline as a local
-  activity (issue #2029). Like Postgres, it cannot declare `schedule_to_close`.
+  activity. Like Postgres, it cannot declare `schedule_to_close`.
   A call to `ctx.record_llm_call` writes a cost ledger row when the attempt
-  completes (issue #2275).
+  completes.
 - **`register_activity_with_body(&ActivityInfo, body)`** runs the same audit,
   but runs a synchronous `Fn(Value) -> Result<Value, String>` closure in place of
   the `#[activity]` body. The closure gets no `ActivityContext`. Use it to stub an
@@ -214,9 +214,9 @@ rt.register_activity_with_body(&reserve_inventory_info(), |input| {
 ```
 
 - **`register_activity_with_ledger(&ActivityInfo, body)`** is the same, but the
-  closure returns `Ok((output, calls))` (issue #2275). `calls` is a
+  closure returns `Ok((output, calls))`. `calls` is a
   `Vec<LlmCall>`. The runtime writes one
-  [cost ledger](/docs/harvest-agent-cost-ledger#on-the-sqlite-backend-issue-2275) row per
+  [cost ledger](/docs/harvest-agent-cost-ledger#on-the-sqlite-backend) row per
   call, in the transaction that appends the completion. A failed or timed-out
   attempt writes no row. `SqliteRuntime::llm_ledger(exec)` reads the rows:
 
@@ -264,7 +264,7 @@ step 7.
 `workflow_id` (what `ctx.info().workflow_id` reports — idempotency-key material,
 cross-backend-identical).
 
-> **Idempotent starts by default (issue #1068).** `start_workflow_with_id`
+> **Idempotent starts by default.** `start_workflow_with_id`
 > applies the `AllowDuplicate` reuse policy. A non-blank `workflow_id` that
 > matches an existing, non-sealed execution for the same `workflow_name`
 > **attaches** to it. The call returns the SAME `ExecutionId`. No second run
@@ -288,7 +288,7 @@ A start input, memo, signal payload or update input nested over
 `MAX_PAYLOAD_DEPTH` (100) levels is rejected with `SqliteError::PayloadTooDeep` before anything is
 persisted. Postgres has no such cap at ingress.
 
-A value from workflow code has the same cap (issue #2224). The core context
+A value from workflow code has the same cap. The core context
 refuses it at the call site with `HarvestError::PayloadTooDeep`, on every
 backend. That covers activity, local activity, child and continue-as-new input,
 external signal payloads and side-effect values. The workflow can handle the
@@ -306,7 +306,7 @@ sees the failure and can handle it. A heartbeat nested over the cap is dropped w
 a warning, and the last good checkpoint stays.
 
 Postgres applies the same cap to activity results, external completions and
-heartbeats (issue #2225).
+heartbeats.
 
 ---
 
@@ -383,7 +383,7 @@ on a `ctx.timer(...)` that is not yet due returns `WaitingTimer`; drive it again
 after the deadline passes and it proceeds.
 
 A live `ctx.system_now()` returns the clock of its decision cycle, as the
-timers do (issue #2276). A `run_until_blocked_as_of` drive therefore keeps one
+timers do. A `run_until_blocked_as_of` drive therefore keeps one
 clock: the timers, the activities, the ledger rows and the clock reads all use
 the time that the call names.
 
@@ -428,7 +428,7 @@ The run ends `CANCELLED` when one of these occurs:
 
 - The body returns `Ok` or `Err`, or continues as new. The output of an `Ok`
   is not kept, and no successor starts.
-- The body blocks on a signal, a timer or another run (issue #2026), and no
+- The body blocks on a signal, a timer or another run, and no
   activity task is left to run. A parked await cannot see the request.
 - The cycle diverges or deadlocks. The driver discards that cycle.
 - The drive meets an error that repeats on every drive: an unregistered
@@ -460,7 +460,7 @@ body does not run again, and `terminate` drops a pending cancel request.
 - The run gets the core `WorkflowCancelled { reason }` event as its last
   event, as on Postgres. Cleanup events come before it.
 - The pending tasks, unfired timers and staged signals are deleted. A signal
-  with an idempotency key stays, so its key still dedupes (issue #2028).
+  with an idempotency key stays, so its key still dedupes.
 - An unknown id returns `SqliteError::ExecutionNotFound`. A terminal run
   returns `SqliteError::WorkflowNotRunning`. Postgres treats a repeat call on
   a terminal run as a no-op, but this backend refuses it.
@@ -478,7 +478,7 @@ when the body checks `is_cancelled()` before its next new command. A body
 parked on a signal with no check reports non-determinism. A Postgres history
 of the same shape does the same.
 
-### Long-lived runs: `continue_as_new` and the history caps (issue #2023)
+### Long-lived runs: `continue_as_new` and the history caps
 
 Each decision reloads and replays the whole history. A loop workflow, such as
 an agent session or a poller, must therefore bound its history. Call
@@ -488,7 +488,7 @@ an agent session or a poller, must therefore bound its history. Call
 - It starts a successor with the same `workflow_name` and `workflow_id`. The
   successor's `WorkflowStarted` carries `input`.
 - It appends the staged signals that the hand-off decision replayed to the
-  old run (issue #2020). Such a signal stays with the old run, read or not,
+  old run. Such a signal stays with the old run, read or not,
   as on Postgres. A backlog past the room the history caps leave was not
   replayed. It moves to the successor, so each signal arrives exactly once.
 - It deletes the old run's pending tasks and unfired timers.
@@ -501,7 +501,7 @@ later signals to the successor, because the old run is terminal.
 
 `continue_as_new` bounds the replay cost of a run, not the database size. Each
 sealed run keeps its history in the file until `purge_terminal` removes it
-(see [Schedules, retention and the append-only guard](#schedules-retention-and-the-append-only-guard-issue-2031)).
+(see [Schedules, retention and the append-only guard](#schedules-retention-and-the-append-only-guard)).
 
 `outcome()` of the old run is `ExecutionOutcome::Terminated("CONTINUED_AS_NEW")`.
 `successor(old)` returns the successor id without a drive.
@@ -528,7 +528,7 @@ event count includes the decision's own appends. The byte count is the stored
 event JSON length when the decision starts. Postgres measures
 `pg_column_size` instead, so the two byte counts can differ.
 
-### Timers, mutex, local activities, timeout and retry (issue #2029)
+### Timers, mutex, local activities, timeout and retry
 
 These primitives work as on Postgres. Each one records the Postgres events,
 so its history replays on the core `WorkflowReplayer`.
@@ -573,7 +573,7 @@ attempt. Some limits apply:
   durable command shares a batch with the local activity, and the run ends
   `FAILED`.
 - A local activity cannot share a batch with a durable awaitable, as on
-  Postgres (issue #950). This backend also rejects a second local activity
+  Postgres. This backend also rejects a second local activity
   in one batch. Such a batch ends the run `FAILED`.
 
 **Execution timeout.** `#[workflow(execution_timeout = "30s")]` stores a
@@ -600,7 +600,7 @@ its backoff: before then a drive returns `RunState::WaitingTimer`.
 `successor(failed)` returns it. A panic, a replay divergence, a cap, a
 timeout, a cancel and a non-retryable error never retry.
 
-### Schedules, retention and the append-only guard (issue #2031)
+### Schedules, retention and the append-only guard
 
 **Schedules.** `upsert_schedule` stores a core `WorkflowSchedule` in
 `harvest_schedules`. The workflow name is the key, as on Postgres. Each
@@ -733,7 +733,7 @@ awaited. The first drive after the upgrade appends them to history.
 `SqliteError::WorkflowNotRunning`, so a wakeup no drive could ever consume is
 rejected rather than silently lost.
 
-### Keyed signals, signals by workflow id, signal-with-start (issue #2028)
+### Keyed signals, signals by workflow id, signal-with-start
 
 A webhook can deliver the same event twice. Give the signal an idempotency
 key, and the run gets it once:
@@ -827,7 +827,7 @@ across every run of the key, in any state. A retry after a continue-as-new,
 or after the first run ends, stages nothing and starts nothing. A promise key
 dedupes per run only, as on Postgres.
 
-### Queries (issue #2022)
+### Queries
 
 Read a run's state with `query`. It calls a handler that
 `ctx.register_query` registered, and it writes nothing.
@@ -874,7 +874,7 @@ The future resolves to one of these errors:
 | `QueryUnavailable` | A terminal run cannot give a stable answer. The workflow code changed, the replay panicked, or a seal for an unsupported feature or a history cap left side effects unrecorded. |
 | Other variants | A row cannot be read. |
 
-### Updates (issue #2025)
+### Updates
 
 An update is a request with a result. Register the handler in the workflow
 body, or register a declarative `#[update]` with `register_update`.
@@ -920,7 +920,7 @@ The handler can await any future, within a 5 second limit. It cannot await a
 durable command, such as an activity or a timer. Such a handler returns
 `SqliteError::UpdateTimedOut` and writes no event.
 
-### List, describe and search attributes (issue #2027)
+### List, describe and search attributes
 
 List the runs in a file, newest first, one page at a time:
 
@@ -1027,7 +1027,7 @@ Limits:
 ## 9. Child workflows and commands between runs
 
 A workflow can start a child, await another run, and signal or cancel
-another run (issue #2026). Each command takes effect in the caller's decision
+another run. Each command takes effect in the caller's decision
 transaction. An await of a running target stays open, and each later cycle
 checks it again. One file holds every run, so the backend needs no outbox.
 
@@ -1167,7 +1167,7 @@ The runtime opens the database with `journal_mode = WAL`, `synchronous = FULL`
 (fsync on every commit — the crash tests depend on it), and a `busy_timeout` so
 an occasional external *reader* (a monitoring/inspector connection) can coexist.
 
-### The contract is enforced (issue #1834)
+### The contract is enforced
 
 `SqliteRuntime::open` takes an exclusive OS lock on a sidecar file,
 `<database>.lock`. A second runtime on the same file fails fast with
@@ -1224,9 +1224,9 @@ specific command/feature. The run then ends `FAILED` (see below):
   local activity. The token is `AcquireMutex` or `RunLocalActivity`.
 
 Search attributes are supported since issue #2027. See
-[§8](#list-describe-and-search-attributes-issue-2027).
+[§8](#list-describe-and-search-attributes).
 
-A rejected execution ends `FAILED` (issue #1834). The drive that meets the
+A rejected execution ends `FAILED`. The drive that meets the
 feature rolls back the whole cycle. It then seals the run in a new
 transaction, with a typed `WorkflowFailed` event:
 
@@ -1239,7 +1239,7 @@ transaction, with a typed `WorkflowFailed` event:
 
 The seal also removes the run's pending tasks, unfired timers and unkeyed
 staged signals. The cycle's own cleanup rolled back, and nothing can use them
-now. A keyed signal stays, so its key still dedupes (issue #2028).
+now. A keyed signal stays, so its key still dedupes.
 
 That drive still returns `SqliteError::Unsupported`, so the caller sees the
 reason. When the sealed run is a child or await target, the waiter's drive does
@@ -1254,8 +1254,8 @@ under its budget, or a failed task. A fix in the same runtime can then resume
 the run.
 
 A failing execution does not block unrelated executions. `poll_once` still
-drives the rest of the fleet in the same pass (issue #1530). `run_until_idle`
-still converges the rest of the fleet in one call (issue #1555). Both report
+drives the rest of the fleet in the same pass. `run_until_idle`
+still converges the rest of the fleet in one call. Both report
 the first execution error to the caller. A sealed execution is terminal, so
 later passes skip it.
 
@@ -1277,7 +1277,7 @@ appends no event for them either. `WaitForSignal` only names the wait. This
 backend does not keep the current details, the durable progress chunks or
 the log lines.
 
-### Parity with Postgres (issue #2030)
+### Parity with Postgres
 
 The `autumn-harvest-conformance` crate runs one corpus of workflows on both
 backends. Each scenario must give the same outcome and a replay-equivalent

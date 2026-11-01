@@ -1,6 +1,6 @@
 +++
 title = "OpenAPI 3.1 spec for the management API"
-description = "Harvest publishes an OpenAPI 3.1 document for the whole management API, so any language with an OpenAPI generator gets a typed client with no hand-written HTTP (issue #694)."
+description = "Harvest publishes an OpenAPI 3.1 document for the whole management API, so any language with an OpenAPI generator gets a typed client with no hand-written HTTP."
 order = 1610
 +++
 
@@ -8,7 +8,7 @@ order = 1610
 
 Harvest publishes an [OpenAPI 3.1](https://spec.openapis.org/oas/v3.1.0)
 document for the whole management API, so any language with an OpenAPI
-generator gets a typed client with no hand-written HTTP (issue #694).
+generator gets a typed client with no hand-written HTTP.
 
 One source, three places it appears:
 
@@ -42,7 +42,7 @@ collides. Axum then rejects the duplicate `GET /openapi.json` at startup.
 
 Each GitHub release after 0.6.0 attaches `autumn-harvest-client`, a client
 built from [`docs/openapi.json`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/openapi.json). You do not need a running
-Harvest to install it or to write code against it (issue #1616). Replace
+Harvest to install it or to write code against it. Replace
 `<version>` with your server's version:
 
 ```sh
@@ -110,10 +110,10 @@ compiles the workspace, which is the slow part; the client steps take seconds.
   on the by-id family, `Retry-After` on the `204` a still-running `/result`
   returns.
 - **Security schemes** for the two credentials the management API accepts:
-  `HarvestBearerToken` (scoped API tokens, issue #942) and
+  `HarvestBearerToken` (scoped API tokens) and
   `HarvestSessionCookie` (the embedding application session). The top-level
   `security` list also carries an empty requirement, because enforcement is
-  the embedder's choice (issue #174). The `public_safe` routes are
+  the embedder's choice. The `public_safe` routes are
   `GET /health`, `GET /health/live`, `GET /health/ready` and
   `GET /openapi.json`. They override it with `security: []`, which
   says positively that Harvest itself asks for no credential there. An embedder

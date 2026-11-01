@@ -135,7 +135,7 @@ The response lists ineligible workers and the exact unsatisfied requirement:
 
 ---
 
-## Multi-queue Worker Fairness (issue #515)
+## Multi-queue Worker Fairness
 
 A single Harvest worker can bind multiple task queues via `WorkerConfig.with_queues`.
 Without further configuration the worker passes all queues to a single `SKIP LOCKED`
@@ -185,14 +185,14 @@ forward progress, even while heavier queues are saturated.
 Zero-weight queues appear at the end of the permutation, so they are reachable as
 soon as all positive-weight queues are drained.
 
-### Tenants that share one queue (#1976)
+### Tenants that share one queue
 
 Weights share a worker between queues. To share **one** queue between
 tenants, give each run a fairness key and turn on
 `WorkerConfig::with_fairness_keys(true)`. The claim then serves the keys of
 the queue in weighted round robin. See [Fairness keys](/docs/harvest-fairness-keys).
 
-### Composition with within-queue priority (#249)
+### Composition with within-queue priority
 
 Weights decide **which queue** to claim from. Once a queue is selected, the
 standard claim order picks the best row within that queue: `priority`, then

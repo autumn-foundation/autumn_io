@@ -28,42 +28,42 @@ open.
 
 New route families added in **0.5.0** (all in the contract; each has a CLI verb):
 
-- `GET /workflows/summaries` — tiered-retention summaries of expired runs (#752).
-- `GET /workflows/count` — grouped RUNNING/FAILED-per-type fleet snapshot (#544).
-- `GET /workflows/{id}/run-chain` — the ordered continue-as-new succession (#701).
-- `GET /workflows/{id}/timeline` — per-run wall-clock breakdown from history (#739).
-- `POST /workflows/{id}/legal-hold` / `.../legal-hold/release` — per-execution retention/erase hold (#747).
-- `POST /workflows/{id}/activities/{activity_exec_id}/fail-now` — force-fail one hung in-flight activity (#765).
-- `GET /workflows/{id}/completion-deliveries` + `.../redrive` — durable completion-callback deliveries (#605).
-- `PATCH /admin/schedules/{id}` — in-place cron/input edit without recreate (#771).
-- `GET /admin/status` — one-call rolled-up health verdict (#679).
-- `GET /admin/config` — redacted effective runtime config (#695).
-- `GET /admin/usage` — per-tenant/per-workflow historical usage report (#596).
-- `GET /admin/workflow-types/reachability` — safe-handler-removal pre-flight (#520).
-- `GET` / `PATCH /admin/workflow-types/{workflow_name}/run-defaults` — runtime SLA and execution-timeout override (#2387).
-- `GET /admin/overrides` — every schedule and run-default override, with actor, reason and time (#2388).
-- `GET /dags/{dag_name}/runs/{run_exec_id}` — DAG run graph view (#690).
+- `GET /workflows/summaries` — tiered-retention summaries of expired runs.
+- `GET /workflows/count` — grouped RUNNING/FAILED-per-type fleet snapshot.
+- `GET /workflows/{id}/run-chain` — the ordered continue-as-new succession.
+- `GET /workflows/{id}/timeline` — per-run wall-clock breakdown from history.
+- `POST /workflows/{id}/legal-hold` / `.../legal-hold/release` — per-execution retention/erase hold.
+- `POST /workflows/{id}/activities/{activity_exec_id}/fail-now` — force-fail one hung in-flight activity.
+- `GET /workflows/{id}/completion-deliveries` + `.../redrive` — durable completion-callback deliveries.
+- `PATCH /admin/schedules/{id}` — in-place cron/input edit without recreate.
+- `GET /admin/status` — one-call rolled-up health verdict.
+- `GET /admin/config` — redacted effective runtime config.
+- `GET /admin/usage` — per-tenant/per-workflow historical usage report.
+- `GET /admin/workflow-types/reachability` — safe-handler-removal pre-flight.
+- `GET` / `PATCH /admin/workflow-types/{workflow_name}/run-defaults` — runtime SLA and execution-timeout override.
+- `GET /admin/overrides` — every schedule and run-default override, with actor, reason and time.
+- `GET /dags/{dag_name}/runs/{run_exec_id}` — DAG run graph view.
 
 ## Authorization: token scopes and the authorizer hook
 
 Two opt-in gates sit in front of every route. See
-[`security-posture.md`](/docs/harvest-security-posture#scoped-api-tokens-built-in-opt-in-issue-942)
+[`security-posture.md`](/docs/harvest-security-posture#scoped-api-tokens-built-in-opt-in)
 for the full model.
 
-- **Token scopes** (issue #942, #1803). A `read` token gets `403` on every
+- **Token scopes**. A `read` token gets `403` on every
   mutation. A `mutate` token gets `403` on `POST /admin/tokens` and
   `DELETE /admin/tokens/{id}`. Only an `admin` token mints or revokes tokens.
-- **Authorizer hook** (issue #1803). An embedder policy that sees the
+- **Authorizer hook**. An embedder policy that sees the
   principal, route class, tenant key and shard of each request. It can only
   deny. A deny answers `403` with
   `{"error":"forbidden by authorization policy"}`.
 
-- **Tenant binding** (issue #1977). A token minted with `tenant`, or a
+- **Tenant binding**. A token minted with `tenant`, or a
   request that the embedder marks with `VerifiedTenant`, is bound to one
   tenant. It reaches only the tenant-scoped routes, and only runs of its
   tenant. Every other route answers `403`. A run of another tenant answers
   `404`. See
-  [`security-posture.md`](/docs/harvest-security-posture#tenant-binding-issue-1977).
+  [`security-posture.md`](/docs/harvest-security-posture#tenant-binding).
 
 Send a tenant key in the `x-harvest-tenant` header. A bad value gets `400`
 when a hook is installed or the caller is tenant-bound. A value is bad when
@@ -90,7 +90,7 @@ with status `failed`. The audit export ships it to the SIEM.
 
 ## Rate limiting
 
-The optional per-client rate limiter (issue #1827) can answer `429 Too Many
+The optional per-client rate limiter can answer `429 Too Many
 Requests` on any route that is not `PublicSafe`. The response carries a
 `Retry-After` header in whole seconds and the body
 `{"error": "rate limited", "route_class", "retry_after_secs"}`. The `error`
@@ -106,7 +106,7 @@ value tells it apart from a load-shed `429` (`"load shed"`). Wait
 GET /executions/{exec_id}/events/stream
 ```
 
-**Auth**: same bearer-token gate as all other management API routes (issue #174). Returns `401` if the token is missing or invalid.
+**Auth**: same bearer-token gate as all other management API routes. Returns `401` if the token is missing or invalid.
 
 **Content-Type**: `text/event-stream`
 
@@ -125,7 +125,7 @@ data: <JSON event payload>
 
 ```
 
-- `id` is `harvest_events.event_id` (issue #1405), the per-execution sequential event ID — **not** `harvest_events.id`, the row-level `BIGSERIAL` primary key. A shard-rebalance migration copies `event_id` byte-for-byte but never `id`, so `event_id` is the field safe to use as a resume cursor across a migration. It is monotonic within one execution, starting at 0.
+- `id` is `harvest_events.event_id`, the per-execution sequential event ID — **not** `harvest_events.id`, the row-level `BIGSERIAL` primary key. A shard-rebalance migration copies `event_id` byte-for-byte but never `id`, so `event_id` is the field safe to use as a resume cursor across a migration. It is monotonic within one execution, starting at 0.
 - `event` is the adjacently-tagged type string (`ActivityScheduled`, `SignalReceived`, etc.). New `WorkflowEvent` variants land in the stream automatically without client changes.
 - `data` is the `data` inner object of the adjacently-tagged JSON envelope `{"type":"…","data":{…}}` stored in `harvest_events.event_data`.
 
@@ -151,7 +151,7 @@ data: {"reason":"completed","execution_id":"<exec_id>","state":"COMPLETED"}
 
 ```
 
-The `reason` field is the execution's terminal state, lowercased and hyphenated — one of `completed`, `failed`, `cancelled`, `timed-out`, `terminated`, `continued-as-new`. It is derived from the authoritative `harvest_workflow_executions.state` column (not the event type), so a force-terminated run (issue #504) reports `terminated` even though it reuses the `WorkflowCancelled` event. Receiving `event: stream-end` is the client's signal to **stop reconnecting** — the execution will not produce more events. Contrast this with a transport drop, where the client should reconnect with `Last-Event-ID`.
+The `reason` field is the execution's terminal state, lowercased and hyphenated — one of `completed`, `failed`, `cancelled`, `timed-out`, `terminated`, `continued-as-new`. It is derived from the authoritative `harvest_workflow_executions.state` column (not the event type), so a force-terminated run reports `terminated` even though it reuses the `WorkflowCancelled` event. Receiving `event: stream-end` is the client's signal to **stop reconnecting** — the execution will not produce more events. Contrast this with a transport drop, where the client should reconnect with `Last-Event-ID`.
 
 #### Slow consumer
 
@@ -171,7 +171,7 @@ The client may reconnect immediately with `Last-Event-ID: <n>` to resume from wh
 
 The browser `EventSource` API sends `Last-Event-ID` automatically on reconnect. Curl and custom clients must set it explicitly.
 
-The cursor is `event_id` (issue #1405), not `harvest_events.id`. `id` is a shard-local `BIGSERIAL` a shard-rebalance migration does not copy, so a cursor keyed on it means nothing once an execution has moved shards.
+The cursor is `event_id`, not `harvest_events.id`. `id` is a shard-local `BIGSERIAL` a shard-rebalance migration does not copy, so a cursor keyed on it means nothing once an execution has moved shards.
 
 When the server receives `Last-Event-ID: <n>`:
 
@@ -188,7 +188,7 @@ A client that drops mid-stream and reconnects with the last `event_id` it saw wi
 
 ### Sharding
 
-The endpoint resolves the execution row's CURRENT shard (its live residence, following any migration's forwarding pointer — issue #1317), not the shard encoded in `exec_id`'s bits. It subscribes to that shard's Postgres LISTEN/NOTIFY channel, and rebinds mid-stream if the execution migrates while the stream is open. Cross-shard fan-out is not required in v1; one stream always maps to one shard at a time.
+The endpoint resolves the execution row's CURRENT shard (its live residence, following any migration's forwarding pointer), not the shard encoded in `exec_id`'s bits. It subscribes to that shard's Postgres LISTEN/NOTIFY channel, and rebinds mid-stream if the execution migrates while the stream is open. Cross-shard fan-out is not required in v1; one stream always maps to one shard at a time.
 
 ---
 
@@ -281,7 +281,7 @@ The command exits cleanly when the server sends `event: stream-end`.
 
 ## Workflow change stream
 
-> Issue #1982. A live signal for list views, such as the Vantage workflow list.
+> A live signal for list views, such as the Vantage workflow list.
 
 ```
 GET /workflows/changes/stream
@@ -334,7 +334,7 @@ Embedders assign their own business `workflow_id` at start (e.g. `order-12345`,
 the internal `exec_id` form. This removes the list-then-act round-trip and,
 critically, always reaches the **current** run — a cached `exec_id` becomes a
 stale handle after a continue-as-new or reset fork, which mint a **new**
-`exec_id` under the **same** `workflow_id` (issue #805).
+`exec_id` under the **same** `workflow_id`.
 
 The existing `exec_id` routes are unchanged and remain fully supported.
 
@@ -450,7 +450,7 @@ mount the harvest management API **behind your own auth boundary** (e.g.
 `api_with_auth` / your app's authenticated admin surface) rather than relying on
 id opacity to gate read/signal access. Outside the `dev` profile, the by-id
 signal route answers `401` to an anonymous caller even with no auth layer
-(issue #1802). The by-id read routes stay open.
+. The by-id read routes stay open.
 
 ### Examples
 
@@ -556,14 +556,14 @@ curl "/workflows?state=RUNNING&page_size=50&cursor=abc123"
 
 ### Typed search-attribute predicates (`GET /workflows`)
 
-> Issue #506. The `search_attr_filter` param adds typed comparison/set filtering
+> The `search_attr_filter` param adds typed comparison/set filtering
 > over search attributes. The legacy `search_attr=key:value` param is unchanged
 > (exact-match string equality) and stays fully backward compatible.
 
 Each `search_attr_filter` value has the form `key:op:value`. The param is
 repeatable; multiple predicates are combined with **AND** (matching the repeated
 `search_attr` semantics). For `OR` and groups, use the `filter` parameter
-([Filter expressions](#filter-expressions-get-workflows), issue #1982).
+([Filter expressions](#filter-expressions-get-workflows)).
 
 | `op` | Value | Meaning |
 |------|-------|---------|
@@ -634,7 +634,7 @@ Vantage workflow list takes a `filter` expression (see below).
 
 ### Filter expressions (`GET /workflows`)
 
-> Issue #1982. The `filter` parameter joins predicates with `AND`, `OR` and
+> The `filter` parameter joins predicates with `AND`, `OR` and
 > parentheses.
 
 `AND` binds tighter than `OR`. So `a OR b AND c` means `a OR (b AND c)`.
@@ -731,7 +731,7 @@ activities, local activities, external handoffs, timers, signals, buffered
 signals, and child workflows. This is the primary view for triaging a running
 execution. For a terminal execution the pending arrays are empty.
 
-### Pending activity heartbeat checkpoint (issue #503)
+### Pending activity heartbeat checkpoint
 
 Each entry in `pending_activities[]` surfaces the latest **heartbeat checkpoint
 payload** the activity reported via `ctx.heartbeat(...)` — the current value of
@@ -744,7 +744,7 @@ from a single API call, with zero direct database access.
 |-------|------|---------|
 | `last_heartbeat_at` | timestamp \| null | When the most recent heartbeat was flushed. |
 | `heartbeat_details` | JSON \| null | The latest checkpoint payload, verbatim as the activity reported it. `null` when no heartbeat has been flushed, when the payload exceeded its own cap (`heartbeat_details_truncated`), or when it was withheld by the per-response budget (`heartbeat_details_omitted_for_budget`). |
-| `heartbeat_details_truncated` | bool | `true` when **this payload's own** size exceeded the activity's effective result-payload cap (issue #252) and was withheld. |
+| `heartbeat_details_truncated` | bool | `true` when **this payload's own** size exceeded the activity's effective result-payload cap and was withheld. |
 | `heartbeat_details_omitted_for_budget` | bool | `true` when the payload was within its own cap but withheld because the cumulative per-response checkpoint budget was already exhausted by earlier activities (see the response-level `checkpoints_truncated_for_budget`). |
 | `heartbeat_details_bytes` | integer \| null | Observed serialized byte size of the stored payload, when one exists. Reported even when the payload is withheld (by either guard). |
 
@@ -866,7 +866,7 @@ Each entry in `events`:
 | `type` | string | Event discriminator (e.g. `TimerStarted`, `ActivityCompleted`). |
 | `data` | object | Event payload (the `data` object from the adjacently-tagged stored JSON). |
 
-### Archived history (issue #1983)
+### Archived history
 
 ```
 GET /workflows/{id}/archived-history
@@ -944,7 +944,7 @@ GET /workflows/{id}/update/{update_id}/result
 ```
 
 Looks up the result of an admitted update. The read follows the workflow-level
-retry chain (#523): because an `update_id` is minted per admission and lives on
+retry chain: because an `update_id` is minted per admission and lives on
 exactly one attempt, it searches the chain (deepest attempt first) for the
 attempt whose history carries the admission — so a result that resolved on an
 earlier attempt stays readable after that attempt fails and a retry starts. See
@@ -977,7 +977,7 @@ Delivers a named signal to a running workflow execution. The request body is
 the signal payload itself (free-form JSON) — nothing else is ever smuggled
 into it.
 
-### Idempotent delivery (issues #521 / #753)
+### Idempotent delivery
 
 Webhook and event sources deliver at-least-once. To make duplicate deliveries
 land **exactly one** `SignalReceived` event, supply an exactly-once key
@@ -996,10 +996,10 @@ the live attempt rather than the addressed id — see *Retry-chain routing*
 below. Omitting the key preserves the legacy at-least-once contract exactly:
 every call delivers a distinct signal event.
 
-### Retry-chain routing (issue #843)
+### Retry-chain routing
 
 The addressed id names the **logical run**, so the signal is routed to the
-**live attempt** of the workflow-level retry chain (#523). A caller still
+**live attempt** of the workflow-level retry chain. A caller still
 holding the id `start` returned therefore reaches the attempt that is actually
 running, not a sealed `FAILED` predecessor. When the signal landed on a
 different execution than the one addressed, the ack carries an additional
@@ -1044,7 +1044,7 @@ harvest workflow signal <exec-id> approval \
 `--idempotency-key` maps onto the `?idempotency_key=` query parameter of this
 route; an empty key is rejected at the CLI (the server would treat it as
 omitted, silently degrading to at-least-once). See the
-[signals chapter](/docs/harvest-signals#idempotent-standalone-signals-over-http-issue-521)
+[signals chapter](/docs/harvest-signals#idempotent-standalone-signals-over-http)
 for the full walkthrough and the
 [idempotency chapter](/docs/harvest-idempotency#idempotent-signal-delivery)
 for the surrounding idempotency story (including `signal-with-start` for the

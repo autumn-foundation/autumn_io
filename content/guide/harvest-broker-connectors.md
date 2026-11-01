@@ -390,9 +390,9 @@ pending record long before that:
 
 | Target policy | `starts` binding | What a redelivery costs |
 |---|---|---|
-| **throttle** (#607) | allowed | Nothing. Each pending row fires through `start_or_load_workflow_execution`, where id reuse collapses the duplicate onto the original run and refunds its token. Exactly one run. |
-| **debounce** (#499) | allowed | A bounded delay. The upsert collapses on `(workflow_name, debounce_key)`, so the redelivery lands on the *same* pending row — still exactly one run — but it resets the trailing-edge deadline (capped by `max_wait`) and increments `pending_count`, which therefore counts admissions rather than distinct messages. |
-| **batch** (#518) | **rejected at build time** | A visible duplicate, which is why it is refused. Batch admission appends to `buffered_payloads`, so a redelivery would put the same message in the collapsed run's input twice — and it counts toward `max_size`, so it can flush the batch early. |
+| **throttle** | allowed | Nothing. Each pending row fires through `start_or_load_workflow_execution`, where id reuse collapses the duplicate onto the original run and refunds its token. Exactly one run. |
+| **debounce** | allowed | A bounded delay. The upsert collapses on `(workflow_name, debounce_key)`, so the redelivery lands on the *same* pending row — still exactly one run — but it resets the trailing-edge deadline (capped by `max_wait`) and increments `pending_count`, which therefore counts admissions rather than distinct messages. |
+| **batch** | **rejected at build time** | A visible duplicate, which is why it is refused. Batch admission appends to `buffered_payloads`, so a redelivery would put the same message in the collapsed run's input twice — and it counts toward `max_size`, so it can flush the batch early. |
 
 To consume a broker into a batched workflow, bind to an unbatched workflow and
 have *it* start the batched one: the connector then dedupes the broker message
@@ -409,7 +409,7 @@ survives"*, not unconditionally forever. The two targets persist that claim in
 
 | Binding | Where the claim lives | What purges it | Default bound |
 |---|---|---|---|
-| `starts` | `harvest_start_idempotency` (#808) | `start_idempotency_window` | **24 hours** |
+| `starts` | `harvest_start_idempotency` | `start_idempotency_window` | **24 hours** |
 | `signals_with_start` | `harvest_signals.idempotency_key` | execution retention — the row is `ON DELETE CASCADE` on its execution | **unbounded** (retention is off by default) |
 
 That matters because brokers can replay far older than a day:
@@ -483,8 +483,8 @@ else to route, so the claim is always found and the promise holds regardless of
 what the mapper did.
 
 This is the same shard-local scope every sibling dedupe primitive in the engine
-carries — start idempotency (#808), signal idempotency (#521), per-key
-concurrency (#247), the start throttle (#607), the durable mutex (#691). Cross-
+carries — start idempotency, signal idempotency, per-key
+concurrency, the start throttle, the durable mutex. Cross-
 shard coordination is out of scope engine-wide, so the connector does not
 attempt it either: probing every shard on the dispatch hot path would fan a
 query out per message, and unilaterally pinning the start to a key-derived
@@ -920,7 +920,7 @@ curl -X POST "$HARVEST/api/harvest/workflows/fulfil_order/start" \
 ```
 
 Outside `dev`, send a credential with this call: an admin session or a
-`mutate` token (issue #1802).
+`mutate` token.
 
 Finally delete the row, so it does not show up in the next triage:
 

@@ -53,10 +53,10 @@ records. Four capabilities follow from the record.
 
 | Capability | What it gives you | Read more |
 |---|---|---|
-| Full history | Each command and each result is an ordered event. You can see which path a run took and the results that led there. | [History export](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/replay-fixture-export.md), [timeline (#739)](/docs/harvest-management-api) |
-| Reset | An operator forks a running top-level workflow at an earlier event. The event must be a completed boundary, with no activity, timer or child still open. The fork runs under the current code, and the original run ends. | [Reset (#148)](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/README.md#resetting-a-workflow-after-a-bad-deploy) |
-| Replay debugging | A debugger replays an exported production history offline, one step at a time. It also diffs two builds. | [Replay debugger (#949)](/docs/harvest-replay-debugger) |
-| Drift detection | New code replays against the recorded commands. If the command sequence changes, replay reports a divergence. The run does not continue with a wrong result. | [Drift gate (#798)](/docs/harvest-replay-drift-gate) |
+| Full history | Each command and each result is an ordered event. You can see which path a run took and the results that led there. | [History export](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/replay-fixture-export.md), [timeline](/docs/harvest-management-api) |
+| Reset | An operator forks a running top-level workflow at an earlier event. The event must be a completed boundary, with no activity, timer or child still open. The fork runs under the current code, and the original run ends. | [Reset](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/README.md#resetting-a-workflow-after-a-bad-deploy) |
+| Replay debugging | A debugger replays an exported production history offline, one step at a time. It also diffs two builds. | [Replay debugger](/docs/harvest-replay-debugger) |
+| Drift detection | New code replays against the recorded commands. If the command sequence changes, replay reports a divergence. The run does not continue with a wrong result. | [Drift gate](/docs/harvest-replay-drift-gate) |
 
 An engine that lets code between steps run freely stores step results only. It
 cannot compare new code with the path that a running workflow took. If new code
@@ -77,7 +77,7 @@ reports no error.
   is an event in Postgres. A payload store can keep large payloads outside it.
   Replay fixtures with full payloads are production data.
 - **A history has a size limit.** An optional ceiling fails a run past a set
-  event count (#493). A long loop must use continue-as-new.
+  event count. A long loop must use continue-as-new.
 - **Cold resume cost grows with history.** A cold resume re-runs the body from
   the first event. A long history costs CPU on each cold resume.
 - **The gates need upkeep.** The drift gate needs a replay binary in your crate.
@@ -92,17 +92,17 @@ deploy it and run it. Each row pairs a problem with the tool that addresses it.
 
 | Problem | Tool | Stage |
 |---|---|---|
-| Non-deterministic code in a workflow body | Compile-time guardrails HVG001–HVG011 in the `#[workflow]` macro (#386). A hard blocker fails the build. | Build |
-| The same hazards in a helper that the body calls directly | The `det_check` scanner, run as `harvest det-check` (#778). It follows one first-party call. | CI |
+| Non-deterministic code in a workflow body | Compile-time guardrails HVG001–HVG011 in the `#[workflow]` macro. A hard blocker fails the build. | Build |
+| The same hazards in a helper that the body calls directly | The `det_check` scanner, run as `harvest det-check`. It follows one first-party call. | CI |
 | Hazards that cross closures, traits or crates | [`harvest-verify`](/docs/harvest-verify), an opt-in taint analysis on compiled code. It is a prototype. | CI |
-| A need for time, UUIDs or random numbers | Deterministic primitives such as `ctx.system_now()` and `ctx.new_uuid()` (#384). The engine records each value once. | Write |
-| A change to a running workflow | `ctx.patched` and `ctx.deprecate_patch` (#687) | Write |
-| A regression against saved histories | The [`ReplayVerifier` gate](/docs/harvest-replay-verify) replays fixture histories in CI (#251). | CI |
-| A regression against runs in flight now | The [in-flight drift gate](/docs/harvest-replay-drift-gate) replays a sample of live runs against the candidate build (#798). | CI, before promotion |
-| A regression that only live data shows | A [replay canary](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/safe-deploy.md#runbook-pre-deploy-replay-canary) replays sampled running workflows in memory and writes nothing (#512). | Deploy |
-| Drift that still reaches production | [ND-blocking](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/nondeterminism-block.md) (#603). The engine parks the run. It does not fail it. | Run |
-| Finding the cause of a divergence | Replay diagnosis (#614) and the [replay debugger](/docs/harvest-replay-debugger) (#949) | Incident |
-| Long histories | Warm-cache delta loading (#235) cuts history reads. Continue-as-new keeps each history short. | Run |
+| A need for time, UUIDs or random numbers | Deterministic primitives such as `ctx.system_now()` and `ctx.new_uuid()`. The engine records each value once. | Write |
+| A change to a running workflow | `ctx.patched` and `ctx.deprecate_patch` | Write |
+| A regression against saved histories | The [`ReplayVerifier` gate](/docs/harvest-replay-verify) replays fixture histories in CI. | CI |
+| A regression against runs in flight now | The [in-flight drift gate](/docs/harvest-replay-drift-gate) replays a sample of live runs against the candidate build. | CI, before promotion |
+| A regression that only live data shows | A [replay canary](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/safe-deploy.md#runbook-pre-deploy-replay-canary) replays sampled running workflows in memory and writes nothing. | Deploy |
+| Drift that still reaches production | [ND-blocking](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/nondeterminism-block.md). The engine parks the run. It does not fail it. | Run |
+| Finding the cause of a divergence | Replay diagnosis and the [replay debugger](/docs/harvest-replay-debugger) | Incident |
+| Long histories | Warm-cache delta loading cuts history reads. Continue-as-new keeps each history short. | Run |
 
 The guardrails and `det_check` catch common hazards at build time. The drift
 gate and the canary replay a sample of live runs before a build goes out.

@@ -469,7 +469,7 @@ manual addition.
 
 ## Relationship to other options
 
-This page covers **Option A** of Autumn's Tauri mobile roadmap (issue #1506):
+This page covers **Option A** of Autumn's Tauri mobile roadmap:
 the pure thin client. Option B (in-process backend with a remote database,
 issue #1507) and Option C (in-process backend with local SQLite and sync,
 issue #1508) are separate roadmap items. For desktop packaging, see the

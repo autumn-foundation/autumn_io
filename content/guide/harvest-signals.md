@@ -66,7 +66,7 @@ The workflow wakes up, runs `fulfill_order`, and completes.
 
 ---
 
-## Waiting for a matching payload (issue #1985)
+## Waiting for a matching payload
 
 `ctx.wait_for_signal_matching` waits for the first signal of a name whose
 payload satisfies a predicate. This is the Cloudflare `step.waitForEvent`
@@ -102,7 +102,7 @@ async fn ship(ctx: &WorkflowContext, order_id: u64) -> HarvestResult<serde_json:
 - Replay cannot see a removed wait that would have taken a rejected signal.
   Consuming a signal records no event.
 
-## Durable promises (issue #1985)
+## Durable promises
 
 A durable promise is a handle that any caller settles once, like a Restate
 awakeable. The workflow sends the token to another system, then waits:
@@ -255,7 +255,7 @@ and attempts delivery; the terminal outcome (`ExternalSignalDelivered` or
 `ExternalSignalFailed`) is also recorded. On replay the recorded outcome is returned
 immediately without re-issuing any side effect.
 
-### Exactly-once delivery with an idempotency key (issue #521)
+### Exactly-once delivery with an idempotency key
 
 Cross-shard delivery is *at-least-once*: the outbox may re-attempt a delivery
 after a crash, which can land two `SignalReceived` events on the target. When the
@@ -304,7 +304,7 @@ cross-shard transaction. The workflow observes `Ok(())` once the outbox write is
 durable — the signal is guaranteed to reach the target eventually or the outbox
 will surface a permanent failure reason.
 
-## Idempotent standalone signals over HTTP (issue #521)
+## Idempotent standalone signals over HTTP
 
 The management route `POST /api/harvest/workflows/{id}/signal/{signal_name}`
 delivers a signal to an already-running execution. Webhook providers retry
@@ -337,10 +337,10 @@ curl -X POST '/api/harvest/workflows/<exec-id>/signal/approval' \
 ```
 
 Dedupe scope is shard-local, keyed on `(execution_id, idempotency_key)`
-(matching signal-with-start, #244). Omitting the key reproduces the legacy
+(matching signal-with-start). Omitting the key reproduces the legacy
 at-least-once behavior exactly — every call delivers a distinct signal event.
 
-The CLI reaches parity with the same flag (issue #753) — it maps onto the
+The CLI reaches parity with the same flag — it maps onto the
 `?idempotency_key=` query parameter of the same route (an empty key is
 rejected at the CLI, since the server treats an empty param as omitted):
 
@@ -368,7 +368,7 @@ in-flight per-tenant onboarding workflows" pattern. Run its replay tests with:
 cargo test -p saga-choreography
 ```
 
-## Discovering the interaction contract (issue #610)
+## Discovering the interaction contract
 
 A workflow can *publish* the JSON shape of every way to interact with it — its
 signals, queries, and updates — so operators and non-Rust callers discover the

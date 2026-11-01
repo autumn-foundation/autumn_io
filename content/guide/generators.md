@@ -435,8 +435,8 @@ counter-cache columns stay hand-written.
 
 `slug:slug{from:title}` gives a model a clean, shareable URL
 (`/posts/why-rust-wins`) instead of the default `/posts/42` — a single DSL
-token, zero hand-edits, composing with the existing `unique` (issue #1032)
-and `references` (issue #1026) machinery rather than introducing a parallel
+token, zero hand-edits, composing with the existing `unique`
+and `references` machinery rather than introducing a parallel
 system:
 
 ```bash
@@ -1204,7 +1204,7 @@ token with `403 Forbidden`.
 ### Bulk select and delete selected
 
 Every standard HTML scaffold's index list ships a no-JavaScript
-bulk-delete flow (issue #1312):
+bulk-delete flow:
 
 - The `data_table` gains a leading checkbox column. Each row renders
   `autumn_web::widgets::bulk_select_checkbox(row.id, &bulk_cfg)` —
@@ -1236,7 +1236,7 @@ Contract of the generated handler:
 | Record policy wiring on (an owner column, the default) | Each selected row is authorized with the same `"delete"` action `destroy` uses. A row the actor may not delete is dropped from the batch rather than 403'ing the request, so the endpoint is not an existence oracle. |
 | `dependent(restrict)` child rows | `delete_many` probes first and aborts the **whole** batch with a 409, rolling back — no partial delete. |
 | Connection use | The handler `drop`s its `Db` extractor after the pre-flight `SELECT` and before `delete_many`, which checks out a connection of its own. It therefore holds **one** pooled connection at a time, which cannot stall on `database.pool.max_size = 1` or deadlock at any concurrency. |
-| Double-click / Back→resubmit | The form carries a one-time `_submit_token` (issue #1360), so `SubmitTokenLayer` consumes it once and replays the first response instead of re-running the batch — hooks and dependent deletes included. The field leads the form body, ahead of the checkboxes, because the layer only scans the body's first chunk and a long selection would otherwise push it past the scan cap. |
+| Double-click / Back→resubmit | The form carries a one-time `_submit_token`, so `SubmitTokenLayer` consumes it once and replays the first response instead of re-running the batch — hooks and dependent deletes included. The field leads the form body, ahead of the checkboxes, because the layer only scans the body's first chunk and a long selection would otherwise push it past the scan cap. |
 
 Not emitted for `--live`, `--live-validation`, or `--sharded` (their list
 DOM is owned by an SSE/htmx swap contract, or has no cross-shard
@@ -1285,7 +1285,7 @@ for a second, explicit submit.
 Declare a column named `lock_version` and the scaffold wires the
 framework's [optimistic-concurrency
 primitive](./cloud-native.md#optimistic-concurrency-via-lock-version)
-through the HTML edit flow (issue #1318) — no extra flag, no extra code:
+through the HTML edit flow — no extra flag, no extra code:
 
 `lock_version` is a **magic column name**, like `slug` and `deleted_at`.
 Declaring it changes what the column *is*, so the generator prints a
@@ -1369,7 +1369,7 @@ deserialization.
 without a `WHERE lock_version = …` guard — the admin handler
 deserializes `NewPost`, which excludes the column, so the expected
 version never reaches it, and locking across deletes is out of scope
-(issues #1021/#1312). Both remain last-write-wins.
+. Both remain last-write-wins.
 
 **Not yet wired (HTML scaffolds only):** `--live`, `--sharded`, a `slug`
 column, and scaffolds with an `Attachment` column write through paths that
@@ -1385,7 +1385,7 @@ editable, reusable slug rather than the primary key, so
 ### Threaded comments on anything with `commentable`
 
 Declare a field with the `commentable` type and the scaffold wires a threaded,
-**polymorphic** comment system (issue #1367) — one `comments` table that
+**polymorphic** comment system — one `comments` table that
 attaches to *any* number of models — with **zero hand-written comment routes,
 queries, or threading SQL**:
 
@@ -1407,14 +1407,14 @@ autumn generate scaffold Post title:String comments:commentable
   says so. A `comments` table that does not have all of these columns (from a
   `Comment` scaffold, for example) stops generation. The error tells you how
   to correct it
-  ([details](commentable.md#a-comments-table-that-is-not-the-shared-one-2283)).
+  ([details](commentable.md#a-comments-table-that-is-not-the-shared-one)).
 - The **model** gets `#[commentable(by = User, counter_cache = comment_count)]`
   — `by` only when the project actually has a `User` model, since naming a
   missing one would be a compile error in a file you did not write. That
   attribute is what brings `add_comment` / `comment_thread` / `delete_comment`
   onto the generated repository and registers the model with the framework's
   comment router.
-- The **model's own migration** also gets an `AFTER DELETE` trigger (#2265).
+- The **model's own migration** also gets an `AFTER DELETE` trigger.
   `commentable_id` has no foreign key. Nothing else removes a deleted
   parent's comments. The trigger removes them on any hard delete — a
   delete through the repository, raw SQL, or an admin tool.
@@ -1435,7 +1435,7 @@ See [Threaded Comments on Anything](commentable.md) for the full option list.
 ### User-orderable lists with `position`
 
 Declare a field with the `position` type and the scaffold wires a
-transaction-safe, race-safe reorderable list (issue #1358) — todo
+transaction-safe, race-safe reorderable list — todo
 priorities, kanban columns, playlist tracks, form-builder fields — with
 **zero hand-written reindexing SQL**:
 
@@ -1525,7 +1525,7 @@ slice; call `move_to` after restoring if you need it placed precisely.
 ### Export CSV from the list view
 
 Every standard HTML scaffold's index also ships a working **Export CSV**
-download (issue #1315) — zero lines of user code:
+download — zero lines of user code:
 
 - A `CsvSchema` impl for the model is emitted in
   `src/routes/<plural>.rs`, listing `id`, every scaffolded column in
@@ -1557,7 +1557,7 @@ Contract of the generated handler:
 | `?sort=`/`?filter[col]=` | Honoured through the same `ListQuery` extractor the index uses. The export reads with `repo.list_rows`, which applies the same allowlist as the index's `repo.list`. The file therefore shows the filtered view, not the whole table. Unknown or malicious keys are ignored against the model's column allowlist. |
 | `?page=`/`?size=` | Ignored. An export spans every page of the current filter. |
 | `?q=` (`--searchable`) | **Not** honoured — `ListQuery` carries no full-text term, so the export cannot reproduce a `/<plural>/search` result set. Because of that the link is *placed* differently on a searchable scaffold: it renders **inside** the `#<plural>-search-results` container rather than beside "New …", so the htmx swap that shows search results also takes the link away. That matters because `active_search_input` pushes no URL — a link left outside the container would survive the swap still pointing at the unsearched set, and a user who narrowed the list would silently download the rows they just excluded. Searched results therefore offer no export; clear the search to get the link back. Filter with `?filter[col]=` instead, or add a `q` param to the handler and call the repository's `search_page` yourself. |
-| Row volume | Read in **one** statement with no `COUNT(*)`, capped at `MAX_EXPORT_ROWS` (10 000). One statement reads one snapshot, so a row inserted or deleted during the export cannot appear twice or go missing (#2185). If you set `database.statement_timeout`, the whole read must finish in that time. That caps the **row count**, not bytes: the response is collected in memory, so a model with an unbounded `Text` column can still build a large body. Put a `{max}` length on such columns, lower the constant, or stream with `Download::from_stream` for a genuinely unbounded export. |
+| Row volume | Read in **one** statement with no `COUNT(*)`, capped at `MAX_EXPORT_ROWS` (10 000). One statement reads one snapshot, so a row inserted or deleted during the export cannot appear twice or go missing. If you set `database.statement_timeout`, the whole read must finish in that time. That caps the **row count**, not bytes: the response is collected in memory, so a model with an unbounded `Text` column can still build a large body. Put a `{max}` length on such columns, lower the constant, or stream with `Download::from_stream` for a genuinely unbounded export. |
 | Hitting the cap | The file is truncated to `MAX_EXPORT_ROWS`, a `warn!` is logged, and the response carries `x-export-truncated: true`. To tell a complete export of exactly `MAX_EXPORT_ROWS` rows from a truncated one, the read asks for one row **past** the cap and drops it — so neither signal fires on an export that merely fills the cap exactly. There is no in-band marker in the CSV (it would parse as data), so narrow the filter (or raise the cap) rather than trusting a capped export for reconciliation. |
 | Throttle | `#[throttle(limit = 6, per = "1m", key = "ip")]`, which the index does not carry. An export is one query, but it loads up to `MAX_EXPORT_ROWS` rows and builds the whole file in memory. An index page loads up to 100 rows. The limit is per client address. It applies even when `security.rate_limit.enabled` is off, because that flag controls only the *global* limiter. Raise the limit for an internal back-office. On a large table, lower `MAX_EXPORT_ROWS` or put the route behind auth. |
 | `NULL` column | An **empty cell**, never the literal string `None`. |
@@ -1592,7 +1592,7 @@ pre-#1315 shape.
 
 `--import` adds the other direction of the same data door: an upload form, a
 **dry-run preview** with per-row errors, and a confirmed commit — zero lines of
-user code, no hand-written multipart handler, no import loop (issue #1393).
+user code, no hand-written multipart handler, no import loop.
 
 ```bash
 autumn generate scaffold Post title:String body:Text published:bool --import
@@ -1644,13 +1644,13 @@ Contract of the generated handler:
 | Whitespace around a column name | Trimmed, consistently. RFC 4180 keeps the space in `a, b, c`, and plenty of exporters write it — so both the header check and the row decoder compare trimmed names. They have to agree: a check that accepted `" published"` while the decoder looked for `published` would default the field and import blanks under a guarantee that the column was there. |
 | How a row becomes a record | The row (`column -> value`) is re-encoded as a urlencoded body and handed to the module's own `decode_form`, so it is decoded, blank-normalized and validated by **exactly** the code path a browser form submission takes — the same `#[validate(...)]` rules, the same `into_new`. |
 | A row that fails to parse | A row error naming the parse failure, against that row's line. The rest of the file still imports. |
-| A row that fails validation | A **field** error naming the column (alphabetically first, so the message is stable) and its messages. On a `#[normalize]` column there is a second, later check: the repository re-runs the model's rules on the normalized value (#2586), and a row only that pass rejects is reported against its CSV line as a write failure instead, with nothing written for it. |
+| A row that fails validation | A **field** error naming the column (alphabetically first, so the message is stable) and its messages. On a `#[normalize]` column there is a second, later check: the repository re-runs the model's rules on the normalized value, and a row only that pass rejects is reported against its CSV line as a write failure instead, with nothing written for it. |
 | A row the database rejects (e.g. a unique violation) | Reported against its own CSV line. `save_many_skip_invalid` isolates the failing chunk row-by-row rather than aborting the batch. |
 | Atomicity | Owned by `save_many_skip_invalid`, which this handler calls exactly once: successful rows commit, failed rows are skipped and reported. For all-or-nothing, swap in `save_many`, which aborts the batch on the first failure. |
 | Model hooks | Run per inserted row, exactly as for `create` — including `after_create_commit` and counter caches. An import of N rows is N records' worth of side effects. |
 | Upload size | Capped at the emitted `MAX_IMPORT_BYTES` (2 MiB) *and* `security.upload.max_file_size_bytes`, whichever is smaller — `with_max_bytes` takes the min. Over the cap is a **413**, never a truncated import. That constant, not a row count, is what bounds the handler's memory. |
 | File-type check | The filename must end in `.csv` (case-insensitively) **and** the declared content type must be one of a small allow-list (`text/csv`, `application/csv`, `text/plain`, `application/vnd.ms-excel`, `application/octet-stream`, or absent — browsers are inconsistent here). This is a *shape* check: CSV has no magic bytes, so what actually protects the handler is that the body is only ever parsed as CSV and every row is validated before it can be written. |
-| Magic-byte sniffing (#1354) | Composes with care, and is not required. Setting `security.upload.allowed_mime_types` makes the `Multipart` extractor sniff each file part before the handler runs; CSV is plain text and has no signature, so the extractor falls back to the *declared* type — but only for types it classifies as signatureless text (`text/*`, `application/json`, `application/csv`). The two fallbacks this route also accepts because browsers really send them, `application/vnd.ms-excel` and `application/octet-stream`, are **not** in that set: allow-listing them does not help, and such uploads are refused before the handler sees them. If you enable an allow-list, expect to accept only `text/csv`/`text/plain`-declared uploads. |
+| Magic-byte sniffing | Composes with care, and is not required. Setting `security.upload.allowed_mime_types` makes the `Multipart` extractor sniff each file part before the handler runs; CSV is plain text and has no signature, so the extractor falls back to the *declared* type — but only for types it classifies as signatureless text (`text/*`, `application/json`, `application/csv`). The two fallbacks this route also accepts because browsers really send them, `application/vnd.ms-excel` and `application/octet-stream`, are **not** in that set: allow-listing them does not help, and such uploads are refused before the handler sees them. If you enable an allow-list, expect to accept only `text/csv`/`text/plain`-declared uploads. |
 | CSRF and double submit | The POST is `#[secured]` and the form renders the shipped CSRF and one-time submit-token hidden inputs as its **first** fields, so both land inside `security.csrf.token_scan_bytes` on a multipart body. Keep them first if you rearrange the form. |
 | Rate limiting | No `#[throttle]` (unlike the export): the route is `#[secured]`, and its work is bounded by `MAX_IMPORT_BYTES` and `MAX_IMPORT_ROWS` rather than by the size of the table. It also does not fit: the handler declares 9 extractors on a policy-enabled scaffold (10 under `--i18n`), `#[secured]` injects 3 more and `#[throttle]` 8, and axum's `Handler` tops out at 16. To add one, drop extractors to make room — the submit-token pair is the cheapest, at the cost of double-submit protection. `--no-policy` (7 params) does leave room. |
 | Record policy wiring on (an owner column, the default) | The handler is `#[secured]` and calls `authorize_create::<Model>` once, exactly like `create`: an import has no loaded row to authorize per record, any more than a create does. A per-row rule therefore does not apply here either; add the check inside the row closure if your policy needs one. |
@@ -1697,7 +1697,7 @@ scaffold` unless other code still uses it).
 stamp and gave the repository `restore` / `purge` / `with_deleted` /
 `only_deleted` (see [soft delete](./soft-delete.md)). A standard HTML
 scaffold generated with the flag now also ships the recovery UI those
-methods were waiting for (issue #1332) — zero lines of user code:
+methods were waiting for — zero lines of user code:
 
 - A `#[secured] #[get("/<plural>/trash")]` page listing the deleted rows
   through the repository's `page_only_deleted` (the paginated form of the
@@ -1758,7 +1758,7 @@ Autumn ships the whole Fluent stack — the `t!(locale, "key")` macro with
 compile-time key validation, `Locale::t()`, the `i18n/<tag>.ftl`
 convention, fallback chains, and an `Accept-Language` `Locale` extractor
 (see [i18n](./i18n.md)). `--i18n` is what wires the scaffold into it
-(issue #1349), so a generated resource is translatable the moment it
+, so a generated resource is translatable the moment it
 exists instead of needing every English string hand-replaced:
 
 ```bash
@@ -1781,7 +1781,7 @@ autumn generate scaffold Post title:String body:Text published:bool --i18n
   ({ $media }, { $size } bytes)` — so the media type and byte count
   interpolate as arguments and a translator owns the parentheses, the comma
   and the unit noun.
-- **The two widgets with their own chrome are covered too** (issue #2227).
+- **The two widgets with their own chrome are covered too**.
   A `richtext` column passes `RichTextLabels` to the editor. The toolbar
   group label, the seven control names, the hint and the preview heading
   come from the bundle, under `common.richtext.*`. The Markdown syntax
@@ -1932,7 +1932,7 @@ runtime lookup, and it is a validation message — which the issue scopes
 out alongside the framework's own error pages.
 
 Translating the framework's own strings (error pages, validation
-messages), locale-prefixed routing ([#1251](./i18n.md)), missing/unused
+messages), locale-prefixed routing, missing/unused
 key linting (`autumn i18n check`), and machine-translating non-English
 `.ftl` files are all out of scope here.
 

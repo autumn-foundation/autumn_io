@@ -12,7 +12,7 @@ held full admin — able to terminate, cancel, reset, pause, force-open circuit
 breakers, bulk-replay the DLQ, and run fleet-wide batch mutations — or held
 nothing at all. There was no read-only tier.
 
-The **read-only operator role** (issue #776) closes that gap. It lets you expose
+The **read-only operator role** closes that gap. It lets you expose
 triage and status dashboards to support engineers, on-call responders, or
 internal status pages with **read but not mutate** access, in **one builder
 call** — without hand-rolling a reverse proxy that allowlists GET routes.
@@ -93,7 +93,7 @@ if caller.is_support_engineer() {
   `/mcp` JSON-RPC `tools/call` envelope (autumn-web re-dispatches the envelope
   through the same route). See *MCP tool routes* below.
 - **Receives `403 Forbidden` on the MCP Tasks route** — when
-  [`mcp_tasks()`](/docs/harvest-mcp-tools#mcp-tasks-issue-2005) is enabled. Every
+  [`mcp_tasks()`](/docs/harvest-mcp-tools#mcp-tasks) is enabled. Every
   JSON-RPC method on that route counts as a mutation, `tasks/get` included.
 
 The `403` is distinct from the anonymous `401` the admin gate returns, so an
@@ -159,7 +159,7 @@ envelope through the same route with the caller's forwarded credential, this one
 gate closes both the direct-HTTP and the envelope invocation paths. When
 `api_with_role_auth` is not used, this class gate is not installed. The issue
 #1802 mutation gate still wraps every mutating tool. See
-[Fail-closed mutations](/docs/harvest-security-posture#fail-closed-mutations-issue-1802).
+[Fail-closed mutations](/docs/harvest-security-posture#fail-closed-mutations).
 
 ## Known limitation: the Vantage UI (`/ui`)
 
@@ -167,7 +167,7 @@ The nested `/ui` sub-router's paths are not part of `CLASSIFIED_ROUTES`, so unde
 fail-closed enforcement a read-only principal receives `403` on `/ui`. Admins
 reach `/ui` unchanged.
 
-[Custom roles](/docs/harvest-security-posture#custom-roles) (issue #1978) close this
+[Custom roles](/docs/harvest-security-posture#custom-roles) close this
 gap. The built-in `harvest-viewer` role reads every Vantage page and gets
 `403` on every Vantage form post.
 
@@ -175,7 +175,7 @@ gap. The built-in `harvest-viewer` role reads every Vantage page and gets
 
 This slice restricts **verbs**, not **fields** or **rows** (see above): a
 read-only principal, mounted behind your auth boundary, gets admin-level
-**reads** — including payload decoding ([#608](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/operations/read-path-decode.md))
+**reads** — including payload decoding
 and the SSE event stream. Field-level redaction and per-tenant row scoping are
 out of scope for this role.
 
@@ -187,7 +187,7 @@ out of scope for this role.
 - Multi-tenant data isolation / row-level scoping.
 - Arbitrary custom per-route permission policies beyond the binary read/mutate
   classification. Use the
-  [authorizer hook](/docs/harvest-security-posture#authorizer-hook-issue-1803)
-  (issue #1803) for a per-route, per-tenant or per-shard policy.
+  [authorizer hook](/docs/harvest-security-posture#authorizer-hook)
+ for a per-route, per-tenant or per-shard policy.
 - Changing the default single-admin boundary or the `has_harvest_admin_access`
   semantics for existing callers.

@@ -304,7 +304,7 @@ Precedence, and the reasoning behind it:
    The tool normalizes profile names before it compares them (`production`
    becomes `prod`). If the running profile has no name, it skips this check.
 3. Otherwise the profile default: primary pool size × 32, at least 256,
-   under `prod` (#3057). Unlimited under every other profile.
+   under `prod`. Unlimited under every other profile.
 
 Every failure along the contract path — missing file, malformed document, a
 newer schema version, a contract from a different host class or profile —

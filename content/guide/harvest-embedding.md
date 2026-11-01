@@ -76,7 +76,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 `autumn-web` is still a dependency, because `autumn-harvest-plugin` uses its
 types. Your code does not call `AppBuilder`.
 [`examples/standalone-runner`](https://github.com/autumn-foundation/autumn-harvest/tree/trunk-dev/examples/standalone-runner) names no
-`autumn-web` in its `Cargo.toml` (issue #1615). A unit test fails if its
+`autumn-web` in its `Cargo.toml`. A unit test fails if its
 manifest names `autumn-web`.
 
 **A database pool.** `HarvestRunnerResources::new` takes an
@@ -230,7 +230,7 @@ The admin guard is on selected high-impact routes only, for example
 `/workflows/{id}/cancel` and most `/admin` routes. Many routes have no
 built-in guard, for example a workflow start, a signal and some `/admin`
 schedule routes. Outside the `dev` profile, the mutation gate refuses an
-anonymous call to every mutating route (issue #1802). Read routes with no
+anonymous call to every mutating route. Read routes with no
 admin guard stay open. Put your own auth layer around the router, as on the
 plugin path.
 
@@ -240,7 +240,7 @@ through these layers, from the outside in:
 1. Your auth layer.
 2. The scoped-token layer, if you call `StandaloneAdminAuth::with_api_tokens()`.
 3. The read-only-role layer, if you call `StandaloneAdminAuth::with_read_only_role()`.
-4. The mutation gate on each mutating route (issue #1802).
+4. The mutation gate on each mutating route.
 5. The admin guard on each guarded route.
 
 `router()` applies layers 2 to 5. Apply layer 1 to the router that it returns.
@@ -289,11 +289,11 @@ when this is the case. Use `dev` on a workstation only. Under every other
 profile, a mutating route needs a credential. The
 `allow_unauthenticated_mutations()` opt-out reopens the mutating routes with
 no admin guard. See
-[Fail-closed mutations](/docs/harvest-security-posture#fail-closed-mutations-issue-1802).
+[Fail-closed mutations](/docs/harvest-security-posture#fail-closed-mutations).
 
 ### Scoped API tokens
 
-`with_api_tokens()` installs the token layer (issue #942). The layer checks
+`with_api_tokens()` installs the token layer. The layer checks
 each `Authorization: Bearer hvst_…` header on every route. A verified token
 reaches the admin routes that its scope allows. A `read` token gets `403` on a
 mutating route. An unknown, revoked or expired token gets `401`.
@@ -384,7 +384,7 @@ no cross-site check.
 
 ### The read-only operator role
 
-`with_read_only_role()` installs the read-only-role layer (issue #776). The
+`with_read_only_role()` installs the read-only-role layer. The
 layer sorts each route into a read class or a mutating class. It reads an
 autumn-web `Session` that your layer sets. Without that session, the layer
 has no effect. [`operator-role.md`](/docs/harvest-operator-role) describes the role.
@@ -455,7 +455,7 @@ adapter.
 ## Receive webhooks
 
 `build_webhook_router` returns an `axum::Router<()>` for `#[webhook]`
-triggers (issue #1612). It needs the `webhooks` feature. Give it the
+triggers. It needs the `webhooks` feature. Give it the
 endpoint config that `autumn.toml` holds on the plugin path.
 
 ```rust

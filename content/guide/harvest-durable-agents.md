@@ -1,12 +1,12 @@
 +++
 title = "Durable agents: the agent adapter"
-description = "autumn-harvest-agent runs an agent as a durable workflow (issue #1973). The agent loop is the workflow. Each model call and each tool call is an activity. A human approval is a durable wait."
+description = "autumn-harvest-agent runs an agent as a durable workflow. The agent loop is the workflow. Each model call and each tool call is an activity. A human approval is a durable wait."
 order = 1200
 +++
 
 # Durable agents: the agent adapter
 
-`autumn-harvest-agent` runs an agent as a durable workflow (issue #1973).
+`autumn-harvest-agent` runs an agent as a durable workflow.
 The agent loop is the workflow. Each model call and each tool call is an
 activity. A human approval is a durable wait.
 
@@ -165,7 +165,7 @@ a worker. Otherwise the adapter ends a run that the store could carry.
 - `cache_timeout(d)` — the time budget of one response-cache call. The
   default is 5 seconds.
 - `budget_timeout(d)` — the time budget of the LLM budget check of one
-  turn (issue #1997). The default is 10 seconds. A check over it is a
+  turn. The default is 10 seconds. A check over it is a
   retryable failure, before the model call.
 - `memory(store)` — the `MemoryStore` for runs with a memory scope.
 - `delivery(delivery)` — where reports go. The default is `LogDelivery`.
@@ -185,7 +185,7 @@ cannot fail the run.
 ### The cost ledger
 
 Each model turn writes one row to the
-[agent cost ledger](/docs/harvest-agent-cost-ledger) (issue #1996). The row holds the
+[agent cost ledger](/docs/harvest-agent-cost-ledger). The row holds the
 model id, the tokens, the cost and the call latency. It is outside the
 encrypted turn output, so the usage report can sum it per tenant. Two
 `AgentModel` methods fill it in:
@@ -200,7 +200,7 @@ encrypted turn output, so the usage report can sum it per tenant. Two
 A response cache hit calls no model and spends no tokens, so it writes no
 ledger row.
 
-The SQLite backend writes the same rows (issue #2275). `sqlite::register`
+The SQLite backend writes the same rows. `sqlite::register`
 registers the model turn with `register_activity_with_ledger`, so the turn
 returns its call with its output. The runtime writes the row in the
 transaction that appends the turn, as Postgres does. A crash before that
@@ -282,9 +282,9 @@ A bound is a normal end, not an error. `AgentReport.stop` names it:
 | `tokens_exhausted` | The run spent more than `max_total_tokens`, follow-ups included. |
 | `transcript_full` | The next request would exceed the request cap. The request is not sent. |
 | `reply_too_large` | The model reply exceeds the result cap, even with its decision reasons cut. The activity drops the reply. |
-| `budget_exceeded` | A run or tenant LLM budget refused the next model call. The call was not sent. See [LLM budgets](#llm-budgets-issue-1997). |
+| `budget_exceeded` | A run or tenant LLM budget refused the next model call. The call was not sent. See [LLM budgets](#llm-budgets). |
 | `loop_detected` | The loop guard saw the same call, with the same result, too many times. |
-| `failed` | The run failed. `AgentReport.error` holds the error. Only a fan-out child ends so, because a parent keeps its usage and labels (issue #2328). |
+| `failed` | The run failed. `AgentReport.error` holds the error. Only a fan-out child ends so, because a parent keeps its usage and labels. |
 
 A turn that ends the run before its tool calls run is left out of
 `AgentReport.messages`. Its text is not the answer either. A round that ends
@@ -305,7 +305,7 @@ reads.
 The run fails when a model call fails for good: a non-retryable kind, for
 example a rejected API key, or four failed attempts.
 
-### Payload caps (issue #2040)
+### Payload caps
 
 A tool round measures the whole next request before it runs a call. The
 request holds the transcript, the assistant turn and an answer for each call.
@@ -346,7 +346,7 @@ A cap of zero is no cap, as in the engine. This holds for
 `AgentTask::max_request_bytes` and `AgentHarness::max_result_bytes`, in every
 check above.
 
-### LLM budgets (issue #1997)
+### LLM budgets
 
 `max_total_tokens` bounds one run inside the workflow. A budget on the
 Postgres engine also bounds a tenant across runs, and it can bound cost.
@@ -405,7 +405,7 @@ and the run ends under `budget_exceeded`. Three limits apply:
   together.
 - A task with no `tenant` has no tenant budget. Its run caps still apply.
 - The budget reads `AgentTask::tenant` as the task gives it. It does not
-  read the verified tenant (#1977), as the response cache does.
+  read the verified tenant, as the response cache does.
 - The SQLite backend rejects a workflow that declares `quota`. A budgeted
   `agent_loop` therefore does not build there.
 
@@ -421,7 +421,7 @@ back, so add a field only with `#[serde(default)]`. A new field of an
 activity input also needs `skip_serializing_if` at its default, because a
 strict replay compares each recorded input as it was written.
 
-### 8a. Transcript deltas (issue #2264)
+### 8a. Transcript deltas
 
 A model turn records only the messages that it adds. Its input names the
 earlier window with a `PrefixRef`: a chained SHA-256 digest of the messages
@@ -554,7 +554,7 @@ let built = HarvestBuilder::new()
 ```
 
 On SQLite, pass the same `heartbeat::schedule` to
-`SqliteRuntime::upsert_schedule` (issue #2031). An app can also call
+`SqliteRuntime::upsert_schedule`. An app can also call
 `sqlite::start_heartbeat` on each tick.
 
 The engine keeps one schedule per workflow name, so a deployment has one
@@ -664,7 +664,7 @@ tool whose result changes, does not trip it. Use `max_steps`,
 ## 11. Response cache
 
 Replay reads an answer from the history of one run. A second run that sends
-the same request pays again. The response cache (issue #1998) serves that
+the same request pays again. The response cache serves that
 request from an earlier answer. It is off by default.
 
 ```rust
@@ -696,7 +696,7 @@ name.
 
 | Backend | Tenant of the key |
 |---------|-------------------|
-| Postgres, run with a verified tenant (#1977) | The verified tenant. `AgentTask::tenant` cannot change it. |
+| Postgres, run with a verified tenant | The verified tenant. `AgentTask::tenant` cannot change it. |
 | Postgres, run with no tenant | `AgentTask::tenant`, as a declared tenant |
 | Postgres, the tenant read fails | No key. The turn skips the cache. |
 | SQLite | `AgentTask::tenant`, as a declared tenant |
@@ -751,9 +751,9 @@ because a custom codec can quote the answer.
 - `max_age` limits what the cache serves, not what the store keeps. Change
   `namespace` to make every old entry a miss. The old blobs stay in the store
   until the index drops them.
-- PII erasure (#495) does not reach the cache. Bound it with `max_age` and a
+- PII erasure does not reach the cache. Bound it with `max_age` and a
   store expiry.
-- Key rotation (#948) does not re-encrypt entries. An entry under a retired
+- Key rotation does not re-encrypt entries. An entry under a retired
   key is a miss. Its blob stays until a new answer replaces it or the store
   expires it.
 - Two runs that miss at the same time both call the model.
@@ -764,7 +764,7 @@ because a custom codec can quote the answer.
 ## 12. Evaluate a candidate model or prompt
 
 `eval::evaluate` re-drives a recorded `agent_loop` run with a candidate model
-or prompt (issue #2001). It reports where the decisions of the two runs
+or prompt. It reports where the decisions of the two runs
 diverge. Turn on the `eval` feature.
 
 ```rust,ignore
@@ -821,7 +821,7 @@ example `Completed` and `TokensExhausted`. `diverged()` reads both.
 
 ### Compare two models
 
-`eval::compare` runs two candidates on one source (issue #2271). It returns
+`eval::compare` runs two candidates on one source. It returns
 both evaluations and one `TurnDiff` per turn of the two candidates. In that
 diff, `recorded` holds the first candidate.
 
@@ -878,7 +878,7 @@ of tool calls across the tree. Read [`agent-mesh.md`](/docs/harvest-agent-mesh).
 
 ## 15. Durable agents
 
-An `Agent` (issue #2263) is a named, long-lived actor. It owns its state,
+An `Agent` is a named, long-lived actor. It owns its state,
 handles one message at a time, and survives a crash. It is the agent loop
 inside a keyed entity (ADR 0006). The design is in
 [`docs/design/DESIGN-2262.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/design/DESIGN-2262.md).
@@ -918,8 +918,8 @@ the signal payload. Pass the message id as the idempotency key.
 | `control: pause` | Holds each later message in the state. |
 | `control: resume` | Runs the held messages in order, then takes new ones. |
 | `control: reset_memory` | Clears the memory: the scope `agent:<id>`, or the state memory. |
-| `control: clear_transcript` | Clears the transcript. Only the labels of the memory and of the workspace files stay (issues #2272, #2274). |
-| `control: reset_workspace` | Deletes every workspace snapshot of the agent (issue #2274). |
+| `control: clear_transcript` | Clears the transcript. Only the labels of the memory and of the workspace files stay. |
+| `control: reset_workspace` | Deletes every workspace snapshot of the agent. |
 
 A control op applies at once, also while the agent is paused. The kernel
 `agent::inbox::admit` makes the choice. Verus proves it, see
@@ -942,7 +942,7 @@ A control op applies at once, also while the agent is paused. The kernel
 - The transcript keeps at most `AgentProfile::window` messages. The cut
   lands on a user message.
 
-### Heartbeats and follow-ups (issue #2266)
+### Heartbeats and follow-ups
 
 A wake is an op in the inbox, so it never runs at the same time as a
 message. `Entity::run_with_wakes` races the op signal against the next
@@ -974,7 +974,7 @@ deadline of the agent. A due wake runs before a waiting message.
 - A restart during a wait resumes the timer. A tick and its report happen
   once.
 
-### Lifecycle (issue #2267)
+### Lifecycle
 
 **Idle.** An agent that waits for its inbox or a timer is a row in the
 database. No worker must hold it in memory. A fresh worker, or a fresh
@@ -1030,7 +1030,7 @@ app must clear those stores itself.
 
 The spend of an erased run leaves the LLM budget and mesh budget sums.
 
-### Mid-turn messages (issue #2265)
+### Mid-turn messages
 
 A message carries an `Urgency`. `sqlite::send` sends the extra signal first,
 then the op. On Postgres, send the signal of `Agent::urgency_signal(&op)` to
@@ -1056,7 +1056,7 @@ model again. An interrupt that arrives while no op runs is stale, and the
 next op drops it. On SQLite a running activity never sees a cancel: the
 workflow takes the interrupt, and the activity result is dropped.
 
-### Memory as state (issue #2273)
+### Memory as state
 
 `AgentProfile::memory(AgentMemory::State)` keeps the memory blocks in
 `AgentState::memory`. The workflow runs the `memory` tool itself. An edit is
@@ -1068,14 +1068,14 @@ and the edit lands once. No store and no edit key are involved.
   its prefix.
 - The memory lives in the entity snapshot events and in the
   `harvest_entity_state` projection. Erasure and codec rotation cover both
-  (issue #2259).
+.
 - `AgentMemory::Store` keeps the `MemoryStore` of the harness for an agent
   that shares memory with other runs.
 
 `autumn-harvest-agent/examples/agent_session_entity.rs` runs a chat session
 as an agent.
 
-### Workspaces (issue #2274)
+### Workspaces
 
 A workspace is a set of files, for example a repository checkout and notes.
 It lasts across the ops of a durable agent and across restarts. Turn it on
@@ -1148,7 +1148,7 @@ also when that head has the content of an old one.
 store for workspaces only, because retention deletes the blobs of a scope
 that are not newer than its head.
 
-**Scratch files (issue #2315).** `DirWorkspaceBlobs` writes each blob to a
+**Scratch files.** `DirWorkspaceBlobs` writes each blob to a
 scratch file, `<key>.tmp-<32 hex>`, then renames it. The put syncs the file
 before the rename. It syncs the folder and its parent after the rename. Until one put succeeds, it syncs every ancestor folder. A
 sync error fails the put. A crash, a save timeout
@@ -1178,7 +1178,7 @@ cancel also stops:
 What stays is deleted by a later reset or retention of the scope. After an
 erase, no later op runs, so it stays on disk.
 
-### Live tokens (issue #2268)
+### Live tokens
 
 `AgentTask::stream` (or `AgentProfile::stream` for a durable agent) streams
 the answer of each model turn in two layers:
@@ -1197,7 +1197,7 @@ the answer of each model turn in two layers:
 - Each model call starts with `LiveEvent::Start`. A retry starts again, so a
   reader drops the text before it. On Postgres the activity envelope also
   carries the attempt. See
-  [`streaming-progress.md`](/docs/harvest-streaming-progress#from-an-activity-issue-2268).
+  [`streaming-progress.md`](/docs/harvest-streaming-progress#from-an-activity).
 - `AgentHarness::live_sink` gets the live events on every backend, SQLite
   included.
 - One app route gives both layers: a durable route with `.live().stream()`.

@@ -1,13 +1,13 @@
 +++
 title = "Durable promises"
-description = "A durable promise is a handle that a workflow creates and any caller settles once (issue #1985). It is the Harvest form of a Restate awakeable. Use it when a person, a webhook or another service must hand a result back to a waiting workflow."
+description = "A durable promise is a handle that a workflow creates and any caller settles once. It is the Harvest form of a Restate awakeable. Use it when a person, a webhook or another service must hand a result back to a waiting workflow."
 order = 1310
 +++
 
 # Durable promises
 
 A durable promise is a handle that a workflow creates and any caller settles
-once (issue #1985). It is the Harvest form of a Restate awakeable. Use it when
+once. It is the Harvest form of a Restate awakeable. Use it when
 a person, a webhook or another service must hand a result back to a waiting
 workflow.
 
@@ -67,7 +67,7 @@ durable_promise::reject(&mut conn, &id, "budget exceeded").await?;
 ```
 
 `resolve` and `reject` store the settlement in clear. With column encoding
-on (issue #1979), call `resolve_with_codecs` or `reject_with_codecs` with
+on, call `resolve_with_codecs` or `reject_with_codecs` with
 the deployment's codec registry.
 
 **From another workflow:** `ctx.resolve_promise(&id, value)` or

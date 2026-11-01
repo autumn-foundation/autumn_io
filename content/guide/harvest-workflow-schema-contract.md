@@ -799,8 +799,8 @@ recipe runs.
 ## Scope
 
 **In scope:** the `input_schema`, `output_schema`, and `error_schema` published
-by registered `#[workflow]` types (issue #373). Activity input and output
-schemas and side-effect value schemas (issue #1994).
+by registered `#[workflow]` types. Activity input and output
+schemas and side-effect value schemas.
 
 **Out of scope**, deliberately:
 
@@ -815,7 +815,7 @@ schemas and side-effect value schemas (issue #1994).
 - **Runtime enforcement / per-build pinning** — [issue #171](https://github.com/autumn-foundation/autumn-harvest/issues/171).
 - **Auto-migration or upcasting** of recorded payloads.
 - **Non-deterministic *code*** — [`harvest det-check`](/docs/harvest-workflow-determinism#running-the-check-in-ci)
-  ([#386](https://github.com/autumn-foundation/autumn-harvest/issues/386),
+  (
   [#778](https://github.com/autumn-foundation/autumn-harvest/issues/778)).
 
 A workflow that publishes **no** schema is not gated at all — the check is
@@ -832,13 +832,13 @@ The schema gate is one layer of replay defence-in-depth, not the whole of it:
 1. **`harvest det-check`** — non-deterministic *code* reachable from workflow bodies.
 2. **`harvest schema check`** *(this gate)* — incompatible *payload* changes.
 3. **`WorkflowReplayer` / `harvest-replay`** — replay real exported histories against the new code.
-   The **in-flight** flavour of this layer is the replay-drift gate (#798):
+   The **in-flight** flavour of this layer is the replay-drift gate:
    `harvest history export-sample` + `WorkflowReplayer::replay_bundle`, which
    samples the executions running *right now* rather than a curated fixture set.
    See [`replay-drift-gate.md`](/docs/harvest-replay-drift-gate).
 4. **`ctx.patched()` / `ctx.version()`** — fence a deliberate logic change across deploys.
-5. **Build-id routing (#171)** — pin in-flight executions to the old build during a breaking migration.
-6. **`harvest workflow-types reachability` (#520)** — confirm a handler is safe to delete.
+5. **Build-id routing** — pin in-flight executions to the old build during a breaking migration.
+6. **`harvest workflow-types reachability`** — confirm a handler is safe to delete.
 
 Layers 1 and 2 are static and cheap enough for every PR. Layer 3 is the
 authoritative check, but it needs a recorded history to run against — which is

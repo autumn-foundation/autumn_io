@@ -1,12 +1,12 @@
 +++
 title = "Audit export to an external SIEM sink"
-description = "Issue #953. Ships every management-API audit record off-box, to a sink you run, with at-least-once delivery, visible lag, and a redrive path."
+description = "Ships every management-API audit record off-box, to a sink you run, with at-least-once delivery, visible lag, and a redrive path."
 order = 1700
 +++
 
 # Audit export to an external SIEM sink
 
-Issue #953. Ships every management-API audit record off-box, to a sink you
+Ships every management-API audit record off-box, to a sink you
 run, with at-least-once delivery, visible lag, and a redrive path.
 
 Harvest writes an audit record for every mutating management-API operation
@@ -17,7 +17,7 @@ principal who can rewrite the record of what they did, and a SOC 2 / ISO 27001
 audit asks where privileged-action logs ship and how you know none were lost.
 
 This feature answers both. The design is a deliberate replay of the durable
-completion-callback architecture (#605): a boxed async trait in core with no
+completion-callback architecture: a boxed async trait in core with no
 HTTP client, a `reqwest` signed-webhook implementation in the plugin, a
 two-transaction scanner that never holds a row lock across network I/O, and a
 per-shard cursor that advances only on acknowledgement.
@@ -27,7 +27,7 @@ per-shard cursor that advances only on acknowledgement.
   scanner returns before issuing a single query. The claim-scan index
   `harvest_audit_log_unexported_idx` does not exist either. Before issue #1667
   a migration always created it. It matched every row while `export_seq` stayed
-  `NULL`, so each audit insert paid its maintenance cost (issue #1272). The
+  `NULL`, so each audit insert paid its maintenance cost. The
   exporter now builds the index on its first tick, with `CREATE INDEX
   CONCURRENTLY`, so audit inserts continue during the build. The build runs on
   a dedicated connection opened from the shard's notification database URL,
@@ -151,7 +151,7 @@ X-Harvest-Audit-Last-Seq: 4680
 ```
 
 The signature is HMAC-SHA256 over the exact bytes of the body, in the same
-`X-Harvest-Signature: sha256=<hex>` scheme as completion callbacks (#605) — a
+`X-Harvest-Signature: sha256=<hex>` scheme as completion callbacks — a
 receiver already verifying those can reuse the verification code unchanged.
 Compare with a constant-time comparison.
 
@@ -168,7 +168,7 @@ Optional fields serialize as an explicit `null` rather than being omitted, so
 a SIEM's schema inference sees a stable object shape across every batch.
 
 Three fields are the exception: `chain_prev`, `chain_newest_before` and
-`chain_hash` (issue #1838). They appear only on rows the audit hash chain
+`chain_hash`. They appear only on rows the audit hash chain
 covers, and they are the last fields. The first chained row has no
 `chain_newest_before`. A deployment without a chain key ships the same bytes as before. See
 [The audit hash chain](#the-audit-hash-chain).
@@ -239,7 +239,7 @@ top of this surface, not engine features.
 
 ### The audit hash chain
 
-The chain is optional (issue #1838). It makes the rows in the database
+The chain is optional. It makes the rows in the database
 tamper-evident. Turn it on with a key of 32 bytes or more:
 
 ```rust,ignore
@@ -424,7 +424,7 @@ cannot apply a stale outcome over a fresher one, and a redrive that lands
 mid-flight cannot be silently undone.
 
 The exporter runs on its own dedicated task, one per assigned shard
-(`spawn_audit_export_checker_for_shard`, issue #1269). It previously rode
+(`spawn_audit_export_checker_for_shard`). It previously rode
 `enforce_timeouts_once`'s cadence and connection, so a slow sink delayed
 every other resident of that loop, and a one-connection shard pool could
 never export at all: the export call needed a second connection from the
@@ -453,7 +453,7 @@ means no sweep touches `harvest_audit_log`, unexported row or not (issue
 Given the purge runs, the guard applies when any of three signals says an
 exporter still owes this shard records — but the first two are not simply
 OR'd together. **A shard's own cursor row, once it exists, is
-authoritative**, retired or not (issue #1273):
+authoritative**, retired or not:
 
 - **A live (non-retired) cursor row exists for the shard.** Durable, shared
   state, so it works when retention and export run in **different
@@ -473,7 +473,7 @@ authoritative**, retired or not (issue #1273):
   `is_configured()`, this signal is unconditionally sufficient on its own,
   and does keep overriding a shard's own retired cursor — see below for why
   the two are not held to the same rule. It covers a gap the
-  first two signals share (issue #1266). In a split web/worker deployment, the
+  first two signals share. In a split web/worker deployment, the
   process running retention may have no sink and no cursor row at the same
   time. This happens before the worker's first successful tick on a shard —
   a fresh enablement, a newly added shard, or a shard being re-enabled after
@@ -555,7 +555,7 @@ authoritative**, retired or not (issue #1273):
   still-relevant, colocated shard has already fully acknowledged.
 
   That exclusion cuts both ways, though (a Codex review finding on this
-  fix, issue #1266). `excluding_shard_from_protect_unexported_audit`'s own
+  fix). `excluding_shard_from_protect_unexported_audit`'s own
   guidance is to call it "for a shard being decommissioned", but the
   config change and the actual `decommission_cursor` call are two
   separate steps that need not land atomically. The moment the exemption
@@ -584,7 +584,7 @@ authoritative**, retired or not (issue #1273):
   re-enabling shard's retired cursor treated as pending, until the
   operator also unsets the flag (or the shard is reactivated, see
   below). `is_configured()` does not carry the same override, matching
-  its narrower role above (issue #1273): it is a process-wide boolean
+  its narrower role above: it is a process-wide boolean
   with no notion of which shard's sink it actually reflects, so it
   cannot be trusted to mean "this specific shard is being re-enabled" —
   only the explicit, per-shard-scoped flag can. An operator re-enabling
@@ -631,7 +631,7 @@ authoritative**, retired or not (issue #1273):
   falls out of this same general rule. Splitting itself tests for
   whitespace the way `pg_split_opts` does: `isspace()`, byte-at-a-time
   in the `"C"` locale, which recognizes only six ASCII characters (a
-  Codex review finding, issue #1266). Rust's own `char::is_whitespace`
+  Codex review finding). Rust's own `char::is_whitespace`
   follows Unicode's broader `White_Space` property instead, matching a
   no-break space and several other codepoints Postgres does not treat
   as a separator here — using it would split an unquoted schema name
@@ -706,7 +706,7 @@ authoritative**, retired or not (issue #1273):
   covered by keeping the username, since the same role name can be
   granted identical or different search paths across environments — two
   DSNs for one database under different usernames are also a documented
-  topology (`harvest shard rebalance`, issue #964), so treating different
+  topology (`harvest shard rebalance`), so treating different
   usernames as different pools was rejected as reopening a worse bug. A
   multi-host DSN's hosts and ports are sorted and deduplicated
   independently rather than paired positionally, so two DSNs that pair
@@ -750,14 +750,14 @@ records during exactly the outage where they matter most.
 
 One pair of records is exempt from the guard entirely: `audit_export.decommission`
 and `audit_export.reactivate` rows are never purged, on any shard, live or
-retired (issue #1273). These describe the audit-export system's own lifecycle
+retired. These describe the audit-export system's own lifecycle
 controls, and the shard a decommission targets can never export its own
 record about itself — see "Retiring and reactivating" below.
 
 ### Retiring and reactivating audit export on a shard
 
 Because the guard never expires on its own, turning export off is an explicit,
-audited operator action (issue #1273):
+audited operator action:
 
 ```bash
 curl -X POST https://app.example.com/api/harvest/admin/audit-export/decommission \
@@ -821,7 +821,7 @@ retired rather than deleted. Records purged while retired are gone and are not
 re-delivered.
 
 Reactivation used to be an implicit side effect of the exporter's next scanner
-tick, which had two problems (issue #1273): a scanner tick already under way
+tick, which had two problems: a scanner tick already under way
 when an operator decommissioned a shard could un-retire it moments later with
 no coordination, silently undoing the operator's decision; and resuming export
 had no audit trail of its own, same as decommissioning did not. Reactivation
@@ -852,7 +852,7 @@ to reclaim disk is not a decision the engine gets to make for you. Alert on
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
 | `harvest.audit.export_lag` | Gauge (seconds) | `shard` | Age of the **oldest** audit record the sink has not acknowledged. `0` means fully caught up. |
-| `harvest.audit.export_observed` | Gauge (0/1) | `shard` | `1` when the exporter could read this shard's cursor and lag this tick, `0` when it could not (issue #1268). See below. |
+| `harvest.audit.export_observed` | Gauge (0/1) | `shard` | `1` when the exporter could read this shard's cursor and lag this tick, `0` when it could not. See below. |
 | `harvest.audit.exported` | Counter | `shard` | Records acknowledged, counted only after the cursor advanced. |
 
 All three are labelled `{shard}` only. The audit `actor`, `operation`, and
@@ -874,7 +874,7 @@ and tenant-identifying (ADR-0001 §7).
 > to see. The oldest-record age is the one an SLO like "export lag < 30s p99"
 > can actually be measured against.
 
-> **A bounded precision limit (issue #1271).** `occurred_at` is transaction
+> **A bounded precision limit.** `occurred_at` is transaction
 > start time. A long transaction can commit, and so become visible to the
 > exporter, after a shorter one that started later. The gauge finds the
 > true oldest pending record within the lowest `EXPORT_LAG_LOOKBACK_ROWS`
@@ -885,7 +885,7 @@ and tenant-identifying (ADR-0001 §7).
 The gauge is emitted on **every** exporter tick, including ticks that deliver
 nothing — the signal must not go stale precisely when delivery has stopped.
 
-> **Disabled export (issue #1506).** A runtime rebuilt with no sink stops
+> **Disabled export.** A runtime rebuilt with no sink stops
 > exporting. Each export tick then sets `export_observed` to `0` for each shard
 > it serves, until a sink is configured again. `export_lag` keeps its last
 > value. A process that never configured export emits no new series. Set the
@@ -983,7 +983,7 @@ Three properties worth knowing:
   dedupes) rather than skipping records the operator asked for.
   That lowest sequence comes from *surviving* rows. Retention may have purged
   the earliest records at or after the instant. The response then sets
-  `window_truncated` to `true` (issue #1508). Retention records the latest
+  `window_truncated` to `true`. Retention records the latest
   `occurred_at` it purges in `harvest_audit_purge_watermark`, and the redrive
   compares that value with the instant. The flag shows that a record at or
   after the instant is gone. It does not count the lost records. Shards that
@@ -1008,7 +1008,7 @@ Three properties worth knowing:
 - **It invalidates in-flight deliveries.** The rewind bumps the shard's claim
   epoch, so a batch already in flight cannot acknowledge over it.
 - **The response says what it can actually deliver, not just what you asked
-  for** (issue #1267). Retention does not take the cursor row's lock, so a
+  for**. Retention does not take the cursor row's lock, so a
   sweep can read the cursor before this redrive rewinds it and purge part of
   the window the redrive is about to promise back. The `200` response carries
   `recoverable_records` — records in `(to, from]` that still exist, counted
@@ -1028,7 +1028,7 @@ past the retention window returns whatever survives, and
 - **Exactly-once delivery.** At-least-once is the contract; receivers dedupe on
   `(shard, seq)`, matching #605.
 - **Tamper evidence before a row is sequenced.** The optional
-  [audit hash chain](#the-audit-hash-chain) (issue #1838) makes sequenced rows
+  [audit hash chain](#the-audit-hash-chain) makes sequenced rows
   tamper-evident at rest. A row deleted **before the exporter sequences it**
   never receives a sequence or a link. That covers the window between the
   audited action and the next scanner tick, and the backlog during a sink
@@ -1037,7 +1037,7 @@ past the retention window returns whatever survives, and
   written. Keep the export healthy to keep that window short.
   [ADR 0004](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0004-security-extras.md) explains why the chain is not
   stamped at insert time.
-- **Exporting workflow event history.** That is `HistoryArchiver` (#345). This
+- **Exporting workflow event history.** That is `HistoryArchiver`. This
   is the audit trail only.
 
 ---

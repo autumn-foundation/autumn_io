@@ -204,6 +204,6 @@ lock on the real rows, so a claim never waits for it.
 
 - [Worker routing and queue weights](/docs/harvest-worker-routing)
 - [Claim order under overload](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/operations/claim-order.md)
-- [Tenant cells](/docs/harvest-sharding#tenant-cells-issue-1837)
+- [Tenant cells](/docs/harvest-sharding#tenant-cells)
 - ADR: [0008](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0008-fairness-keys-start-time-fair-queuing.md)
 - Design record: `docs/design/DESIGN-1976.md`

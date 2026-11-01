@@ -78,7 +78,7 @@ jq '[.routes[].category] | unique' docs/api-contract.json
 ### Field lists
 
 A `fields` entry is a bare name or an object. Request and response lists both
-use it. The object form takes these keys, and no others (issue #1616):
+use it. The object form takes these keys, and no others:
 
 | Key | Meaning |
 |---|---|
@@ -155,7 +155,7 @@ document. Point a generator at either. See [`openapi.md`](/docs/harvest-openapi)
 ## Content negotiation: match each route's declared content type
 
 Send `Accept: application/json` to a route whose contract
-`content_type` is JSON (issue #1579). `curl` sends a bare `Accept: */*`
+`content_type` is JSON. `curl` sends a bare `Accept: */*`
 by default. Autumn's error-page content negotiation treats that as
 browser navigation, and answers a validation error with a styled HTML
 page, not the JSON body this contract documents. The `harvest` CLI
@@ -195,12 +195,12 @@ jq '.routes[] | select(.path == "/workflows/{id}/cancel")' docs/api-contract.jso
 
 ## Integration with auth posture and audit trail
 
-- **Auth posture (issue #174):** The `category` and `read_only` fields in this
+- **Auth posture:** The `category` and `read_only` fields in this
   contract are the input to the auth classification layer.  Read-only routes
   and admin routes can be assigned different auth requirements.  The contract
   records the route surface; auth enforcement is owned by issue #174.
 
-- **Audit trail (issue #158):** Every route where `read_only: false` is
+- **Audit trail:** Every route where `read_only: false` is
   automatically included in the audit trail when `HarvestPlugin` is active.
   The `GET /admin/audit` endpoint is the read surface for that log.
 
@@ -219,7 +219,7 @@ live route set registered in `harvest_api_router` against `docs/api-contract.jso
    in sync with the router).
 3. Update `docs/api-contract.json` to reflect the new route or schema change.
 4. Run `scripts/regenerate-openapi.sh`. It rewrites both generated OpenAPI
-   copies from the contract (issue #694). Skipping it fails CI.
+   copies from the contract. Skipping it fails CI.
 5. Add a changelog fragment in `docs/changelog.d/` that marks the change as
    breaking or non-breaking per the compatibility rules above.
 6. Run `cargo test -p autumn-harvest-plugin --test contract_regression --test openapi_spec`

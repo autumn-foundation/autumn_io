@@ -30,7 +30,7 @@ and exits non-zero on any regression, blocking the merge.
 ### Histories from runs that FAILED
 
 A history that ends in a terminal `WorkflowFailed` is **verified up to its
-failure point**, and replays cleanly when the code fails again (issue #952).
+failure point**, and replays cleanly when the code fails again.
 
 A failing decision cycle's history is truncated by construction: the commands it
 issued were never turned into events, and a sealed run can never gain another
@@ -325,7 +325,7 @@ cargo bench -p autumn-harvest \
 - **DAG runs:** The verifier covers `#[workflow]`-annotated event histories only. A DAG-level
   verifier is a planned follow-up.
 - **Fixture lifecycle:** The verifier reads a directory of `HistorySnapshot` files.
-  `harvest history export` writes one such file per run (issue #169).
+  `harvest history export` writes one such file per run.
   `harvest history export-batch` writes one envelope file, so split its `exports`
   array into one file per run first. A `partial` envelope omits histories, so treat
   it as a failed export. Fixture rotation, pruning, and

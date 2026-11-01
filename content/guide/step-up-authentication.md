@@ -20,7 +20,7 @@ This guide covers:
 - [JSON / API clients](#json-api-clients) — `WWW-Authenticate: StepUp`.
 - [Audit events](#audit-events) — SOC 2 evidence collection.
 - [Admin plugin](#admin-plugin) — protecting mutating admin actions.
-- [Step-up vs. session rotation](#step-up-vs-session-rotation-819) —
+- [Step-up vs. session rotation](#step-up-vs-session-rotation) —
   knowing which primitive to reach for.
 - [When to use each](#when-to-use-each).
 
@@ -37,7 +37,7 @@ change, credential export — require a *fresh proof of identity* (password or
 second factor) recorded in the session within the last N minutes. The window
 is short enough to be meaningful and long enough not to be annoying.
 
-Step-up is **not** session rotation (#819). Rotating the session ID prevents
+Step-up is **not** session rotation. Rotating the session ID prevents
 fixation attacks at login; it does not re-verify identity after the fact.
 Step-up and session rotation are complementary and address different threats.
 
@@ -184,7 +184,7 @@ This wraps the entire admin router with a Tower middleware that checks the
 
 ---
 
-## Step-Up vs. Session Rotation (#819)
+## Step-Up vs. Session Rotation
 
 | | `Session::rotate_id()` | `#[step_up]` |
 |---|---|---|

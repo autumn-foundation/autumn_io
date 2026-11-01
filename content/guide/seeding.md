@@ -280,7 +280,7 @@ realistic value for one field: `fake::name()`, `fake::username()`,
 (at most `p - s` integer digits and at most `s` fractional digits); the
 factory `.fake()` selects it automatically for `decimal{p,s}` fields via the
 `#[decimal_shape]` attribute the generator emits, so seeded rows always fit
-the declared column (#2597). `fake::decimal()` stays the untyped
+the declared column. `fake::decimal()` stays the untyped
 `0.00..=9999.99` draw for ad-hoc use.
 
 ### Reproducible fake data

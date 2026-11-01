@@ -70,7 +70,7 @@ pub trait HistoryArchiver: Send + Sync + 'static {
 ```
 
 Implement `fetch` to make an archive readable through the management API and
-Vantage. See [Reading an archive back](#reading-an-archive-back-issue-1983).
+Vantage. See [Reading an archive back](#reading-an-archive-back).
 
 Payload fields in the document are in their stored form. With a payload codec
 on, they are codec envelopes (ciphertext). Retention does not decode payload
@@ -123,7 +123,7 @@ impl HistoryArchiver for FileSystemArchiver {
 ### Example: Archiving to AWS S3 (hand-written)
 
 The plugin crate ships S3 and GCS archivers. See
-[First-party S3 and GCS adapters](#first-party-s3-and-gcs-adapters-issue-1983).
+[First-party S3 and GCS adapters](#first-party-s3-and-gcs-adapters).
 This example shows the shape of a hand-written archiver only:
 
 ```rust
@@ -166,7 +166,7 @@ impl HistoryArchiver for S3Archiver {
 
 ---
 
-## First-party S3 and GCS adapters (issue #1983)
+## First-party S3 and GCS adapters
 
 The `autumn-harvest-plugin` crate ships adapters for `PayloadStore` and
 `HistoryArchiver`. The core crate keeps no cloud dependency.
@@ -251,12 +251,12 @@ The official MinIO images are no longer published. The suite uses
 
 ---
 
-## Reading an archive back (issue #1983)
+## Reading an archive back
 
 An archiver that implements `fetch` makes a pruned run readable again:
 
 - `GET /workflows/{id}/archived-history` returns the archived document.
-  Admin only. See [`docs/management-api.md`](/docs/harvest-management-api#archived-history-issue-1983).
+  Admin only. See [`docs/management-api.md`](/docs/harvest-management-api#archived-history).
 - Vantage shows it at `/ui/workflows/{id}/archived-history`. When an archiver
   is set, the "not found" page of a pruned run links there.
 
@@ -308,12 +308,12 @@ let harvest = autumn_harvest::HarvestBuilder::new()
     .build();
 ```
 
-### Per-tenant retention overrides (issue #1977)
+### Per-tenant retention overrides
 
 A tenant override keeps every run of one tenant for its own age. It matches
 the run's stored tenant, `harvest_workflow_executions.tenant`. A start by a
 tenant-bound caller sets that tenant. See
-[Tenant binding](/docs/harvest-security-posture#tenant-binding-issue-1977).
+[Tenant binding](/docs/harvest-security-posture#tenant-binding).
 
 ```rust
 use std::time::Duration;
@@ -334,7 +334,7 @@ let retention_config = RetentionConfig::with_max_age(Duration::from_secs(7 * 24 
   other tenants are then never deleted.
 - **Legal hold wins.** A held run is never deleted.
 - **A recorded fork keeps its lineage.** A run stays while an open recorded
-  fork has it in its fork lineage (issue #2122). See the
+  fork has it in its fork lineage. See the
   [fork runbook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/fork-a-run.md).
 - **Bounds.** The age has the type-override bounds, 1 s to 10 years. The key
   is 1 to 128 bytes of visible ASCII, with no spaces. Anything else makes
@@ -345,7 +345,7 @@ let retention_config = RetentionConfig::with_max_age(Duration::from_secs(7 * 24 
 
 ---
 
-## Partition export (issue #2009)
+## Partition export
 
 On the [partitioned layout](/docs/harvest-partitioned-events), the sweep drops an aged
 `harvest_events` partition when no live run owns a row in it. Register a
@@ -484,7 +484,7 @@ partitions. `history_with_codecs` decodes payload fields with your codec keys.
 
 ---
 
-## Orphaned payload blobs (issue #2123)
+## Orphaned payload blobs
 
 A write uploads its offloaded payloads before it opens its transaction. If the
 transaction rolls back, the blobs stay in the store with no
@@ -529,7 +529,7 @@ invisible, and the sweep deletes that blob.
 ### Telemetry
 
 Pruning telemetry is emitted dynamically:
-* `harvest.retention.deleted` counter tracks the number of workflow histories successfully purged from the database, **labeled by workflow type** (issue #737) so per-type retention overrides are confirmable (a long-retained type reads `0` until its own age is reached). Emitted for real deletions only — `dry_run` reports per-type would-delete counts on `GET /admin/retention` without emitting the counter.
+* `harvest.retention.deleted` counter tracks the number of workflow histories successfully purged from the database, **labeled by workflow type** so per-type retention overrides are confirmable (a long-retained type reads `0` until its own age is reached). Emitted for real deletions only — `dry_run` reports per-type would-delete counts on `GET /admin/retention` without emitting the counter.
 * Shard-level statistics are also observable in your metrics agent (gauges for processing duration and candidate scan sizes).
 
 ### Log Diagnosis

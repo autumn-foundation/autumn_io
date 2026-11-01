@@ -168,7 +168,7 @@ Both forms are equivalent. The attribute map is updated in the database before
 the workflow's next suspension, so filter results reflect the current phase
 within one worker poll cycle (< 1 s p95 under normal load).
 
-### Comparison and set predicates (issue #506)
+### Comparison and set predicates
 
 Equality containment answers "is this attribute exactly X". For range, set, and
 inequality questions, `GET /workflows` also accepts a repeatable
@@ -198,7 +198,7 @@ The predicates reuse the existing `idx_harvest_we_search` GIN index (no
 migration). See `docs/management-api.md` for the full grammar and
 `docs/sharding.md` for the cross-shard pushdown contract.
 
-### OR and groups (issue #1982)
+### OR and groups
 
 The `filter` parameter joins predicates with `AND`, `OR` and parentheses.
 `AND` binds tighter than `OR`:

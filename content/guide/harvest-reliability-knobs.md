@@ -38,7 +38,7 @@ full precedence, highest first:
    `without_default_activity_start_to_close()`
 
 The retry floor is **opt-in**. The `start_to_close` floor is not: it
-defaults to `DEFAULT_ACTIVITY_START_TO_CLOSE` (10 minutes, issue #1808). A hung
+defaults to `DEFAULT_ACTIVITY_START_TO_CLOSE` (10 minutes). A hung
 activity thus cannot hold a worker slot forever. The floor skips an activity
 that declares a `schedule_to_close` or a `heartbeat_timeout`, because each
 already bounds a running attempt. The `schedule_to_close` scanner skips a
@@ -131,7 +131,7 @@ requeuing — so the workflow sees a clean `HarvestError::Timeout { ScheduleToCl
 rather than an exhausted-retry failure. A timed-out attempt is the one
 exception: it keeps its own timeout type (see the next paragraph).
 
-**Timeouts retry per the retry policy (issue #1809).** A `start_to_close` or
+**Timeouts retry per the retry policy.** A `start_to_close` or
 `heartbeat_timeout` timeout ends one attempt. The task goes back to `PENDING`
 with the policy's backoff, as a handler failure does. Only the last attempt
 appends `ActivityTimedOut`, so the workflow sees the final outcome only. No
@@ -198,7 +198,7 @@ influences the transient `harvest_task_queue.scheduled_at` column, never
 `harvest_events`.
 
 **Interaction with a per-activity circuit breaker.** If the same activity also
-carries a `#[activity(circuit_breaker = ...)]` policy (issue #369), be aware
+carries a `#[activity(circuit_breaker = ...)]` policy, be aware
 that the breaker's rolling failure window only counts a failure toward
 tripping the circuit when it lands within `window` of the *prior* failure. A
 `retry_after` hint that regularly spaces consecutive attempts *wider* than the
@@ -267,7 +267,7 @@ weeks while recording only a handful of events — it never approaches the histo
 event-count threshold that `ctx.should_continue_as_new()` watches. But if it
 declares an `execution_timeout` for runaway protection, that hard timeout will
 eventually terminate it mid-flight even though it is perfectly healthy. To avoid
-that, `should_continue_as_new()` has a **second trigger** (issue #772): it also
+that, `should_continue_as_new()` has a **second trigger**: it also
 returns `true` once the run has consumed a configurable fraction (default
 `0.8`) of its `execution_timeout` budget. Checkpoint with `continue_as_new`
 *before* the hard deadline truncates you, carrying state forward into a fresh
@@ -303,7 +303,7 @@ replays to the same `continue_as_new` on every worker. See
 `examples/long_lived_entity_deadline.rs`.
 
 **Public `deadline()` is nominal; the CAN budget check accounts for pause
-extensions.** For a run that was **paused/resumed** (#383) or redriven, the
+extensions.** For a run that was **paused/resumed** or redriven, the
 engine pushes the run's *live* hard deadline (`deadline_at`, which the timeout
 scanner enforces) forward past `start + execution_timeout`. The public
 `ctx.deadline()`/`ctx.time_until_deadline()` deliberately stay on the **nominal**

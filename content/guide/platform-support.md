@@ -27,7 +27,7 @@ MSYS, no Git Bash required.
 | `autumn dev` | Edit/rebuild/reload works natively; the reload stops the app cooperatively so shutdown hooks (managed Postgres teardown) run. |
 | `autumn test` | Delegates to `cargo test`, which is first-class on Windows. |
 | `autumn serve (foreground)` | Builds and runs the app in the foreground, binding TCP per config. A console-control stop (a supervisor, or Windows shutting down) drains it the way SIGTERM does on Unix. |
-| `autumn serve --daemon / stop / status / restart` | Runs natively (#1639). The daemon binds its configured TCP address and records it in `serve.addr`; `stop` drains cooperatively before force-killing. State lives under `%LOCALAPPDATA%`. |
+| `autumn serve --daemon / stop / status / restart` | Runs natively. The daemon binds its configured TCP address and records it in `serve.addr`; `stop` drains cooperatively before force-killing. State lives under `%LOCALAPPDATA%`. |
 | `autumn serve install-service / uninstall-service` | Registers the daemon as a Windows service that starts at boot and restarts after a crash. Needs an elevated (Administrator) shell, like any service registration. |
 | `managed Postgres` | Boots and shuts down cleanly under `autumn dev`, `autumn serve --daemon` and a direct binary run. |
 | `autumn deploy check / plan` | Local-only: `plan` renders the unit and step list, `check` grades the config and probes SSH reachability with a portable TCP connect. Validate a deploy config here before running it from WSL2. |
@@ -144,7 +144,7 @@ inside [WSL2](https://learn.microsoft.com/windows/wsl/install).
 | --- | --- |
 | `autumn deploy up / rollback / status / maintenance` | These reach the host over `ssh`/`sh`, and `up`/`rollback`/`maintenance` stage secrets with Unix file modes; run them inside WSL2. |
 | `scripts/*.sh contributor gates` | The contributor gate scripts are bash; run them inside WSL2. |
-| `SystemTest browser tests` | Chromium version probing is satisfied by file existence on Windows (#1456); the browser suites themselves are gated behind the `system-tests` feature and are exercised on Linux. |
+| `SystemTest browser tests` | Chromium version probing is satisfied by file existence on Windows; the browser suites themselves are gated behind the `system-tests` feature and are exercised on Linux. |
 
 To use them, install WSL2 and work from a Linux shell:
 

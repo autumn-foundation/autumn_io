@@ -1,19 +1,19 @@
 +++
 title = "The in-flight replay-drift gate"
-description = "A determinism regression in a #[workflow] body does not fail at compile time and does not fail on a fresh run. It fails when an already-running execution is resumed by the new code — minutes or hours after the deploy — and by then the run is nd-blocked (issue #603) or dead-lettered."
+description = "A determinism regression in a #[workflow] body does not fail at compile time and does not fail on a fresh run. It fails when an already-running execution is resumed by the new code — minutes or hours after the deploy — and by then the run is nd-blocked or dead-lettered."
 order = 1550
 +++
 
 # The in-flight replay-drift gate
 
-> **Issue #798.** Export a stratified sample of the executions that are *in
+> Export a stratified sample of the executions that are *in
 > flight right now*, replay it against the candidate build, and block promotion
 > if any of them would diverge.
 
 A determinism regression in a `#[workflow]` body does not fail at compile time
 and does not fail on a fresh run. It fails when an **already-running**
 execution is resumed by the new code — minutes or hours after the deploy — and
-by then the run is nd-blocked (issue #603) or dead-lettered.
+by then the run is nd-blocked or dead-lettered.
 
 This gate closes that window. It is the only check that answers the question a
 deploy actually poses:
@@ -280,7 +280,7 @@ ReplayVerifier::new()
 ### Match the deployment's history policy
 
 `continue_as_new_threshold` is a **deployment** setting. A recorded position
-replays its recorded answer (issue #2080), so the threshold matters only where
+replays its recorded answer, so the threshold matters only where
 a replay reaches the end of the history. A workflow branching on
 `ctx.should_continue_as_new()` takes a different path there under a different
 threshold. Replaying with the default while your fleet runs another value tests
@@ -333,7 +333,7 @@ correct only if your deployment does not set a build id at all.
 
 ### Payload caps and the offload threshold
 
-Payload caps (issue #252) are **deployment** configuration, exactly like the
+Payload caps are **deployment** configuration, exactly like the
 history policy and the build id: they live in no `WorkflowEvent`, and the live
 worker enforces whatever its own `HarvestBuilder` configured. If your candidate
 build changes one, pass the candidate's values:
@@ -356,7 +356,7 @@ your deployment does not customise them. The two ways that bites:
   the gate has certified a build that breaks the very in-flight executions it
   sampled.
 * **An offload threshold is the false-RED direction.** A payload above the
-  threshold is offloaded (issue #524) rather than capped, so a gate that knows
+  threshold is offloaded rather than capped, so a gate that knows
   the cap but not the threshold reports drift that will never happen.
 
 Only a dispatch that is **not** already in recorded history consults the cap —
@@ -435,9 +435,9 @@ cap-raising workflow rejects a frontier dispatch the promoted worker will accept
 
 ### Deadline-sensitive workflows
 
-A workflow that calls `ctx.should_continue_as_new()` (issue #772) consults the
+A workflow that calls `ctx.should_continue_as_new()` consults the
 execution's live `deadline_at`, and that value **moves**: pausing an execution
-(issue #383) suspends the SLA clock, and resuming it pushes the deadline forward
+ suspends the SLA clock, and resuming it pushes the deadline forward
 by the pause span.
 
 The export is careful about this. Candidate discovery and the per-fixture
@@ -497,7 +497,7 @@ discarded with the runner. Do not `actions/upload-artifact` it without a short
 
 The export step needs a **read-only** credential. The route is classified
 `RouteClass::ReadOnly`, so a scoped API token minted with `read` scope
-(issue #942) or a principal holding the read-only operator role (issue #776)
+ or a principal holding the read-only operator role
 reaches it — a CI job never needs a mutate-capable credential to run this gate.
 
 ---
@@ -672,7 +672,7 @@ tightly (or skip the artifact entirely and replay in the same job), and mint the
 export credential `read`-scoped.
 
 If payload exposure is unacceptable in your environment, this gate is not the
-right check for you — prefer the server-side replay canary (#512), which replays
+right check for you — prefer the server-side replay canary, which replays
 in-process against live executions and never materializes a fixture.
 
 ---
@@ -691,12 +691,12 @@ you are about to promote*.
 
 | Check | Replays | Answers |
 |---|---|---|
-| **This gate** (#798) | A stratified sample of **in-flight** histories | "Will running executions survive this deploy?" |
-| `replay-verify` (#251), [`docs/replay-verify.md`](/docs/harvest-replay-verify) | A curated fixture directory of **completed** histories, strictly | "Does this change break the histories we chose to pin?" |
-| Replay canary (#512) | Live in-flight executions, server-side, post-deploy | "Is the build that is *already running* diverging?" |
-| `GET /workflows/{id}/replay-diagnosis` (#614) | **One** named execution | "Why is *this* run nd-blocked?" |
-| `harvest debug` (#949), [`docs/replay-debugger.md`](/docs/harvest-replay-debugger) | One history, interactively, step by step | "**Where exactly** did it diverge, and why?" |
-| Schema contract gate (#794), [`docs/workflow-schema-contract-guide.md`](/docs/harvest-workflow-schema-contract) | Nothing — static payload/serde diff | "Did a payload type change shape incompatibly?" |
+| **This gate** | A stratified sample of **in-flight** histories | "Will running executions survive this deploy?" |
+| `replay-verify`, [`docs/replay-verify.md`](/docs/harvest-replay-verify) | A curated fixture directory of **completed** histories, strictly | "Does this change break the histories we chose to pin?" |
+| Replay canary | Live in-flight executions, server-side, post-deploy | "Is the build that is *already running* diverging?" |
+| `GET /workflows/{id}/replay-diagnosis` | **One** named execution | "Why is *this* run nd-blocked?" |
+| `harvest debug`, [`docs/replay-debugger.md`](/docs/harvest-replay-debugger) | One history, interactively, step by step | "**Where exactly** did it diverge, and why?" |
+| Schema contract gate, [`docs/workflow-schema-contract-guide.md`](/docs/harvest-workflow-schema-contract) | Nothing — static payload/serde diff | "Did a payload type change shape incompatibly?" |
 
 They are complements, not substitutes. `replay-verify` uses **strict** replay
 because a completed history must replay to completion. This gate uses
@@ -746,12 +746,12 @@ worker does next — it is the run's real outcome, not a replay artefact.
 
 ## Where it sits in the deploy ladder
 
-1. Drain workers (#386)
+1. Drain workers
 2. Handler-coverage gate — [`docs/runbooks/safe-deploy.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/safe-deploy.md)
-3. Schema contract gate (#794)
-4. **This gate — in-flight replay drift (#798)**
-5. Replay canary (#512), post-deploy
-6. Non-determinism block alerting (#603)
+3. Schema contract gate
+4. **This gate — in-flight replay drift**
+5. Replay canary, post-deploy
+6. Non-determinism block alerting
 
 Steps 3 and 4 are the pre-cutover pair: #794 catches a payload *shape* change
 statically; this gate catches a *control-flow* change by actually replaying.
@@ -781,7 +781,7 @@ before removing a handler that still has in-flight work.
 
 **Exit 1 with a divergence.** Read `first_divergence` — it names the recorded
 event and what the new code emitted instead. Then feed the specific
-`execution_id` to `POST /workflows/{id}/replay-diagnosis` (#614) against
+`execution_id` to `POST /workflows/{id}/replay-diagnosis` against
 staging for the full picture, and see
 [`docs/workflow-determinism-guide.md`](/docs/harvest-workflow-determinism) for the
 remediation patterns (`ctx.patched`, `ctx.version`).

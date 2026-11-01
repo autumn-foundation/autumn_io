@@ -1,12 +1,12 @@
 +++
 title = "Partitioned harvest_events"
-description = "Issue #958. An opt-in physical layout for harvest_events that lets retention reclaim space by dropping partitions instead of deleting rows."
+description = "An opt-in physical layout for harvest_events that lets retention reclaim space by dropping partitions instead of deleting rows."
 order = 1680
 +++
 
 # Partitioned harvest_events
 
-**Issue #958.** An opt-in physical layout for `harvest_events` that lets
+An opt-in physical layout for `harvest_events` that lets
 retention reclaim space by **dropping partitions** instead of deleting rows.
 
 Nothing here changes what expires, when it expires, what an event looks like, or
@@ -68,8 +68,8 @@ The **whole retention pass** takes about the same wall time on both layouts
 the event-storage cost — from "inside the pass" to 99 ms, and from ~100,000 row
 deletes to zero — but the pass is dominated by a different, pre-existing cost:
 the **per-execution candidate loop**, which visits each expired execution
-individually to fire the `HistoryArchiver` hook (#345), re-check legal holds
-(#747) under a row lock, demote to a summary (#752), and clean up auxiliary
+individually to fire the `HistoryArchiver` hook, re-check legal holds
+ under a row lock, demote to a summary, and clean up auxiliary
 rows. That loop is required by the archiver contract (the hook must see each
 execution before its rows become unreachable), is unchanged by this work, and
 costs the same on both layouts.
@@ -136,7 +136,7 @@ constraint name, so callers cannot tell the layouts apart from the error.
 > insert instants — microseconds per cohort, against a split-brain that is
 > itself rare.
 >
-> **Decision (issue #1839): detect, do not prevent.** `harvest backup verify`
+> **Decision: detect, do not prevent.** `harvest backup verify`
 > reports such a pair as `duplicate_event_id`, an **Incoherent** finding. The
 > probe runs on the partitioned layout only. See
 > [ADR 0004](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0004-partitioned-duplicate-append-detection.md).
@@ -204,7 +204,7 @@ shard for the length of the scan, once per drop attempt, on every tick.
 A drop that deadlocks with a concurrent append into its own closed cohort, or
 that cannot get its lock in time, is reported blocked and retried next tick.
 
-**Legal holds (#747), per-type retention overrides (#737) and long-running
+**Legal holds, per-type retention overrides and long-running
 executions need no special-casing at all.** Each keeps its execution row alive,
 which keeps its rows owned, which blocks the drop. There is no second copy of
 the retention policy here to drift out of sync with the janitor's.
@@ -217,7 +217,7 @@ the sweeper find a cohort whose rows are all orphaned and drop it. A failed
 archive leaves the execution in place — and therefore leaves its partition in
 place too.
 
-### Export before the drop (issue #2009)
+### Export before the drop
 
 The partition export is a separate trait, `PartitionArchiver`, not the
 `HistoryArchiver` above. With one set, the sweep exports a droppable
@@ -225,7 +225,7 @@ partition, reads it back, and checks it. The drop then computes a row
 checksum under its `SHARE` lock. It drops only when the checksum matches the
 export. A failure keeps the partition and goes into `blocked`. After the
 first export, a sweep with no archiver on that shard drops nothing. See
-[Partition export](/docs/harvest-archival#partition-export-issue-2009).
+[Partition export](/docs/harvest-archival#partition-export).
 
 ---
 
@@ -249,7 +249,7 @@ execution leaves orphan event rows, and the sweeper is their garbage collector.
 Orphans are invisible to every read path in the engine: all of them filter by a
 `workflow_exec_id` the caller already resolved to a live execution.
 
-### The append-only guard (issue #1817)
+### The append-only guard
 
 The `harvest_events_append_only_trg` trigger rejects history rewrites on both
 layouts. `LIKE` copies no triggers, so each conversion reinstalls it. On the
@@ -257,7 +257,7 @@ partitioned layout it sits on the parent, and Postgres clones it onto each
 partition. The legacy table drops its own copy before `ATTACH`, because
 `ATTACH` fails on a trigger name that the partition already has. Each
 conversion also reinstalls the entity projection trigger
-`harvest_entity_state_projection_trg` (issue #2259). The legacy table drops
+`harvest_entity_state_projection_trg`. The legacy table drops
 its copy of that trigger before `ATTACH` too. The operator-trigger refusal
 exempts both triggers by their exact shape.
 
@@ -585,16 +585,16 @@ The sweeper reports every cohort it considered and left alone, with the reason:
   authoritative re-check taken under `SHARE` found an owner that appeared after
   the gate ran. Expected under load, and self-correcting.
 - `export failed: ...` — a `PartitionArchiver` is set and the upload or the
-  read-back failed (issue #2009). Only the retention runtime exports, so
+  read-back failed. Only the retention runtime exports, so
   this reason shows in `GET /admin/retention`, not in
   `harvest partition status`. Check the backend. The next tick tries again.
 - `changed since export` — a row changed between the export and the drop
-  (issue #2009). The sweep exports the partition again.
+. The sweep exports the partition again.
 - `export check exceeded its budget` — the row checksum under `SHARE` ran
-  past `exact_scan_timeout` (issue #2009). Raise the timeout or narrow the
+  past `exact_scan_timeout`. Raise the timeout or narrow the
   cohort width.
 - `export required, but no archiver is set` — this shard exported before,
-  and this sweep has no archiver (issue #2009). `harvest partition maintain`
+  and this sweep has no archiver. `harvest partition maintain`
   reports it on such a shard. Nothing drops until a process with the
   archiver sweeps, or until you delete the row in `harvest_partition_export`.
 - `another process holds the export lock of this shard` — an exporter holds

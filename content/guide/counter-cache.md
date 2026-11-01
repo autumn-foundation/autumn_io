@@ -42,7 +42,7 @@ single atomic `UPDATE posts SET comment_count = comment_count + $1 WHERE id = $2
 >
 > `examples/reddit-clone` used to carry the worked example here, on a
 > `Comment` model that `belongs_to` a `Post`. Comments there are now a
-> *polymorphic* association (#1367), which keeps `posts.comment_count` current
+> *polymorphic* association, which keeps `posts.comment_count` current
 > through this very mechanism but declares it with `#[commentable]` rather than
 > `#[belongs_to(..., counter_cache)]` — see
 > [Threaded Comments on Anything](commentable.md).
@@ -386,7 +386,7 @@ same default.
 
 The key also drives the `belongs_to` preload: the loader filters on and
 selects `parent_pk` instead of `<parent>::id`. Note that a `#[model]` parent
-still needs an `id` column today (#3033), so for a counter cache the override
+still needs an `id` column today, so for a counter cache the override
 currently serves counting through an alternate unique key; derivations onto a
 parent that is not a `#[model]` are unaffected by that limit.
 

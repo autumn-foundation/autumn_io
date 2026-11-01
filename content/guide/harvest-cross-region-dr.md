@@ -1,12 +1,12 @@
 +++
 title = "Cross-region disaster recovery"
-description = "Status: shipped (issue #954). Per-shard asynchronous replication to a standby region, a fencing mechanism with teeth, a measured RPO, and a failover procedure whose order is the safety argument."
+description = "Status: shipped. Per-shard asynchronous replication to a standby region, a fencing mechanism with teeth, a measured RPO, and a failover procedure whose order is the safety argument."
 order = 1710
 +++
 
 # Cross-region disaster recovery
 
-**Status: shipped (issue #954).** Per-shard asynchronous replication to a
+**Status: shipped.** Per-shard asynchronous replication to a
 standby region, a fencing mechanism with teeth, a measured RPO, and a failover
 procedure whose order is the safety argument.
 
@@ -131,7 +131,7 @@ CREATE SUBSCRIPTION harvest_dr_shard0
 > slot creation waits for older transactions to end, so it would wait for
 > itself. Across two real instances you can let it create its own slot.
 
-> **The partitioned `harvest_events` layout (#958) needs the partitioned layout
+> **The partitioned `harvest_events` layout needs the partitioned layout
 > on BOTH sides.** Two things break otherwise. `publish_via_partition_root`
 > defaults to false, so a partitioned table's rows publish under their leaf
 > partition names, which a standby built from the migrations has no tables for —
@@ -171,7 +171,7 @@ lose the number, not the engine.
 
 ### When the fence turns on
 
-The fence is **on by default wherever DR is configured** (issue #1823). The
+The fence is **on by default wherever DR is configured**. The
 default mode is `Auto`. You do not need to set anything.
 
 ```rust
@@ -245,7 +245,7 @@ The persist path issues no extra statement, and no DR sampler starts.
 shard is plain:
 
 - A worker **holds** the shard. It starts, registers and serves its other
-  shards, as before (issue #961). The held shard is pinned to a sentinel
+  shards, as before. The held shard is pinned to a sentinel
   generation that no row holds, so the worker claims nothing there and every
   append there fails closed. No worker task writes there either: no fleet
   row, heartbeat, rate-limit bucket or monitor tick. The database may be an
@@ -317,7 +317,7 @@ Two structural checks use the pinned value:
   not claim are untouched: no `attempt` burned, no state change, so a worker in
   the region that *does* hold authority picks them up. Every claim variant
   applies the same gate: by kind, by id, and the batched claim
-  (`claim_task_batched`, issue #1340). A unit test reads `queue.rs` and fails
+  (`claim_task_batched`). A unit test reads `queue.rs` and fails
   when a new `claim_task*` entry point skips it.
 - **Persist assert.** Every append takes the generation row `FOR SHARE` first.
   `FOR SHARE` is the load-bearing detail, not defensive noise: the fence bump
@@ -332,7 +332,7 @@ It stops with `HarvestError::ShardFenced` and increments
 
 ### Admin tooling
 
-Admin writes go through the same check as worker writes (issue #1823).
+Admin writes go through the same check as worker writes.
 
 - **Management API.** `HarvestRunner::start` pins every storage shard before
   it serves a request. That covers API-only nodes, which run no worker. Every
@@ -378,7 +378,7 @@ barrier stops in that time, and it ends the backends of the statements it
 sent.
 
 The bump also ends every decision owner lease on the database, in the same
-transaction (issue #2251, ADR 0009 decision 4). Workers of the promoted
+transaction (ADR 0009 decision 4). Workers of the promoted
 region then acquire at once. The role that runs the bump needs `SELECT` and
 `UPDATE` on `harvest_decision_owner`.
 
@@ -514,7 +514,7 @@ Three smaller limits, stated plainly:
 
 ## Why failover is not automatic
 
-Automated failover is **out of scope** (issue #1823). Failover stays
+Automated failover is **out of scope**. Failover stays
 operator-initiated, for four reasons:
 
 1. **Isolation is the safety step, and the engine cannot do it.** Step 1 of
@@ -656,7 +656,7 @@ documents:
 - **Parent/child skew.** A parent shard promoted from a later point may hold a
   `ChildWorkflowStarted` for a child whose shard was promoted from an earlier
   point and has no record of it. The parent's await never completes on its own.
-  The child is re-startable by id; the parent's `child_timeout` (issue #243) is
+  The child is re-startable by id; the parent's `child_timeout` is
   what stops it waiting forever.
 - **Schedules.** A schedule shard promoted from an earlier point may re-fire a
   run it already fired. Start idempotency (`harvest_start_idempotency`)

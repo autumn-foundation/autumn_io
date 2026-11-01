@@ -162,7 +162,7 @@ reference to the new-record struct so you can enrich or normalize it before
 it is written.
 
 The model's own `#[normalize]` and `#[validate]` rules have already run by
-then (#2586), so a field this hook *fills in* — the derived slug below — is
+then, so a field this hook *fills in* — the derived slug below — is
 judged before it exists. Do not put a `#[validate]` rule on a hook-populated
 column: it would reject every insert. Rules belong on what the caller supplies.
 

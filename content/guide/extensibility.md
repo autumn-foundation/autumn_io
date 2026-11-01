@@ -192,7 +192,7 @@ crates.
 
 Once you are distributing to someone else, the question stops being "can I
 reach this API" and becomes "will it still be here next release". Autumn
-answers that explicitly (issue #1601):
+answers that explicitly:
 
 - **What Autumn owes you.** Every plugin-facing API — including the four tier-1
   seams above — is declared `stable` or `experimental` in

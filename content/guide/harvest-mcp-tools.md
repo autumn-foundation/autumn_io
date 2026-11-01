@@ -144,7 +144,7 @@ execution id regardless of whether it names a plain workflow or a DAG run.
 ## Typed input schema — no second schema
 
 `start_foo`'s `inputSchema` embeds the workflow's published JSON Schema
-(issue #373, `with_input_schema_fn` / `with_schemas::<I, O, E>()`) as a
+(`with_input_schema_fn` / `with_schemas::<I, O, E>()`) as a
 self-contained `$defs` component:
 
 ```json
@@ -195,7 +195,7 @@ An already-terminal run yields the result frame immediately.
   body.
 - All four handle-taking tools transparently follow a `ContinuedAsNew`
   successor chain (the same chain-following `GET /workflows/{id}/result`
-  uses, issue #527) — a handle for a run that continued itself keeps
+  uses) — a handle for a run that continued itself keeps
   working. `foo_status`/`foo_watch` report the eventual successor's real
   state/output/error, never the sealed predecessor's dead-end
   `CONTINUED_AS_NEW` sentinel; `signal_foo`/`foo_update_bar` resolve to the
@@ -232,7 +232,7 @@ An already-terminal run yields the result frame immediately.
   directly instead of going through `/mcp`). Configure `api_with_auth`
   wherever the management API needs a credential and MCP tools are also
   enabled. With `.api(path)` (no auth), the mutating tool routes fail closed
-  with `401` outside the `dev` profile (issue #1802). That includes a
+  with `401` outside the `dev` profile. That includes a
   `tools/call` that `secure_mcp` admits, unless the caller has an admin
   session. They stay open in `dev` and under
   `allow_unauthenticated_mutations()`. Read tools stay open. A scoped API
@@ -244,7 +244,7 @@ An already-terminal run yields the result frame immediately.
   `tracing::warn!` at startup naming this exact gap. `secure_mcp` does not
   gate a generated route's own path.
 
-## MCP Tasks (issue #2005)
+## MCP Tasks
 
 A tool call can take longer than the client tool timeout, often 60 s. The
 `io.modelcontextprotocol/tasks` extension (MCP 2026-07-28) fixes this. The
@@ -309,7 +309,7 @@ loses nothing. A retry or continue-as-new chain is followed to the live run.
 
 The `result` holds the stored output. With a payload codec, the output is
 decoded only for a caller that the read-path gate admits: the
-`decode_payloads_on_read` opt-in plus an admin session (issue #608). Any
+`decode_payloads_on_read` opt-in plus an admin session. Any
 other caller sees the stored bytes, as on `{wf}_status`.
 
 A workflow error is a tool error, as the spec requires. Harvest never reports
@@ -322,7 +322,7 @@ start key. Put it in the `Idempotency-Key` header, or in
 start then dedups as in issue #808, and the retry gets the same task. A call
 with no key starts a new run each time.
 
-**Input.** The awaitables replay (issue #615) finds each parked
+**Input.** The awaitables replay finds each parked
 `wait_for_signal`. Each wait gets the key `{run id}:signal:{name}:{n}`, where
 `n` is the id of the last history event when the run parks. A later wait,
 also one after a timeout, comes after a new event, so it gets a new key. An
@@ -379,7 +379,7 @@ while the chain still runs. After the run is deleted, `tasks/get` answers
 
 **Auth.** The route takes the layers of a mutating tool route:
 `api_with_auth`, the custom-role gate, the read-only role gate, the
-fail-closed mutation gate (issue #1802) and the tenant refusal (issue #1977).
+fail-closed mutation gate and the tenant refusal.
 Every method on the route counts as a mutation, because the route can start
 and cancel runs. So a read-only principal cannot poll a task either. The
 route takes `application/json` only. A browser cannot send that cross-site
@@ -395,7 +395,7 @@ the `signal_{wf}` tool. The id is unguessable, but the management API shows
 it. Two callers with mutate rights on one run can also block each other's
 answers, for example with a signal that claims the next input key.
 
-## Calling a remote MCP task (issue #2006)
+## Calling a remote MCP task
 
 The sections above serve Harvest workflows to MCP clients. The other
 direction, a workflow that calls a task on a remote MCP or A2A server, is

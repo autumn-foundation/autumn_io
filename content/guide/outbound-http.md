@@ -113,7 +113,7 @@ client.get(url).no_retry().send().await?;
 ## Adaptive throttling
 
 When a host rejects most calls, more calls only add load. The client can stop
-them locally (Google SRE client-side throttling, issue #3068). It is off by
+them locally (Google SRE client-side throttling). It is off by
 default:
 
 ```toml

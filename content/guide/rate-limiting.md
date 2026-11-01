@@ -1,6 +1,6 @@
 +++
 title = "Rate limiting"
-description = "Autumn ships a single global token-bucket rate limiter ([security.rate_limit], keyed by client IP, authenticated principal, or API token) plus a per-route #[throttle] attribute for endpoints that need a stricter limit than the default. Both share the same limiter backend (memory or Redis), the same keying strategies (#794), and the same 429 Too Many Requests response shape (Retry-After, x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset, application/problem+json body)."
+description = "Autumn ships a single global token-bucket rate limiter ([security.rate_limit], keyed by client IP, authenticated principal, or API token) plus a per-route #[throttle] attribute for endpoints that need a stricter limit than the default. Both share the same limiter backend (memory or Redis), the same keying strategies, and the same 429 Too Many Requests response shape (Retry-After, x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset, application/problem+json body)."
 order = 800
 +++
 
@@ -10,13 +10,13 @@ Autumn ships a single global token-bucket rate limiter (`[security.rate_limit]`,
 keyed by client IP, authenticated principal, or API token) plus a per-route
 `#[throttle]` attribute for endpoints that need a stricter limit than the
 default. Both share the same limiter backend (memory or Redis), the same
-keying strategies (#794), and the same `429 Too Many Requests` response shape
+keying strategies, and the same `429 Too Many Requests` response shape
 (`Retry-After`, `x-ratelimit-limit`, `x-ratelimit-remaining`,
 `x-ratelimit-reset`, `application/problem+json` body).
 
 ## The global limiter
 
-The limiter is off in every profile, `prod` included (#3057). A limit keyed by
+The limiter is off in every profile, `prod` included. A limit keyed by
 IP address can block all clients behind one proxy, so configure
 `[security.trusted_proxies]` first. Then turn the limiter on.
 
@@ -151,7 +151,7 @@ accounting) and both produce the same OpenAPI response schema. When
 the sibling `#[secured]` / `#[step_up]` / `#[authorize]` guards), but the
 route macro recovers the original `Json<T>` return type from the guard's
 generated body, so response-schema generation does not depend on attribute
-order (#1677).
+order.
 
 ## Response shape
 

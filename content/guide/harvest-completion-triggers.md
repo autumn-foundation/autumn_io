@@ -17,7 +17,7 @@ When a workflow execution finishes in a terminal state:
 2. **Cross-Shard Out-of-Band Starts**: If the target routes to a different shard, the engine handles the start out-of-band by spawning an asynchronous Tokio task that obtains a database connection from `GLOBAL_SHARDED_POOL` for the target shard and inserts the target execution.
 3. **Idempotency & Deduplication**: To prevent duplicate executions in the event of retried transactions or worker crashes, the engine writes to the `harvest_completion_trigger_fires` ledger table on the source shard under a unique constraint: `(source_exec_id, trigger_id)`. A trigger fires exactly once per source execution run.
 
-A fork with the default `recorded` effects (issue #2000) fires no trigger, so it starts no target execution. A `live` fork fires triggers as usual. See the [fork runbook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/fork-a-run.md).
+A fork with the default `recorded` effects fires no trigger, so it starts no target execution. A `live` fork fires triggers as usual. See the [fork runbook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/fork-a-run.md).
 
 ### No new event variant
 
@@ -73,7 +73,7 @@ CREATE TABLE harvest_completion_trigger_fires (
 );
 ```
 
-Retention deletes a fire row once it is older than the summary horizon (issue #1676). The row stays while its outbox row exists or its source execution row exists. Without a finite summary horizon, no fire row is deleted.
+Retention deletes a fire row once it is older than the summary horizon. The row stays while its outbox row exists or its source execution row exists. Without a finite summary horizon, no fire row is deleted.
 
 ### `harvest_completion_trigger_outbox`
 Holds cross-shard pending target starts. A row is written on the source shard inside the terminal-commit transaction when the target routes to a different shard, and deleted once the target start succeeds (either by the immediate async spawn or by the `enforce_completion_triggers_outbox` sweeper). It is the durable backstop that makes cross-shard delivery at-least-once:
@@ -155,7 +155,7 @@ Triggers support projection mapping from the source workflow output payload:
 * **`Passthrough`**: Forwards the exact source workflow output payload to the target workflow's input.
 * **`Static(Value)`**: Provides a predefined, static JSON value as the target workflow's input.
 * **`Projection(String)`**: Projects a value out of the source output using dotted-path syntax (e.g. `results.summary.count`).
-* **`Outcome { projection: Option<String> }`** (issue #748): Assembles a structured **terminal-outcome envelope** from the source execution's *recorded* data — the terminal state, the source identity, the output (only on `COMPLETED`), and the error / cancel reason. This is the mapping to use for **failure-routed** triggers: a source that reached a non-`COMPLETED` terminal state has a `NULL` output, so `Passthrough`/`Projection` would deliver `null` and the target would start blind. The envelope is a pure read-side projection — **no new event variant, no migration**.
+* **`Outcome { projection: Option<String> }`**: Assembles a structured **terminal-outcome envelope** from the source execution's *recorded* data — the terminal state, the source identity, the output (only on `COMPLETED`), and the error / cancel reason. This is the mapping to use for **failure-routed** triggers: a source that reached a non-`COMPLETED` terminal state has a `NULL` output, so `Passthrough`/`Projection` would deliver `null` and the target would start blind. The envelope is a pure read-side projection — **no new event variant, no migration**.
 
   The full envelope (`projection = None`):
   ```json
@@ -178,7 +178,7 @@ Triggers support projection mapping from the source workflow output payload:
 
 ---
 
-## Conditional Triggers — Output Guards (issue #810)
+## Conditional Triggers — Output Guards
 
 A trigger can carry an optional **output guard**: a bounded, declarative condition evaluated
 **server-side at terminal-commit time** against the source workflow's recorded output JSON.
@@ -367,7 +367,7 @@ contract of every other additive behavioral column in Harvest (completion callba
 #605, soft SLA #487, debounce #499, schedule catchup #484): documented deploy ordering,
 not registration gating.
 
-### Rollout ordering — `Outcome` mappings need an upgraded fleet (issue #748)
+### Rollout ordering — `Outcome` mappings need an upgraded fleet
 
 The same worker-vs-registration rollout rule that governs guards (above) applies to the
 `Outcome` input mapping. The envelope is assembled by whichever **worker binary** commits
@@ -416,12 +416,12 @@ Returns a list of all registered completion triggers in the deployment (read fro
 ```
 
 The `condition` field is always present in responses (`null` = unconditional); see
-[Conditional Triggers](#conditional-triggers-output-guards-issue-810) for its shape.
+[Conditional Triggers](#conditional-triggers-output-guards) for its shape.
 
 ### 2. POST `/admin/completion-triggers`
 Dynamically registers or updates a completion trigger. The engine propagates trigger registrations across all shards.
 
-**`terminal_states`** accepts any of: `"Completed"`, `"Failed"`, `"Cancelled"`, `"TimedOut"`, `"Terminated"`. `"Cancelled"` matches a *cooperative* cancel (`POST /workflows/{id}/cancel`); `"Terminated"` matches a *forceful* operator/batch/scheduler terminate (`POST /workflows/{id}/terminate`, issue #504). They are distinct — a force-terminate does **not** fire a `"Cancelled"` trigger, and a cancel does not fire a `"Terminated"` trigger. Register both if you want a downstream workflow on either outcome.
+**`terminal_states`** accepts any of: `"Completed"`, `"Failed"`, `"Cancelled"`, `"TimedOut"`, `"Terminated"`. `"Cancelled"` matches a *cooperative* cancel (`POST /workflows/{id}/cancel`); `"Terminated"` matches a *forceful* operator/batch/scheduler terminate (`POST /workflows/{id}/terminate`). They are distinct — a force-terminate does **not** fire a `"Cancelled"` trigger, and a cancel does not fire a `"Terminated"` trigger. Register both if you want a downstream workflow on either outcome.
 
 **Request Body**:
 ```json
@@ -474,7 +474,7 @@ Completion triggers emit the `harvest.completion_trigger.fires` metric counter t
 | Metric | Instrument | Labels | Description |
 |--------|------------|--------|-------------|
 | `harvest.completion_trigger.fires` | Counter | `trigger`, `outcome` | Emitted on every completion-trigger evaluation. See the `outcome` values below. |
-| `harvest.completion_trigger.skipped` | Counter | `trigger`, `reason` | Emitted on output-guard skips (issue #810). `reason` is `condition_unmet` (guard evaluated false; emitted once per fresh skip — a redelivered, already-resolved skip records `deduped` on the fires counter instead) or `condition_invalid` (stored condition unparseable/over-cap — fail-closed, no fires row; the fire is lost for that terminal unless evaluation re-enters, so treat each occurrence as an alert to re-trigger the target by hand — see "Fail-closed on invalid stored conditions"). |
+| `harvest.completion_trigger.skipped` | Counter | `trigger`, `reason` | Emitted on output-guard skips. `reason` is `condition_unmet` (guard evaluated false; emitted once per fresh skip — a redelivered, already-resolved skip records `deduped` on the fires counter instead) or `condition_invalid` (stored condition unparseable/over-cap — fail-closed, no fires row; the fire is lost for that terminal unless evaluation re-enters, so treat each occurrence as an alert to re-trigger the target by hand — see "Fail-closed on invalid stored conditions"). |
 
 The `outcome` label takes one of:
 
@@ -482,7 +482,7 @@ The `outcome` label takes one of:
 |-----------|---------|
 | `started` | The target execution was successfully created (new run). |
 | `skipped` | The dedup ledger admitted the fire, but start-or-load resolved to an already-existing run rather than creating a new one (`created == false`). |
-| `deduped` | The `harvest_completion_trigger_fires` idempotency ledger already had a row for `(source_exec_id, trigger_id)` — a duplicate delivery of an already-resolved fire **or output-guard skip** (issue #810); no target was started. |
+| `deduped` | The `harvest_completion_trigger_fires` idempotency ledger already had a row for `(source_exec_id, trigger_id)` — a duplicate delivery of an already-resolved fire **or output-guard skip**; no target was started. |
 | `validation_failed` | The mapped input failed validation against the target workflow's published input schema; the target was not started. |
 | `payload_too_large` | The mapped input exceeded the target workflow's max input byte cap; the target was not started (permanent error). |
 

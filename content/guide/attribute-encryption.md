@@ -66,8 +66,8 @@ first: the backfill must run **before** the attribute is added.
 
 | Concern | Use |
 | --- | --- |
-| Secrets needed to **boot** the app (DB URL, API keys, signing secret) | [Credentials store](./credentials.md) (#682) |
-| Keeping PII out of **logs and traces** | [Log scrubbing](./logging-pii.md) (#697) |
+| Secrets needed to **boot** the app (DB URL, API keys, signing secret) | [Credentials store](./credentials.md) |
+| Keeping PII out of **logs and traces** | [Log scrubbing](./logging-pii.md) |
 | Sensitive **data columns** stored per-row in your tables | **Attribute encryption (this page)** |
 
 Attribute encryption *composes with* the other two: encryption key material lives
@@ -268,11 +268,11 @@ remove the attribute.
 
 ## Composition with other subsystems
 
-* **Logs & traces (#697):** encrypted column names are automatically added to the
+* **Logs & traces:** encrypted column names are automatically added to the
   log parameter scrubber. Their values never appear in trace/error parameter
   output. The wrapper types also redact in `Debug`.
 
-* **Record version history (#700):** encrypted columns are automatically treated
+* **Record version history:** encrypted columns are automatically treated
   as *sensitive* in the version diff. By default the history stores a
   `changed (encrypted)` marker — never the plaintext (which the in-memory model
   would otherwise serialize). Plaintext never enters the version-history table.

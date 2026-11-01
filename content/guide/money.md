@@ -206,7 +206,7 @@ table-lock conflicts return `SQLITE_LOCKED` **without consulting the busy
 handler at all** (this pool does not wire `sqlite3_unlock_notify`), so the
 pooled `PRAGMA busy_timeout = 5000` does not bound those waits: under real
 contention *all* contenders can fail instantly in the same round, with no wait
-between them (issue #2881). A bare "retry once" is not enough there — use an
+between them. A bare "retry once" is not enough there — use an
 exponential-backoff retry loop, or prefer a WAL-mode file database for hot
 write tables. Run each attempt through `Db::tx_immediate`, which takes the
 write lock up front with `BEGIN IMMEDIATE`, so the posting writers cannot all

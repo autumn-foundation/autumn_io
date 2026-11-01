@@ -90,7 +90,7 @@ async fn private_events(
 }
 ```
 
-## Resumable SSE with `Last-Event-ID` (unreleased — trunk-dev, issue #1356)
+## Resumable SSE with `Last-Event-ID` (unreleased — trunk-dev)
 
 `sse::stream_resumable` is a drop-in upgrade to `sse::stream` that survives a
 brief client disconnect. Every event carries an automatic epoch-tagged per-topic

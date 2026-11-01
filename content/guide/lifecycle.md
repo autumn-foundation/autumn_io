@@ -474,7 +474,7 @@ A sound lifecycle prints `Result: PASS` and exits `0`.
 > it recognizes `#[lifecycle(...)]`, a qualified `#[autumn_web::lifecycle(...)]`,
 > and a *same-file* alias (`use autumn_web::lifecycle as lc; #[lc(...)]`) — but
 > not an alias introduced in another file or laundered through a glob re-export
-> (tracked in #1925). A lifecycle it skips is still proven by the compiler; only
+>. A lifecycle it skips is still proven by the compiler; only
 > its entry in the report and the artifact is missing.
 
 ---

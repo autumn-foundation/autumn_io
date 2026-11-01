@@ -1,12 +1,12 @@
 +++
 title = "The logical handle"
-description = "Issue #843. Builds on workflow-level retry (#523) and the chained result wait (#842)."
+description = "Builds on workflow-level retry and the chained result wait."
 order = 1420
 +++
 
 # The logical handle
 
-*Issue #843. Builds on workflow-level retry (#523) and the chained result wait (#842).*
+*Builds on workflow-level retry and the chained result wait.*
 
 ## The problem
 
@@ -17,7 +17,7 @@ The predecessor stays sealed `FAILED` forever — that is what makes replay of t
 failed attempt reproducible.
 
 That leaves a caller holding the id `start` returned with a stale pointer. Before
-#843, the *result wait* already followed the chain (#842), but every interactive
+#843, the *result wait* already followed the chain, but every interactive
 and mutating operation did not:
 
 | Operation on a retried run's original id | Before #843 |
@@ -96,7 +96,7 @@ performs (unconsumed only). A continue-as-new is *voluntary*, and the workflow
 explicitly carries whatever it still needs into the successor's input; a retry
 carries nothing forward at all.
 
-**Idempotency keys (#521) keep their scope.** Dedupe stays keyed on
+**Idempotency keys keep their scope.** Dedupe stays keyed on
 `(workflow_exec_id, idempotency_key)`. Because a forwarded row takes its key with
 it, a caller's at-least-once re-send of an already-delivered key dedupes against
 the **live attempt** rather than being swallowed by a sealed predecessor. A key
@@ -180,7 +180,7 @@ failure mode routing closes for terminate.
 awaitables, the per-execution logs, the event stream, `/diagnose`, the registered
 `/queries` listing, and the DLQ are **specific-`exec_id` reads**. They must keep
 reporting the addressed row so an operator can inspect exactly the attempt that
-failed. Use `GET /workflows/{id}/run-chain` (#701) or the `retry_of_exec_id`
+failed. Use `GET /workflows/{id}/run-chain` or the `retry_of_exec_id`
 linkage to walk attempts explicitly.
 
 ### Operations deliberately **not** routed
@@ -193,14 +193,14 @@ rather than steering the live run:
 
 | Operation | Why it stays specific-`exec_id` |
 |---|---|
-| `POST /workflows/{id}/reset` (#148) | Forks a *new* run from a specific attempt's recorded history; the attempt is the input, not a pointer to be re-aimed |
-| `POST /workflows/{id}/erase-payloads` (#495) | Scrubs one terminal attempt's stored payloads. Erasing a logical run across a whole chain is a separate, wider operation |
-| `POST /workflows/{id}/legal-hold` (#747) | Holds one attempt's history against retention, same reasoning as erase |
-| `POST /workflows/{id}/triage` (#814) | Annotates one attempt's post-mortem record |
-| `.../activities/{id}/retry-now`, `.../fail-now` (#516, #765) | Address a specific task row, which belongs to exactly one attempt |
+| `POST /workflows/{id}/reset` | Forks a *new* run from a specific attempt's recorded history; the attempt is the input, not a pointer to be re-aimed |
+| `POST /workflows/{id}/erase-payloads` | Scrubs one terminal attempt's stored payloads. Erasing a logical run across a whole chain is a separate, wider operation |
+| `POST /workflows/{id}/legal-hold` | Holds one attempt's history against retention, same reasoning as erase |
+| `POST /workflows/{id}/triage` | Annotates one attempt's post-mortem record |
+| `.../activities/{id}/retry-now`, `.../fail-now` | Address a specific task row, which belongs to exactly one attempt |
 | `POST /dead-letters/{id}/replay`, `/redrive` | Address a DLQ row, likewise |
 
-`POST /workflows/{id}/rerun` (#777) takes the **opposite** policy and *rejects*
+`POST /workflows/{id}/rerun` takes the **opposite** policy and *rejects*
 a chain predecessor outright, with an error telling the operator to re-run the
 chain's latest attempt. That is deliberate: re-run mints a brand-new logical run
 from an attempt's inputs, so silently re-aiming it at a different attempt would
@@ -299,5 +299,5 @@ hot path of every mutating operator endpoint, and the costly case is the *miss*
 — proving "this `FAILED` run has no retry successor" — which without an index is
 a full sequential scan of the hub table. It mirrors
 `idx_harvest_wfx_continued_from`, the structurally identical successor-link index
-for the continue-as-new chain (#701). No column is added and no data is
+for the continue-as-new chain. No column is added and no data is
 rewritten.

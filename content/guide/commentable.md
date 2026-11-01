@@ -91,7 +91,7 @@ model and the `#[commentable]` attribute. Run it again for a second model and
 it adds only the column and the attribute — the table is shared, and the
 generator will not recreate it.
 
-### A `comments` table that is not the shared one (#2283)
+### A `comments` table that is not the shared one
 
 A `Comment` model from `autumn generate scaffold Comment body:Text` makes a
 plain `comments` table. The shared table has the same name. In that project,
@@ -141,7 +141,7 @@ a column whose name is not a valid Rust identifier, e.g. `post-id`). The macro
 cannot see `schema.rs`, so a primary key mapped through `sql_name` is not
 supported here: rename the column to a valid identifier.
 
-### Hard deletes (#2265)
+### Hard deletes
 
 The write-path check stops an unknown parent from getting a comment. It does
 not clean up an existing parent's comments when that parent is later
@@ -451,9 +451,9 @@ repository of the model soft-deletes.
 ## What this deliberately does not do
 
 - **Voting on comments** — composes with [`#[votable]`](votable.md).
-- **Rich-text bodies** — composes with the safe rich-text field (#1255).
+- **Rich-text bodies** — composes with the safe rich-text field.
   Bodies are plain text and are HTML-escaped on render.
-- **Live cross-client updates** — composes with model-change broadcast (#1336).
+- **Live cross-client updates** — composes with model-change broadcast.
 - **Moderation queues, spam scoring, edit history, @mentions, email-on-reply** —
   follow-ups.
 - **Paginate a thread.** `comment_thread` loads every live comment for the

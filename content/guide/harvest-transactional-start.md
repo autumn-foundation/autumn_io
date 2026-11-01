@@ -214,10 +214,10 @@ would otherwise accept for the same workflow. See the note below the table.
 | `WorkflowInfo` defaults (execution timeout, SLA clamp, concurrency key/limit, owner metadata) | Resolved from the registered `WorkflowInfo`, mirroring `POST /workflows/{name}/start` |
 | `WorkflowIdReusePolicy` / `WorkflowIdConflictPolicy` | `TransactionalStartOptions::with_reuse_policy` / `with_conflict_policy` |
 | Idempotency-key dedup (issue #808 semantics) | `TransactionalStartOptions::with_idempotency_key` — a duplicate key resolves to the existing run without a second write, and a *rolled-back* reservation is not permanently "burned": a retry with the same key after a genuine crash still succeeds fresh |
-| Published input-schema validation (issue #373) | Validated **before any database call** — a schema violation returns `HarvestError::InputValidationFailed` and writes nothing |
+| Published input-schema validation | Validated **before any database call** — a schema violation returns `HarvestError::InputValidationFailed` and writes nothing |
 | Memo / search attributes / parent id | `TransactionalStartOptions::with_memo` / `with_search_attrs` / `with_parent_id` |
-| Fleet-wide / queue / workflow-name admission gates (issue #618) | Checked synchronously via `GateMode::CheckCached` (not `Check`): a matching gate blocks with `HarvestError::AdmissionBlocked` and counts `harvest.admission.blocked`, same as the HTTP route. Unlike the HTTP route, `CheckCached` never fails closed — a caller with no `HarvestPlugin` running in-process (which is the sole owner of the gate cache) is completely unaffected rather than being permanently blocked. See `StartProducer::Transactional` in `admission_gate.rs` for the full rationale. |
-| Workflow-level retry attempt numbering (issue #523) | A fresh transactional start is attempt `1`, identical to every other fresh-start producer |
+| Fleet-wide / queue / workflow-name admission gates | Checked synchronously via `GateMode::CheckCached` (not `Check`): a matching gate blocks with `HarvestError::AdmissionBlocked` and counts `harvest.admission.blocked`, same as the HTTP route. Unlike the HTTP route, `CheckCached` never fails closed — a caller with no `HarvestPlugin` running in-process (which is the sole owner of the gate cache) is completely unaffected rather than being permanently blocked. See `StartProducer::Transactional` in `admission_gate.rs` for the full rationale. |
+| Workflow-level retry attempt numbering | A fresh transactional start is attempt `1`, identical to every other fresh-start producer |
 
 Authorization for a conflict policy that force-terminates a running prior
 execution is **not** separately gated here the way the HTTP route gates it
@@ -231,21 +231,21 @@ Every transactional start currently resolves the following fields to their
 class default, with **no per-call override**, even though `StartWorkflowParams`
 (and, for most of them, `POST /workflows/{name}/start`) supports one:
 
-- **Priority** (issue #249) — always `Priority::default()` (`Normal`); no
+- **Priority** — always `Priority::default()` (`Normal`); no
   `.with_priority(...)`.
-- **Delayed / scheduled-future start** (issue #322) — `start_at`/`delay` are
+- **Delayed / scheduled-future start** — `start_at`/`delay` are
   always `None`; a transactional start always begins immediately. There is no
   transactional equivalent of "start this workflow 10 minutes from now."
-- **Ambient context headers** (issue #481) — always `None`; propagating
+- **Ambient context headers** — always `None`; propagating
   string key/value context to child activities/workflows without threading it
   through function signatures is not available on this path.
-- **Per-execution completion-callback targets** (issue #605) — always `None`;
+- **Per-execution completion-callback targets** — always `None`;
   only builder-wide default callback targets (if configured) apply. A caller
   cannot register a one-off callback URL for a single transactionally-started
   run.
 - **W3C trace-context propagation** (`trace_context`) — always `None`; the
   request is not stitched into an existing distributed trace.
-- **Operator attribution / start-source correlation ref** (issue #740) —
+- **Operator attribution / start-source correlation ref** —
   `start_source_ref` and `started_by` are always `None`; only the bare
   `StartSource::Transactional` classifier is recorded.
 
@@ -281,7 +281,7 @@ yet. If your use case needs one of them, that is the extension point.
   client.start_workflow_transactional(conn, "throttled_workflow", &id, input, opts).await?;
   ```
 
-- **A registered unified DAG (issue #256) cannot be started this way.**
+- **A registered unified DAG cannot be started this way.**
   `POST /workflows/{name}/start` rejects a DAG name outright — it must go
   through `POST /dags/{name}/trigger`, the only path that runs
   `trigger_unified_dag`'s pause / `max_active_runs` admission checks and
@@ -365,7 +365,7 @@ organized cheapest-and-most-decisive first:
    reservation is not permanently "burned" — a retry with the same key still
    succeeds fresh), schema-validation-failure-aborts-without-writing, the
    debounce/batch/throttle rejection (all three policies, independently), the
-   unregistered-workflow-name rejection, and the admission-gate (issue #618)
+   unregistered-workflow-name rejection, and the admission-gate
    interaction — a matching gate blocks and writes nothing, an *unrelated*
    workflow name is unaffected by the same still-armed gate, and disarming the
    gate restores normal admission.

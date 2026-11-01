@@ -73,7 +73,7 @@ typo.
 Prometheus 3 stores a whole-second bucket bound such as `le="1"` as
 `le="1.0"`. The generated queries match both forms.
 
-The route and latency SLOs use the request-duration histogram (issue #3064).
+The route and latency SLOs use the request-duration histogram.
 Until your app exports it, those rules return no data, so their alerts never
 fire and their canary checks pass. `autumn slo generate` warns about each such
 SLO. The all-routes availability SLO works with the counters that every Autumn

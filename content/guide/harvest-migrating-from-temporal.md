@@ -209,7 +209,7 @@ names each gap plainly. It does not imply a workaround exists.
   Postgres shards. See [`sharding.md`](/docs/harvest-sharding). Each shard can
   replicate to a standby region with stock Postgres replication, and an
   operator runs a fenced failover. See
-  [`cross-region-dr.md`](/docs/harvest-cross-region-dr) (issue #954). Harvest does not
+  [`cross-region-dr.md`](/docs/harvest-cross-region-dr). Harvest does not
   fail a region over automatically, and it has no active-active writing.
   These limits are a real gap for a Temporal deployment that relies on
   global namespace replication for automatic failover.
@@ -292,11 +292,11 @@ below is a concrete task, not a vague warning.
    | Temporal timeout | Bounds | Harvest equivalent |
    |---|---|---|
    | `startToCloseTimeout` | One activity attempt | `#[activity(start_to_close = "...")]` |
-   | `scheduleToCloseTimeout` | An activity across all its retries | `#[activity(schedule_to_close = "...")]` (issue #378) |
+   | `scheduleToCloseTimeout` | An activity across all its retries | `#[activity(schedule_to_close = "...")]` |
    | `scheduleToStartTimeout` | Time an activity waits in the queue before a worker claims it | `#[activity(schedule_to_start = "...")]` |
    | `heartbeatTimeout` | Time between activity heartbeats | `#[activity(heartbeat_timeout = "...")]` |
-   | **Workflow Run Timeout** — bounds **one run** (one continue-as-new segment) | One workflow execution | `#[workflow(execution_timeout = "...")]` (issue #243) |
-   | **Workflow Execution Timeout** — bounds **the whole continue-as-new chain** | Every run from the first start to the final completion | `#[workflow(chain_execution_timeout = "...")]` (issue #617) |
+   | **Workflow Run Timeout** — bounds **one run** (one continue-as-new segment) | One workflow execution | `#[workflow(execution_timeout = "...")]` |
+   | **Workflow Execution Timeout** — bounds **the whole continue-as-new chain** | Every run from the first start to the final completion | `#[workflow(chain_execution_timeout = "...")]` |
 
    Read this table carefully. The two engines name the same pair of concepts
    in opposite order. Temporal's *Run* Timeout bounds one run. That is the
@@ -315,7 +315,7 @@ below is a concrete task, not a vague warning.
    workflow task lands on `"default"`, even when every one of its
    activities is routed correctly elsewhere. Cover every queue you use, on
    both sides, in the worker's queue list in `WorkerConfig`. Harvest also
-   routes within one queue by worker build ID (issue #171) and by
+   routes within one queue by worker build ID and by
    capability label. Use these if your Temporal deployment used Task Queue
    naming conventions for the same purpose.
 6. **Validate with `WorkflowReplayer` and `WorkflowTestEnv` before you ship.**
@@ -352,11 +352,11 @@ your whole application.
    workflow type: pause the Temporal Schedule first. Confirm it is
    quiesced. Decide what to do with any firings it buffered during that
    window, drop them or replay them by hand, before you enable the
-   harvest side. `CatchupPolicy` (issue #484) governs the harvest
+   harvest side. `CatchupPolicy` governs the harvest
    schedule's own backlog on its first tick; it has no visibility into
    firings the Temporal side already buffered, so that decision is yours
    to make first. Only then create or enable the mapped `WorkflowSchedule`.
-   `POST /admin/schedules/{id}/pause` (issue #229) keeps the harvest side
+   `POST /admin/schedules/{id}/pause` keeps the harvest side
    off until you are ready, the same way you paused the Temporal side.
 
    **A follow-up operation against one already-started execution — a
@@ -535,7 +535,7 @@ your whole application.
 
    Generate a fresh idempotency key for the start attempt instead.
    Persist it alongside the pending record, before the start call.
-   Pass it as the `Idempotency-Key` header (issue #808). Reconcile by
+   Pass it as the `Idempotency-Key` header. Reconcile by
    retrying that exact same call with that same key, not by querying
    the workflow id again. Harvest dedups a repeated key onto its own
    earlier same-key start. That dedup is scoped to `(workflow_name,
@@ -574,14 +574,14 @@ your whole application.
    retry for a genuine new start.
 
    This record names the current owner only. It matches harvest's own
-   by-id resolution (issue #805), which also resolves to the latest
+   by-id resolution, which also resolves to the latest
    run, not a specific historical one. A follow-up against a specific
    prior generation needs its own engine and execution id, captured
    from when that generation was current.
 
    Once you know the engine, resolve the current execution on it before
    you act. Harvest's `/workflows/by-id/{workflow_name}/{workflow_id}`
-   route family (issue #805) does this on the harvest side. It resolves
+   route family does this on the harvest side. It resolves
    a business id to its current run. A stale cached execution id can be
    left behind by a continue-as-new or a reset. This resolution keeps
    such a stale id from misdirecting a signal, a query, or a
@@ -675,7 +675,7 @@ your whole application.
    Derive that key before you route the request to either engine. Do not
    mint it inside the workflow. A retry of the same logical request can
    land on a different engine than the first attempt did, once its type's
-   routing flag flips. `ctx.new_uuid()` (issue #384) is deterministic only
+   routing flag flips. `ctx.new_uuid()` is deterministic only
    within one harvest execution's own recorded history. It cannot match a
    key a separate Temporal execution already used for the same request. So
    pass one caller-supplied key into both engines' version of the activity
@@ -758,7 +758,7 @@ your whole application.
    worked example's 30-day timer. The handoff then takes that long too.
    Accept that wait. Or, before you begin this type's cutover, change the
    workflow to race the wait against the signal instead. Harvest's
-   `ctx.receive_signal_timeout` (issue #476) is the primitive for that
+   `ctx.receive_signal_timeout` is the primitive for that
    race on the harvest side.
 
    Routing the `cancel` signal above is a special case of step 1's
@@ -785,7 +785,7 @@ your whole application.
    cancellation branches carry one. This guide's own worked example does
    not. Both of its cancellation branches return `()`. The worked example
    only demonstrates the forward direction. Read the final state instead
-   from a query handler against the closed execution (issue #612). This
+   from a query handler against the closed execution. This
    is the same fallback named above for a workflow whose return value
    carries nothing useful. Start a fresh Temporal execution from that
    read. This guide does not ship this reverse handoff. You build it
@@ -973,7 +973,7 @@ async fn subscription_renewal(
 - **Signal handler.** Temporal's `setHandler(cancelSignal, () => { ... })` is
   push-based and fire-and-forget. It fires whenever a matching signal
   arrives, at any point in the workflow body. Harvest's direct 1:1 port is
-  `ctx.register_signal_handler_raw` (issue #546). It is also push-based, and
+  `ctx.register_signal_handler_raw`. It is also push-based, and
   also fire-and-forget. Do not reach for `wait_for_signal` here. That is
   harvest's *pull*-based primitive. It matches Temporal's `condition()`
   helper instead. It blocks one code point, rather than reacting from

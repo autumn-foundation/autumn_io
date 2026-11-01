@@ -368,7 +368,7 @@ rendered ids. A dispatch always uses 4 MiB. A read that only shows a string
 does not copy it, and does not charge the budget. A copy costs about its JSON
 size, for example `set t = state(blob)`. A number or a list shown as text
 costs the text it makes. The module `constela::budget` holds this one
-budget. Each new path that keeps bytes must charge it (issue #2626).
+budget. Each new path that keeps bytes must charge it.
 
 Two more bounds apply at validation. A portal `target` is at most 256 bytes. A
 failed validation reports at most 256 faults (`MAX_DIAGNOSTICS`), and then one

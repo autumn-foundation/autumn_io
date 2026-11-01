@@ -1,12 +1,12 @@
 +++
 title = "Sticky Cross-Worker Routing"
-description = "Sticky routing keeps follow-up workflow tasks on the worker that already has the execution's event history in its in-process LRU cache (issue #235). It is on by default with a 5 s window (issue #1798)."
+description = "Sticky routing keeps follow-up workflow tasks on the worker that already has the execution's event history in its in-process LRU cache. It is on by default with a 5 s window."
 order = 1440
 +++
 
 # Sticky Cross-Worker Routing
 
-Sticky routing keeps follow-up workflow tasks on the worker that already has the execution's event history in its in-process LRU cache (issue #235). It is on by default with a 5 s window (issue #1798).
+Sticky routing keeps follow-up workflow tasks on the worker that already has the execution's event history in its in-process LRU cache. It is on by default with a 5 s window.
 
 ## Problem
 
@@ -26,11 +26,11 @@ A hit takes the entry out of the cache. Only a committed suspension, or a task t
 
 ## Resident workflows
 
-A cache entry also keeps the suspended workflow itself (issue #1798, step 2). The next decision on the same worker sends the new result to the parked handler future and polls it again. It does not replay history, so its replay work stays roughly constant as history grows.
+A cache entry also keeps the suspended workflow itself (step 2). The next decision on the same worker sends the new result to the parked handler future and polls it again. It does not replay history, so its replay work stays roughly constant as history grows.
 
 A warm decision must decide exactly as a cold replay would. The resident path therefore accepts a narrow set of suspensions:
 
-- The cycle awaits one command: an activity, a timer or a signal. Or it awaits two or more activities, such as a `futures::join!` or `try_join_all` of parallel tool calls (issue #2008).
+- The cycle awaits one command: an activity, a timer or a signal. Or it awaits two or more activities, such as a `futures::join!` or `try_join_all` of parallel tool calls.
 - Each other command is a marker, a side effect, progress, current details, a log line or a search-attribute upsert.
 - The context has no open `ctx.race()`, park token, push signal handler, held mutex, cancel request or non-determinism record, and no unread history.
 - A signal wait is not for a name that `try_wait_for_signal`, `try_receive_signal` or a drain probed with a scan that reached the end of history.
@@ -44,9 +44,9 @@ A delta can resolve only some activities of a join. The resume then parks the ot
 
 Any other delta declines. A decline drops the resident workflow and runs a cold replay, which is always correct. Joins with a timer or a signal next to another await, races, activity failures, updates, cancels and child workflows therefore still replay cold.
 
-**Observing it.** `harvest.workflow.resident` counts each decision attempt on a worker with resident state on (issue #2007). Its `outcome` label is `hit` for a resumed decision. Each other value names why the decision replayed: `cold`, `declined`, `multi_await`, `race`, `mutex`, `hot_swap`, `blocked` or `unsupported`. The hit rate is `hit` over all outcomes. A resumed cycle also records `harvest.replay = false` on its `harvest.workflow.execute` span. A decline logs `resident workflow declined; replaying cold (issue #1798)` at `debug` level, with the `ResumeDeclined` reason.
+**Observing it.** `harvest.workflow.resident` counts each decision attempt on a worker with resident state on. Its `outcome` label is `hit` for a resumed decision. Each other value names why the decision replayed: `cold`, `declined`, `multi_await`, `race`, `mutex`, `hot_swap`, `blocked` or `unsupported`. The hit rate is `hit` over all outcomes. A resumed cycle also records `harvest.replay = false` on its `harvest.workflow.execute` span. A decline logs `resident workflow declined; replaying cold (issue #1798)` at `debug` level, with the `ResumeDeclined` reason.
 
-`harvest.workflow.resident.duration` times each of these decisions, with the same labels (issue #2257). The clock starts before the history load and stops at the end of the first drive. The window also holds the wake ingest and the pre-drive writes. The p99 of `outcome="cold"` is the cold p99 of the stage 2 gate in [`docs/rnd/2026-10-22-stage-2-gate.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/rnd/2026-10-22-stage-2-gate.md).
+`harvest.workflow.resident.duration` times each of these decisions, with the same labels. The clock starts before the history load and stops at the end of the first drive. The window also holds the wake ingest and the pre-drive writes. The p99 of `outcome="cold"` is the cold p99 of the stage 2 gate in [`docs/rnd/2026-10-22-stage-2-gate.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/rnd/2026-10-22-stage-2-gate.md).
 
 **Limits.**
 
@@ -57,7 +57,7 @@ Any other delta declines. A decline drops the resident workflow and runs a cold 
 
 ## Owner mode replaces stickiness
 
-Owner mode (issue #2252, [ADR 0009](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0009-decision-owner.md)) gives each execution one owner worker. It replaces the sticky lease for workflow tasks. Activity tasks do not change.
+Owner mode ([ADR 0009](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0009-decision-owner.md)) gives each execution one owner worker. It replaces the sticky lease for workflow tasks. Activity tasks do not change.
 
 - **One owner per partition.** Each database has 512 decision partitions. The partition of an execution is a hash of its `workflow_id`. A worker holds a lease on each partition that it owns.
 - **Owned take.** Only the owner takes a workflow task of its partitions. The sticky gate does not apply to a workflow row, and the park writes no pin. So no window expires, and every decision of an execution runs on its owner.
@@ -67,7 +67,7 @@ Owner mode (issue #2252, [ADR 0009](https://github.com/autumn-foundation/autumn-
 - **Who owns.** A worker with no workflow slot or no workflow type never owns a partition. It still claims activity tasks.
 - **Failover.** A crashed owner drops out of the live owners within 3 s. Its leases lapse after the TTL, 10 s by default. A peer scans just after that lease end and acquires its partitions. A new owner starts cold. [`performance-owner-failover.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/performance-owner-failover.md) records the measured bounds.
 - **Fence.** Each decision commit checks the owner's lease epoch. A stale owner cannot write. See [ADR 0009](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0009-decision-owner.md).
-- **Decider.** The owner does not claim its workflow tasks through the claim loop (issue #2255). An owner decider takes each one by its execution, after an owner wake or a scan of its partitions. It takes them in [claim order](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/operations/claim-order.md): priority, then the due time with the 30 s new-start handicap (issue #2308). Where it runs, the claim loops claim activities only. A worker with queue weights, fairness keys or a nonzero `priority_aging_secs` runs no decider. A decider runs only on a database with an owner wake listener. Without a decider, the claim loops keep the owned claim of issue #2252. [`performance-owner-decider.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/performance-owner-decider.md) records the claim counts and the throughput.
+- **Decider.** The owner does not claim its workflow tasks through the claim loop. An owner decider takes each one by its execution, after an owner wake or a scan of its partitions. It takes them in [claim order](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/operations/claim-order.md): priority, then the due time with the 30 s new-start handicap. Where it runs, the claim loops claim activities only. A worker with queue weights, fairness keys or a nonzero `priority_aging_secs` runs no decider. A decider runs only on a database with an owner wake listener. Without a decider, the claim loops keep the owned claim of issue #2252. [`performance-owner-decider.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/performance-owner-decider.md) records the claim counts and the throughput.
 
 | | Sticky routing | Owner mode |
 |---|---|---|
@@ -98,7 +98,7 @@ Workers read the switch about once a second. A worker in owner mode still caches
 
 ### Owner disk cache
 
-An owner can also keep the history of each live run in a local file (issue #2258, [ADR 0012](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0012-owner-disk-cache.md)). A memory miss then reads the file and the Postgres delta, not the full history. A disk hit holds no resident workflow, so it still replays.
+An owner can also keep the history of each live run in a local file ([ADR 0012](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0012-owner-disk-cache.md)). A memory miss then reads the file and the Postgres delta, not the full history. A disk hit holds no resident workflow, so it still replays.
 
 ```rust
 let worker = WorkerConfig::default().with_owner_disk_cache("/var/cache/harvest");
@@ -114,7 +114,7 @@ let worker = WorkerConfig::default().with_owner_disk_cache("/var/cache/harvest")
 
 ### Entity SQL projection
 
-An owner can also keep the last state snapshot of each live entity in its disk cache file (issue #2260). User code then runs read-only SQL over the state of one entity.
+An owner can also keep the last state snapshot of each live entity in its disk cache file. User code then runs read-only SQL over the state of one entity.
 
 ```rust
 let config = WorkerConfig::default()
@@ -171,7 +171,7 @@ let worker = WorkerConfig::default().with_resident_workflows(false);
 A pin never blocks progress for longer than one sticky window.
 
 - **Crash.** The pin stays until `sticky_until` passes. A peer then claims the task. A wake re-arms the pin of a parked task, so each execution pinned to the dead worker waits up to one window at its next wake. With the default window, that is up to 5 s.
-- **Graceful shutdown.** The worker releases its pins when it starts to drain, and again after the drain (issue #1798). A wake during the drain does not re-arm a released pin. Peers can claim pending tasks at once, and a parked task as soon as it wakes. The release keeps the pins of worker sessions, because a session pin is a hard pin (issue #606). After the drain the worker also empties its `WorkflowCache` and stops resident capture. A stopped `Worker` that a caller still holds then keeps no parked workflow in memory.
+- **Graceful shutdown.** The worker releases its pins when it starts to drain, and again after the drain. A wake during the drain does not re-arm a released pin. Peers can claim pending tasks at once, and a parked task as soon as it wakes. The release keeps the pins of worker sessions, because a session pin is a hard pin. After the drain the worker also empties its `WorkflowCache` and stops resident capture. A stopped `Worker` that a caller still holds then keeps no parked workflow in memory.
 
 The release is best effort. If it fails, the pins expire after one sticky window. A decision that still runs when the drain times out can pin its task again when it parks. That pin also expires after one window.
 
@@ -183,7 +183,7 @@ Each release is one `UPDATE` per pool. At worst it scans all `RUNNING` rows of t
 |--------|------|-------------|
 | `harvest.workflow.cache_hit` | counter | Task served from in-process LRU cache (delta load). The task resumes the resident workflow or replays the cached history. |
 | `harvest.workflow.cache_miss` | counter | Task required a full history reload from Postgres. |
-| `harvest.workflow.resident` | counter | One per decision with resident state on (issue #2007). The `outcome` label is `hit`, or the reason why the decision replayed. Labels: `workflow`, `queue`, `outcome`. |
+| `harvest.workflow.resident` | counter | One per decision with resident state on. The `outcome` label is `hit`, or the reason why the decision replayed. Labels: `workflow`, `queue`, `outcome`. |
 
 All three metrics carry a `workflow` label (the workflow name). `execution.id` is deliberately excluded per ADR-0001 §7 (cardinality).
 
@@ -230,5 +230,5 @@ A resident entry also holds the parked handler future and its context. The conte
 - For short-lived workflows that complete in a single task (no suspension), sticky routing has no effect — there is no follow-up task to benefit from the warm cache.
 - Keep `lease_ttl` short. A restarted worker starts with a cold cache, so a long window does not help a restart. After a crash, each pinned execution waits up to one window. A graceful shutdown adds no wait.
 - **Timers.** Do not raise `lease_ttl` to cover long timers. A timer task that becomes due after `sticky_until` is claimable by any worker, and that costs one cold load. A long window costs more: after a crash, it blocks each pinned execution for that long.
-- **Redis dispatch.** A worker that is not the owner hands a pinned reference on after one poll interval, with no backoff, until the owner claims it or the pin expires (issue #1798). See `docs/operations/redis-dispatch.md`.
+- **Redis dispatch.** A worker that is not the owner hands a pinned reference on after one poll interval, with no backoff, until the owner claims it or the pin expires. See `docs/operations/redis-dispatch.md`.
 - Watch the `harvest.workflow.cache_miss` counter during rolling deploys. It spikes as executions move to new workers, then settles as the new workers warm their caches.

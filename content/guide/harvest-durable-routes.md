@@ -207,7 +207,7 @@ offset `9223372036854775807`. Its id is `<attempt>.9223372036854775807`. See
 
 ### Live chunks
 
-`.live()` adds the live layer to the same stream (issue #2268). An activity
+`.live()` adds the live layer to the same stream. An activity
 of the run sends live chunks with `ActivityContext::publish_progress`, for
 example the tokens of a model call. Each one goes out as an `activity`
 frame:
@@ -229,7 +229,7 @@ data: {"_harvest_activity":{"activity_id":"…","activity_type":"agent_model_tur
 - Turn it on only when the caller may see every live chunk of the run.
 
 A durable agent sends its live tokens and the durable text of each turn
-this way. See [`agent-adapter.md`](/docs/harvest-durable-agents#live-tokens-issue-2268).
+this way. See [`agent-adapter.md`](/docs/harvest-durable-agents#live-tokens).
 
 ### Resume
 
@@ -313,7 +313,7 @@ and `Last-Event-ID`.
 - The `harvest.durable_route` span records the outcome `stream` when the
   stream opens. The stream logs never hold a chunk.
 - The chunks are plain JSON at rest. See
-  [durable streams](/docs/harvest-streaming-progress#durable-mode-issue-1974).
+  [durable streams](/docs/harvest-streaming-progress#durable-mode).
 
 ## With Autumn's idempotency layer
 
