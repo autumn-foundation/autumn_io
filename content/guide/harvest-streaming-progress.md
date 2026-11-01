@@ -1,12 +1,12 @@
 +++
 title = "Live workflow output streaming"
-description = "Issues #791 and #1974. Two modes stream author-defined output from a workflow:"
+description = "Two modes stream author-defined output from a workflow:"
 order = 1400
 +++
 
 # Live workflow output streaming
 
-*Issues #791 and #1974.* Two modes stream author-defined output from a workflow:
+** Two modes stream author-defined output from a workflow:
 
 | Mode | Publish | Read | Stored? | Resume? | Slow client |
 |---|---|---|---|---|---|
@@ -15,10 +15,10 @@ order = 1400
 
 Use the best-effort mode when a lost chunk does not matter. Use the durable
 mode when a client must see every chunk, for example LLM token streaming with
-reconnects. See [Durable mode](#durable-mode-issue-1974) below. The rest of
+reconnects. See [Durable mode](#durable-mode) below. The rest of
 this page up to that section describes the best-effort mode.
 
-*Issue #791.* An **ephemeral, best-effort live-output side channel** for workflow
+** An **ephemeral, best-effort live-output side channel** for workflow
 authors: an AI agent streaming tokens, a long import reporting per-item progress,
 any interactive flow that wants to push incremental, author-defined output to a
 waiting client while the durable run is still executing — **without** standing up
@@ -63,10 +63,10 @@ Where it fits among the neighboring read surfaces:
 | Surface | Direction | Shape | Audience | Durable? |
 |---|---|---|---|---|
 | **`ctx.publish_progress` + `GET /stream`** (this) | push | ordered author-defined chunks, live | end-user | no (ephemeral) |
-| [`set_current_details`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/architecture.md#current-details--operator-status-breadcrumb-issue-593) (#473/#593) | pull | one overwriting status string | operator/end-user | yes (a column) |
-| Engine-event SSE tail (#324) | push | engine machinery (`ActivityScheduled`/…) | **operator only** (admin-gated) | reads durable events |
-| Await-completion long-poll (#527) | pull | terminal result only | end-user | yes (the result) |
-| Durable per-execution logs (#790) | pull | persisted triage record | operator | yes |
+| [`set_current_details`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/architecture.md#current-details--operator-status-breadcrumb-issue-593) | pull | one overwriting status string | operator/end-user | yes (a column) |
+| Engine-event SSE tail | push | engine machinery (`ActivityScheduled`/…) | **operator only** (admin-gated) | reads durable events |
+| Await-completion long-poll | pull | terminal result only | end-user | yes (the result) |
+| Durable per-execution logs | pull | persisted triage record | operator | yes |
 
 Use `publish_progress` when you want **live, incremental, author-defined
 content** streamed to a client. Use `set_current_details` for a single
@@ -110,7 +110,7 @@ This is a **product-UX channel, not an audit record.**
 - **No backfill, no replay of chunks, no at-least-once.** A subscriber that
   connects late does not receive earlier chunks. There is no buffering for late
   subscribers and no gap-filling across a reconnect — durable per-execution logs
-  (#790) are the separate primitive for a persisted, replayable record.
+ are the separate primitive for a persisted, replayable record.
 - **Dropped under back-pressure from a slow-but-connected client.** The SSE
   producer sends chunks **non-blocking**: if a slow subscriber lets the bounded
   per-stream buffer fill, the *excess* chunks are **dropped** rather than
@@ -137,7 +137,7 @@ Returns `text/event-stream`. Frames, in publish order:
 | Frame | `id:` | `data:` | Meaning |
 |---|---|---|---|
 | `event: progress` | the chunk's `seq` | the raw chunk JSON (exactly what you published) | one published chunk |
-| `event: activity` | — | the activity envelope and the chunk | one live chunk from an activity. See [From an activity](#from-an-activity-issue-2268) |
+| `event: activity` | — | the activity envelope and the chunk | one live chunk from an activity. See [From an activity](#from-an-activity) |
 | `event: end` | — | `{"reason": "<terminal-state>"}` | the workflow reached a terminal state; stream closes |
 | `event: error` | — | `{"error": "listen_connection_closed"}` | the underlying `LISTEN` connection dropped; stream closes |
 
@@ -198,7 +198,7 @@ What a subscriber should do:
 
 The stream route is **deliberately not** `require_admin`. It is an
 **end-user-facing** read path — an app's users stream their own workflows —
-distinct from the admin-only engine-event tail (#324).
+distinct from the admin-only engine-event tail.
 
 It inherits the general `api_with_auth` middleware you configure on the Harvest
 API, exactly like the other management routes. **If you configure no auth, the
@@ -222,7 +222,7 @@ Embedders should rate-limit stream opens and/or cap concurrent streams per user.
 A global concurrent-stream cap is a possible future enhancement; today it is the
 embedder's responsibility.
 
-## Durable mode (issue #1974)
+## Durable mode
 
 The durable mode stores each chunk and lets a reader resume at any offset. The
 best-effort mode stays the default.
@@ -365,7 +365,7 @@ data: {"reason":"completed"}
 In a no-DB test, `TestRunOutcome::recorded_durable_progress()` returns the
 chunks that the run would store.
 
-## From an activity (issue #2268)
+## From an activity
 
 An activity can send live chunks while it runs, for example the tokens of a
 model call:
@@ -428,7 +428,7 @@ A live chunk is not the answer. The activity result is. For an answer that
 a reconnecting reader must get whole, publish it from the workflow with
 `publish_durable_progress` when the activity completes. A durable agent does
 this with `AgentTask::stream`. See
-[`agent-adapter.md`](/docs/harvest-durable-agents#live-tokens-issue-2268).
+[`agent-adapter.md`](/docs/harvest-durable-agents#live-tokens).
 
 A durable route gives both layers on one stream: `.stream()` sends the
 durable chunks, and `.live()` adds the `activity` frames. See
@@ -443,13 +443,13 @@ chunk. Without a sink and without a database, a chunk drops.
 Explicitly **not** provided by the best-effort mode (see the issue for rationale):
 
 - **Durable persistence or replay of chunks** — use the
-  [durable mode](#durable-mode-issue-1974).
+  [durable mode](#durable-mode).
 - **At-least-once / exactly-once delivery, cross-reconnect ordering guarantees,
   or buffering for late subscribers** — best-effort only. The durable mode
   gives ordered, at-least-once delivery with backfill.
-- **Final-result delivery** — use the await-completion long-poll (#527).
+- **Final-result delivery** — use the await-completion long-poll.
 - **Snapshot state reads** — use a query handler or `set_current_details`
-  (#473/#593).
+.
 - **Client → workflow streaming** — that is signals and updates.
 - **Cross-shard fan-in of one logical stream** — a stream is scoped to a single
   `exec_id` on its owning shard.
@@ -460,7 +460,7 @@ Explicitly **not** provided by the best-effort mode (see the issue for rationale
   that streams the durable chunks of a keyed run, behind the app's own auth.
 - `autumn-harvest/examples/streaming_agent.rs` — a worked AI-agent-shaped example
   that publishes per-step chunks and documents the `curl -N` consumer.
-- [`set_current_details`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/architecture.md#current-details--operator-status-breadcrumb-issue-593) (#473/#593) — the single-value pull status
+- [`set_current_details`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/architecture.md#current-details--operator-status-breadcrumb-issue-593) — the single-value pull status
   companion.
-- Engine-event SSE tail (#324) — the admin-only operator triage stream.
-- Await-completion long-poll (#527) — terminal result delivery.
+- Engine-event SSE tail — the admin-only operator triage stream.
+- Await-completion long-poll — terminal result delivery.

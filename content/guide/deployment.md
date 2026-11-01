@@ -920,7 +920,7 @@ surprises:
 
   Stderr text only; the failure and its exit code are unchanged.
 
-- **A failed single-host deploy now names a migrated schema (#2276).** A deploy
+- **A failed single-host deploy now names a migrated schema.** A deploy
   can fail at or after `migrate` and before the cutover. The candidate is torn
   down, but the migration stays applied. The error now has one more line:
 
@@ -955,7 +955,7 @@ and `--no-rollback`; no existing flag changed meaning.
 
 The `/ready` gate finds a release that does not start. It does not find a
 release that starts and then fails real requests. The bake finds this problem
-(issue #3069). After each host cuts over, `autumn deploy up` samples the new
+. After each host cuts over, `autumn deploy up` samples the new
 release. It rolls the host back on a bad result.
 
 The bake is off by default. Turn it on in `autumn.toml`:
@@ -1548,7 +1548,7 @@ online-safe snapshot of the file with no external tools.
   provisioned on the target separately. The file is rebuilt on every `deploy
   up`, so hand-added entries do not persist.
 - **Your project's `autumn.toml` is deployed**
-  ([#1952](https://github.com/autumn-foundation/autumn/issues/1952)). `autumn deploy up`
+. `autumn deploy up`
   uploads your `autumn.toml` (and the profile sibling `autumn-<profile>.toml`
   when present) into the **per-release directory** at mode `0600` (owner-only, so
   secrets are never exposed to other local accounts) and sets
@@ -1581,7 +1581,7 @@ online-safe snapshot of the file with no external tools.
 - **Host identity is compared literally.** Duplicate `[deploy] hosts` entries are
   refused after trimming, but two DNS names for the same machine are not detected
   — the same limitation `autumn migrate` has for duplicate target URLs.
-- **Remote state is updated step-by-step, not transactionally** (#1938). The
+- **Remote state is updated step-by-step, not transactionally**. The
   `current` symlink and the live/previous-release markers are written by
   individual SSH commands, so an interrupted deploy can leave state mid-flight;
   a subsequent `autumn deploy up` or `autumn deploy rollback` is the intended
@@ -1600,7 +1600,7 @@ online-safe snapshot of the file with no external tools.
 An app that uses the [autumn-media](../../autumn-media-plugin/README.md) plugin
 (RTMP/WHIP ingest, HLS/WebRTC playback, recording) can have `autumn deploy`
 provision **MediaMTX** as a host **systemd unit** on the same box — exactly as it
-already provisions kamal-proxy (#2051). It is **opt-in and disabled by default**,
+already provisions kamal-proxy. It is **opt-in and disabled by default**,
 so a non-media project is byte-for-byte unaffected.
 
 Enable it in `autumn.toml` (or a profile / `autumn-<profile>.toml` layer):
@@ -2160,7 +2160,7 @@ terraform apply
 The Container App and migration job both start from a public placeholder
 image (`bootstrap_image` — Container Apps must pull *some* image to create a
 first revision, and a brand-new ACR has none yet). The placeholder **app**
-never gets production credentials (#2314): `main.tf` creates the app with no
+never gets production credentials: `main.tf` creates the app with no
 managed identity, no registry and no secret refs. The scaffolded
 `azure-cutover.sh` copies them from the migration job and sets the real image
 in one write. A Key Vault secret that you add to the job must use a
@@ -2189,7 +2189,7 @@ app: Azure can rewrite these refs
 ([azure-container-apps#1705](https://github.com/microsoft/azure-container-apps/issues/1705)),
 and such a revision cannot start. External
 ingress stays **disabled** until the new revision runs the real image and is
-the only active revision (#2312). The script saves the ingress before it
+the only active revision. The script saves the ingress before it
 disables it, and sends it back, so custom domains, IP restrictions and CORS
 settings stay. It also keeps that snapshot in the app's `autumn-ingress-*`
 tags until the ingress is back. If a run stops after the disable (for

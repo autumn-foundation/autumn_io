@@ -55,7 +55,7 @@ That replay-and-resume pattern is the whole point of the engine.
 they can **cancel** (the work finished early, so an SLA timer must not fire) or
 **reset** (a sliding-window / idle-session timeout that renews on every event).
 For those, arm a durable timer with `ctx.start_timer()` and drive it through the
-returned `TimerHandle` (issue #768):
+returned `TimerHandle`:
 
 ```rust
 #[workflow]
@@ -143,7 +143,7 @@ See `examples/cancellable_timer_sla.rs` for a complete, tested example.
 Support SLAs, contractual response windows, and settlement deadlines are written
 in **business days**, not calendar days. `ctx.timer("escalate", 2 * 86_400)` is
 wrong the moment the window straddles a weekend or a public holiday.
-`ctx.timer_business_days()` (issue #806) is the one-call answer:
+`ctx.timer_business_days()` is the one-call answer:
 
 ```rust
 #[workflow]
@@ -191,7 +191,7 @@ demos and tests; see the expiry warning below before using it in production.
 
 - **Weekends are always non-business days**, whatever the calendar is named —
   the named calendar contributes *holidays*. This deliberately differs from the
-  scheduler's `"weekends-off"` calendar-naming convention (issue #337): the
+  scheduler's `"weekends-off"` calendar-naming convention: the
   scheduler decides whether to *skip a firing*, while this primitive decides
   *when a deadline lands*, so weekends are unconditional here.
 - **UTC dates, anchor time-of-day.** Business days are counted on UTC dates and
@@ -219,7 +219,7 @@ demos and tests; see the expiry warning below before using it in production.
 
 The resolution runs **once**, on the first live execution, from an anchor
 captured at that moment. The resolved deadline is frozen into history using the
-existing `SideEffectRecorded` event (issue #384) and the wait is carried by the
+existing `SideEffectRecorded` event and the wait is carried by the
 existing `TimerStarted` event — so there is **no new `WorkflowEvent` variant and
 no migration**.
 
@@ -271,10 +271,10 @@ diagnostic harder to read. The prologue rejects only a collision with the
 | Use | Reach for |
 |---|---|
 | Wait a fixed number of seconds | `ctx.timer(id, secs)` |
-| Wait until an **absolute instant** you already have | `ctx.sleep_until(id, deadline)` (issue #749) |
+| Wait until an **absolute instant** you already have | `ctx.sleep_until(id, deadline)` |
 | Wait **N business days**, skipping weekends + holidays | `ctx.timer_business_days(id, n, cal)` |
-| A timer you can **cancel or reset** | `ctx.start_timer(id, secs)` → `TimerHandle` (issue #768) |
-| Skip a *scheduled firing* on a holiday | Calendar-aware schedules (issue #337) |
+| A timer you can **cancel or reset** | `ctx.start_timer(id, secs)` → `TimerHandle` |
+| Skip a *scheduled firing* on a holiday | Calendar-aware schedules |
 
 Business-day timers are **fire-once**, like `ctx.timer` and `ctx.sleep_until` —
 there is no cancellable business-day variant today. Sequential composition works

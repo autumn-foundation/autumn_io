@@ -1,6 +1,6 @@
 +++
 title = "Completion Callbacks"
-description = "An embedder who starts a workflow (process_refund, run_kyc) from their Autumn app has no push notification when it finishes: the only ways to learn the terminal result are polling GET /workflows/{id}/result (issue #527) or a long-poll (issue #527's ?wait=), both anti-patterns for fire-and-forget async flows. This feature closes the loop back out to an external system: an embedder registers a completion callback target (URL + terminal-state filter) and Harvest durably POSTs a signed, fixed JSON envelope to it the moment the workflow reaches a terminal state."
+description = "An embedder who starts a workflow (process_refund, run_kyc) from their Autumn app has no push notification when it finishes: the only ways to learn the terminal result are polling GET /workflows/{id}/result or a long-poll (issue #527's ?wait=), both anti-patterns for fire-and-forget async flows. This feature closes the loop back out to an external system: an embedder registers a completion callback target (URL + terminal-state filter) and Harvest durably POSTs a signed, fixed JSON envelope to it the moment the workflow reaches a terminal state."
 order = 1360
 +++
 
@@ -8,14 +8,14 @@ order = 1360
 
 An embedder who starts a workflow (`process_refund`, `run_kyc`) from their
 Autumn app has no push notification when it finishes: the only ways to learn
-the terminal result are polling `GET /workflows/{id}/result` (issue #527) or
+the terminal result are polling `GET /workflows/{id}/result` or
 a long-poll (issue #527's `?wait=`), both anti-patterns for fire-and-forget
 async flows. This feature closes the loop back **out** to an external system:
 an embedder registers a **completion callback target** (URL + terminal-state
 filter) and Harvest durably POSTs a signed, fixed JSON envelope to it the
 moment the workflow reaches a terminal state.
 
-A fork with the default `recorded` effects (issue #2000) is the exception.
+A fork with the default `recorded` effects is the exception.
 It enqueues no delivery, so it never notifies an outside system. A `live`
 fork delivers as usual. See the [fork runbook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/fork-a-run.md).
 
@@ -163,7 +163,7 @@ retry/backoff/DLQ machinery rather than inventing new machinery:
   overridable via `completion_callback_retry_policy(...)`. The policy is
   frozen into the delivery row at enqueue time, so a later config change
   doesn't retroactively alter an in-flight delivery's schedule.
-- **Permanent 4xx dead-letters at once (issue #1832).** A retry cannot fix
+- **Permanent 4xx dead-letters at once.** A retry cannot fix
   a 4xx such as 400, 401, 404 or 422. The scanner dead-letters it on the
   first attempt, with the same typed reason as exhaustion and `attempts: 1`.
   408, 421, 425 and 429 are transient, and so is a 413 with `Retry-After`. They take the normal backoff.
@@ -173,9 +173,9 @@ retry/backoff/DLQ machinery rather than inventing new machinery:
   redrive --queue completion-callback` to send them all again. The redrive
   spreads the next attempts over a window, so the receiver does not get a
   burst.
-- **`Retry-After` is honoured (issue #1832).** A `Retry-After` in
+- **`Retry-After` is honoured.** A `Retry-After` in
   delta-seconds or in any HTTP-date form sets the minimum backoff for that
-  retry. The engine's `Retry-After` ceiling (15 minutes, issue #744) caps
+  retry. The engine's `Retry-After` ceiling (15 minutes) caps
   it, so a receiver cannot delay a delivery past that. A hint shorter than
   the policy backoff changes nothing. The hint does not add attempts.
 - **Dead-letter on exhaustion**: `DeadLetterReason::CallbackDeliveryExhausted
@@ -272,4 +272,4 @@ per-execution row count is always small).
 - No change to `ContinuedAsNew` semantics — it is not a terminal state for
   callback purposes; only the eventual real terminal state of the run (after
   following the continue-as-new chain, if the caller wants that — see
-  `GET /workflows/{id}/result`, issue #527) fires a callback.
+  `GET /workflows/{id}/result`) fires a callback.

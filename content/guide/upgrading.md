@@ -222,7 +222,7 @@ reporting a clean project it never looked at.
 
 > **`deny.toml` and the advisory gate.** The reconciled `ci.yml` runs
 > `cargo deny check advisories` against a `deny.toml` at your project root
-> (issue #1600). A project scaffolded before that gate existed does not have
+>. A project scaffolded before that gate existed does not have
 > one, and the upgrade will not write it — the waiver list is yours to grow, and
 > a file you edit would come back as a conflict on every later run. Generate a
 > throwaway project with the flags you originally scaffolded with — `--bundled-pg`

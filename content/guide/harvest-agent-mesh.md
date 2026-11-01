@@ -416,7 +416,7 @@ tokens, rounds and calls per subtree.
   so they are not affected.
 - The mesh has no handoff. A peer cannot take over the rest of the run.
 
-## 13. Durable peers (issue #2269)
+## 13. Durable peers
 
 A peer can be a durable `Agent` with its own identity, inbox, history, budget
 and memory. A `delegate` call to it sends a message and waits for the reply.
@@ -453,7 +453,7 @@ let harness = AgentHarness::new(model)
 - A durable peer runs on its own worker, in its own history, under its own
   profile budget. Its tokens are not added to the budget of the sender.
 
-## 14. A model per agent (issue #2271)
+## 14. A model per agent
 
 The harness holds named models. A task, a peer, a profile or a heartbeat
 names its model. A cheap triage model can front a strong planner.
@@ -488,7 +488,7 @@ let task = AgentTask::new("triage this")
 - `eval::compare` runs two candidates on one recorded run.
   `Candidate::agent_model` sets the model of one agent of the tree.
 
-## 15. Concurrent children (issue #2270)
+## 15. Concurrent children
 
 `AgentTask::parallel_children(n)` lets one model turn run up to `n`
 delegations at the same time. `AgentProfile::parallel_children` does the
@@ -528,7 +528,7 @@ let task = AgentTask::new("plan the trip")
   child with the same delegation chain and task text. With no match, the
   candidate fails.
 
-## 16. Mesh-wide controls (issue #2272)
+## 16. Mesh-wide controls
 
 A mesh is a set of durable agents that share an id. A long-lived mesh needs
 controls that span time and agents.

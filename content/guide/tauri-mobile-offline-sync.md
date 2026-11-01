@@ -1,6 +1,6 @@
 +++
 title = "Offline Sync for Tauri Mobile: Local SQLite + Background Sync (`autumn generate tauri-mobile --offline-sync`)"
-description = "autumn generate tauri-mobile --offline-sync layers local-first storage onto the in-process mobile scaffold from docs/guide/tauri-mobile-in-process.md: app data lives in a SQLite file inside the app sandbox (autumn_web::sync::SyncStore), and a background SyncEngine pushes and pulls changes to your remote Autumn deployment's /sync endpoints whenever the network allows. The app functions fully offline for its SyncStore-backed data — reads, writes, deletes — and converges with the remote PostgreSQL database in the background when connection is restored (issue #1508, \"Option C\"). Data that still lives in diesel repositories keeps needing the remote database — see §8."
+description = "autumn generate tauri-mobile --offline-sync layers local-first storage onto the in-process mobile scaffold from docs/guide/tauri-mobile-in-process.md: app data lives in a SQLite file inside the app sandbox (autumn_web::sync::SyncStore), and a background SyncEngine pushes and pulls changes to your remote Autumn deployment's /sync endpoints whenever the network allows. The app functions fully offline for its SyncStore-backed data — reads, writes, deletes — and converges with the remote PostgreSQL database in the background when connection is restored (\"Option C\"). Data that still lives in diesel repositories keeps needing the remote database — see §8."
 order = 940
 +++
 
@@ -14,7 +14,7 @@ and a background `SyncEngine` pushes and pulls changes to your **remote
 Autumn deployment's `/sync` endpoints** whenever the network allows. The app
 functions fully offline **for its `SyncStore`-backed data** — reads, writes,
 deletes — and converges with the remote PostgreSQL database in the
-background when connection is restored (issue #1508, "Option C"). Data that
+background when connection is restored ("Option C"). Data that
 still lives in diesel repositories keeps needing the remote database — see
 §8.
 

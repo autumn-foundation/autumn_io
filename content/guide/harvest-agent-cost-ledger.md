@@ -1,20 +1,20 @@
 +++
 title = "Agent cost ledger"
-description = "The agent cost ledger records the model id, tokens, cost and latency of each LLM call (issue #1996). The usage report sums it per workflow type and per tenant."
+description = "The agent cost ledger records the model id, tokens, cost and latency of each LLM call. The usage report sums it per workflow type and per tenant."
 order = 1220
 +++
 
 # Agent cost ledger
 
 The agent cost ledger records the model id, tokens, cost and latency of
-each LLM call (issue #1996). The usage report sums it per workflow type and
+each LLM call. The usage report sums it per workflow type and
 per tenant.
 
 The ledger is a separate table, `harvest_llm_ledger`. It is not part of the
 workflow history, so replay does not change. The payload codec does not
 encrypt it, so SQL can sum it without a key. The model id and the counts are
 in clear. See
-[the security posture](/docs/harvest-security-posture#llm-cost-ledger-issue-1996).
+[the security posture](/docs/harvest-security-posture#llm-cost-ledger).
 
 ## 1. Record a call
 
@@ -80,7 +80,7 @@ In a `run_transactional` activity, record the calls before the commit. The
 commit writes the calls that exist at that time. The engine logs a warning
 for a call recorded after the commit and drops it.
 
-### On the SQLite backend (issue #2275)
+### On the SQLite backend
 
 `autumn-harvest-sqlite` writes the same rows to its own
 `harvest_llm_ledger` table, in the transaction that appends the
@@ -119,7 +119,7 @@ row and its event fall in the same window.
 
 Use `group_by=workflow_name` for the cost per workflow type. Use
 `group_by=search_attr:tenant_id` for the cost per tenant. See
-[the usage report](/docs/harvest-sharding#historical-per-tenant-usage-report-issue-596).
+[the usage report](/docs/harvest-sharding#historical-per-tenant-usage-report).
 
 `harvest usage` shows `LLM_CALLS`, `LLM_IN`, `LLM_OUT`, `LLM_COST_USD` and
 `LLM_UNPRICED` columns. `LLM_COST_USD` sums the priced calls only, so read it
@@ -164,7 +164,7 @@ spends no tokens, so it records no call. See
   commits, both shards count the run. If the second commit fails, the
   window lasts until migration recovery ends it.
 - **Reset.** A fork copies events, not ledger rows. The cost counts once.
-- **Erasure.** Erasure deletes the rows of the run (issue #2267). It
+- **Erasure.** Erasure deletes the rows of the run. It
   reports the count in `ledger_rows_deleted`. A row names the run and its
   models. The spend of an erased run leaves the budget sums. The model id
   is the only free-form text, and it must not hold PII.

@@ -388,7 +388,7 @@ coverage for your own app, write a `[[bin]]` following the same shape against
 your own scenario and wire it into your own CI.
 
 Built with `--features sqlite`, the binary also sweeps three framework
-scenarios (issue #3067). Each one mounts two or three replicas on one
+scenarios. Each one mounts two or three replicas on one
 database and injects seeded faults:
 
 | Scenario | What runs | Faults | Invariant |
@@ -521,7 +521,7 @@ circuit breaker, the SSRF checks, `pin_to` and redirect following.
 
 ### Multiple replicas
 
-A `Sim` can run several apps on one clock (issue #3067). Each replica is its
+A `Sim` can run several apps on one clock. Each replica is its
 own app: its own state, job runtime and scheduled tasks. Give each replica its
 own pool on one `SQLite` database, so they share data as a fleet does:
 
@@ -608,11 +608,11 @@ error. Each link draws from its own seeded stream.
 `autumn/tests/sim_replicas.rs` holds the two-replica regressions for #3050:
 
 - `sim_cron_tick_runs_once_when_a_replica_clock_steps_forward` and
-  `sim_fixed_delay_tick_runs_once_across_staggered_replicas` (#3052). With the
+  `sim_fixed_delay_tick_runs_once_across_staggered_replicas`. With the
   lease held only for its TTL (the code before the fix) both fail: the late
   replica runs the tick again.
-- `sim_long_job_runs_once_across_two_replicas` (#3051): a 6 s job with a 2 s
-  visibility timeout. Before the claim heartbeat (#3135) it ran five times.
+- `sim_long_job_runs_once_across_two_replicas`: a 6 s job with a 2 s
+  visibility timeout. Before the claim heartbeat it ran five times.
   Now it runs once.
 - `sim_lock_session_loss_past_the_lease_lets_the_peer_in`: the `SQLite` `Lock`
   has no loss signal, so a session loss longer than the lease lets a second
@@ -879,7 +879,7 @@ Three more rules hold for code that a sim drives:
   handler query in flight at that time panics in a sim.
 
 The `sim-sweep` found all three in the framework's own job, scheduler, lock
-and heartbeat code (issue #3067); they now follow these rules.
+and heartbeat code; they now follow these rules.
 
 If you write a custom `impl ClockSource` whose `now()` is virtual, you **must**
 also override `monotonic()`. The trait ships a default body that reads the real

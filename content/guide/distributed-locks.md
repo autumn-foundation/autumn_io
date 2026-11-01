@@ -305,7 +305,7 @@ does not read multi-host URLs, and a custom `DatabasePoolProvider` skips it.
 
 ## On SQLite
 
-The same API works under the `sqlite` cargo feature (issue #1907). SQLite has no
+The same API works under the `sqlite` cargo feature. SQLite has no
 `pg_advisory_lock`, so a named lock is a lease row in an `autumn_locks` table in
 the app's own database file. The runtime creates that table on first use.
 

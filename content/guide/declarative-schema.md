@@ -1,6 +1,6 @@
 +++
 title = "Declarative schema"
-description = "Autumn's classic workflow generates a Diesel migration every time you add or change a #[model] — see Migrations. The declarative schema command group (autumn schema, tracking issue #1975) offers a complementary, snapshot-based workflow: you edit your #[model] structs freely, keep a checked-in snapshot of the intended schema, and let autumn schema diff compute the migration between the two. It works on both the Postgres and SQLite backends."
+description = "Autumn's classic workflow generates a Diesel migration every time you add or change a #[model] — see Migrations. The declarative schema command group (autumn schema) offers a complementary, snapshot-based workflow: you edit your #[model] structs freely, keep a checked-in snapshot of the intended schema, and let autumn schema diff compute the migration between the two. It works on both the Postgres and SQLite backends."
 order = 710
 +++
 
@@ -8,7 +8,7 @@ order = 710
 
 Autumn's classic workflow generates a Diesel migration every time you add or
 change a `#[model]` — see [Migrations](./migrations.md). The **declarative
-schema** command group (`autumn schema`, tracking issue #1975) offers a
+schema** command group (`autumn schema`) offers a
 complementary, snapshot-based workflow: you edit your `#[model]` structs freely,
 keep a checked-in **snapshot** of the intended schema, and let `autumn schema
 diff` compute the migration between the two. It works on both the **Postgres**
@@ -200,7 +200,7 @@ autumn schema diff --write-migration --name add_body
 | `--allow-destructive` | Permit destructive drops / an independent drop+add (a tier-2 guard; otherwise refused). |
 | `--dev-url <URL>` | Use an empty dev database as the baseline, not the snapshot. See [below](#shadow-database-baseline-dev-url). |
 
-**The snapshot advances at generation time (#2042).** When you pass
+**The snapshot advances at generation time.** When you pass
 `--write-migration`, the snapshot is moved forward to the state the generated
 migration converges the database on — *not* wholesale to your models, but to the
 plan the guards actually allowed. Two consequences:
@@ -359,7 +359,7 @@ hand-written migration or with a `#[belongs_to]` foreign key.
 - Errors never show the password. A connection error shows only the host and
   port.
 
-### SQLite ALTER support via table-recreate (#2035)
+### SQLite ALTER support via table-recreate
 
 On SQLite, `schema diff` emits real migrations for the ALTER-family changes
 SQLite's `ALTER TABLE` cannot express directly (`ALTER COLUMN TYPE`,
@@ -402,7 +402,7 @@ closed on: instead of refusing, the emitted migration carries an
 hand-written triggers or dependent views you must re-create the triggers and
 repair the views in a manual migration after applying the rebuild.
 
-**A decimal column keeps its `CHECK` (#2598).** SQLite stores `decimal{p,s}`
+**A decimal column keeps its `CHECK`.** SQLite stores `decimal{p,s}`
 as `TEXT`. A `CHECK` enforces the precision and scale. `schema diff` writes the
 same `CHECK` as `autumn generate`, in `CREATE TABLE`, `ADD COLUMN` and the
 table-recreate. The parser reads the precision and scale from the
@@ -543,7 +543,7 @@ checks are:
   database URL's backend.
 - **pending-migrations** — whether generated migration files are still unapplied
   (Postgres).
-- **database-schema-drift** (#2045) — when the database is reachable, the
+- **database-schema-drift** — when the database is reachable, the
   snapshot is introspected against the live schema bidirectionally; drift is an
   actionable **WARN**. Offline, it stays a non-failing WARN. SQLite needs the
   `sqlite` build.

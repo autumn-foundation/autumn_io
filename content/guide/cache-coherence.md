@@ -6,7 +6,6 @@ order = 1470
 
 # Cache Coherence — Proving Cached Reads Are Never Stale
 
-> Issue [#1716](https://github.com/autumn-foundation/autumn/issues/1716).
 > Related: [Fragment Caching](fragment-caching.md), [Cache Stampede](cache-stampede.md),
 > [Security Posture Manifest](security-posture-manifest.md), [Query Budgets](query-budgets.md).
 
@@ -287,7 +286,6 @@ feature exists to prevent.
 
 ### Commit-bound invalidation
 
-Issue [#3056](https://github.com/autumn-foundation/autumn/issues/3056).
 
 The order is: write, commit, then invalidate.
 

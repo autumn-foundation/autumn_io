@@ -263,7 +263,7 @@ until the next marker replaces it. A checkout with no capture scope sends the
 connection last.
 
 A framework transaction opens with the `SET LOCAL statement_timeout` /
-`SET LOCAL idle_in_transaction_session_timeout` pair (#3057). The recorder
+`SET LOCAL idle_in_transaction_session_timeout` pair. The recorder
 treats that exact pair as housekeeping too, so a capsule recorded under `prod`
 timeouts replays where the timeouts differ.
 

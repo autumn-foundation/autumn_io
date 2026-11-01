@@ -195,7 +195,7 @@ concurrent caller won the insert race — you get the existing row with
    first, so the lookup matches the value step 2 would store. A hit returns
    `(row, false)` immediately and fires **no** hooks.
 2. Otherwise the payload is **normalized and validated** — the create half is an
-   insert, so the model's rules apply (#2586). A refusal does not overtake the
+   insert, so the model's rules apply. A refusal does not overtake the
    found path: because step 1 is replica-eligible and a concurrent caller may
    have inserted since, the method re-checks the primary and returns that row if
    it exists, rather than letting replication lag decide between `(row, false)`
@@ -270,7 +270,7 @@ per-day event time series — are `GROUP BY` aggregates. Hand-writing them as ra
 `diesel::sql_query("SELECT … SUM(...) … GROUP BY …")` strings bypasses the
 repository's replica routing, tenant scoping, and soft-delete filters, and has
 to be re-typed for every widening cast. Declare them on the `#[repository]`
-trait instead (issue #1364):
+trait instead:
 
 ```rust
 #[autumn_web::repository(Vote, table = "votes")]
@@ -393,7 +393,7 @@ to `SUM(value)` / `COUNT(*)`. Hand-written, that is a read-then-write race on
 the edge *and* a lost-update race on the aggregate whenever two different
 reactors touch the same target.
 
-Declare it on the `#[model]` instead (issue #1362):
+Declare it on the `#[model]` instead:
 
 ```rust
 #[autumn_web::model]

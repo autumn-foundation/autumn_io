@@ -270,7 +270,7 @@ as the table above does. The value is reachable from `state_initializer`,
 > `if state.role().runs_workers() { … }` so they land only where you intend.
 
 Custom or named roles beyond `combined`/`web`/`worker` are not supported today;
-if you need finer-grained placement, use per-queue worker pinning (#1623)
+if you need finer-grained placement, use per-queue worker pinning
 combined with app-level `state.role()` gating rather than inventing new role
 names.
 
@@ -427,7 +427,7 @@ directly; work another process enqueued is seen within
 to cut idle wakeups.
 
 The runtime prunes terminal rows. `autumn db retention` also sweeps them
-(#2553). Set `retention.job_history` to bound the table; leave it
+. Set `retention.job_history` to bound the table; leave it
 unset and history is kept forever, exactly as on Postgres.
 
 The runtime creates the table and its indexes at start, because framework
@@ -515,7 +515,7 @@ job that did not start.
 
 - Jobs retry with exponential backoff and full jitter: the wait is a random
   value in `[0, min(max_backoff_ms, initial_backoff_ms * 2^(attempt-1))]`
-  (issue #3054). Jobs that fail together do not retry together. All four
+. Jobs that fail together do not retry together. All four
   backends use the same rule. Under a `Sim`, the jitter replays from the seed.
 - `max_backoff_ms` caps the wait. Default: 3 600 000 (1 hour). Set it in
   `[jobs]` or with `AUTUMN_JOBS__MAX_BACKOFF_MS`.
@@ -782,7 +782,7 @@ addition to the existing per-job-type gauges under `jobs`:
 
 On the durable backends (Postgres/Redis) these gauges are **not** per-process
 approximations: a periodic survey of the durable store wholesale-replaces this
-process's local enqueue marks each tick (#1752), so an enqueue-only `web`
+process's local enqueue marks each tick, so an enqueue-only `web`
 replica reports the true shared backlog, and a queue absent from the latest
 survey resets to `depth` 0 rather than leaking a stale one. On the in-process
 `local` backend there is only one process, so the local marks *are* the whole

@@ -33,6 +33,9 @@ autumn-plugin-motion = "0.3.0"
 maud = "0.27.0"
 memchr = "2.8.0"
 pulldown-cmark = "0.13.3"
+# `sync_guide_docs` uses it to strip issue and PR numbers from vendored
+# guides. The crate is already in the tree through other dependencies.
+regex = "1.12.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 # Oniguruma (`default-onig`) is syntect's own upstream default and the engine

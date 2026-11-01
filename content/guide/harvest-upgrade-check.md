@@ -1,13 +1,13 @@
 +++
 title = "Upgrade check: a verdict for each in-flight run"
-description = "The upgrade check runs before a deploy. It gives each in-flight run one verdict against a candidate build (issue #1995):"
+description = "The upgrade check runs before a deploy. It gives each in-flight run one verdict against a candidate build:"
 order = 1570
 +++
 
 # Upgrade check: a verdict for each in-flight run
 
 The upgrade check runs before a deploy. It gives each in-flight run one
-verdict against a candidate build (issue #1995):
+verdict against a candidate build:
 
 | Verdict | Meaning | Action |
 |---|---|---|

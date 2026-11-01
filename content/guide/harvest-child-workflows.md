@@ -175,13 +175,13 @@ release its lock gracefully before stopping.
 
 Two more child-workflow shapes, each with a runnable example:
 
-- **Bound a child by a deadline (issue #779).**
+- **Bound a child by a deadline.**
   `ctx.execute_child_workflow_timeout::<O>(&child_info(), input, timeout)` races a
   child's terminal outcome against a durable timer — `Ok(Some(output))` if the
   child finishes in time, `Ok(None)` if the deadline fires first (the still-running
   child is request-cancelled). It mirrors [`receive_signal_timeout`](/docs/harvest-signals)
   one level up. See `examples/child_with_timeout.rs`.
-- **Fan out N children in parallel (issue #601).**
+- **Fan out N children in parallel.**
   `ctx.spawn_child_workflow_fan_out(&child_info(), inputs)` (and the `_collect` /
   `_raw` variants) schedule all N children concurrently and collect results in
   input order — the child-workflow sibling of activity fan-out, for sub-orchestrations

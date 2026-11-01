@@ -89,7 +89,7 @@ That's the whole vocabulary. Three things to notice:
 
 Sometimes, the width of the graph isn't known at design time. You might query a database for a list of partition IDs, and then want to process each partition in parallel.
 
-Harvest supports **dynamic task mapping** (issue #485). A mapped task maps over an upstream task that returns a JSON array, executing one concurrent instance of the activity for each element in the array.
+Harvest supports **dynamic task mapping**. A mapped task maps over an upstream task that returns a JSON array, executing one concurrent instance of the activity for each element in the array.
 
 ### Declaring a Mapped Task
 
@@ -182,7 +182,7 @@ you.
 | `default_queue` | `"default"` | Queue assigned to tasks that don't override it via `#[activity(queue = ...)]` or `.queue(...)`. |
 | `execution_timeout` | none | Hard wall-clock deadline for the whole DAG run — see below. |
 | `sla` | none | Soft SLA for the whole DAG run — see below. |
-| `jitter` | 10 s for a cron with no seconds field, else 0 | Fire-time spread window — `"30s"`, `"5m"`. `"0s"` opts out of the default (issue #1792). |
+| `jitter` | 10 s for a cron with no seconds field, else 0 | Fire-time spread window — `"30s"`, `"5m"`. `"0s"` opts out of the default. |
 
 ### Deadlines for scheduled DAG runs (`execution_timeout` / `sla`)
 
@@ -400,7 +400,7 @@ stage's output, previously forced you to either flatten the whole pipeline
 into one mega-activity or hand-thread outputs through shared state. Neither
 is the graph you wanted to draw.
 
-**Node input binding** (issue #702) closes that gap: bind a node's activity
+**Node input binding** closes that gap: bind a node's activity
 input directly to one or more upstream node outputs, with one builder call
 per data edge and zero hand-written output-threading.
 
@@ -972,8 +972,8 @@ See `autumn-harvest/examples/incremental_etl_schedule.rs` for the full pattern.
 - **continue-as-new**: a continuation inherits the predecessor's frozen
   carryover (the continuation is the same logical scheduled run), so cursors and
   recovery state survive the fork.
-- **Cross-type continue-as-new and overlap controls** (issue #1160): `ctx.continue_as_new_as(...)`
-  (#803) continues the same logical scheduled run as a *different* registered
+- **Cross-type continue-as-new and overlap controls**: `ctx.continue_as_new_as(...)`
+ continues the same logical scheduled run as a *different* registered
   workflow type — `schedule_id`/`scheduled_for` carry over unchanged (as above),
   but the successor's `workflow_name` is now the target type. Both overlap
   controls account for this:
@@ -1000,7 +1000,7 @@ See `autumn-harvest/examples/incremental_etl_schedule.rs` for the full pattern.
   `max_active_runs > 1` a later slot can start while an earlier slot is still
   running and observe a stale cursor (re-processing that slot's range). Keep
   cursor-style incremental jobs at `max_active_runs = 1`.
-  `OverlapPolicy::AllowAll` (issue #1985) also lets slots overlap, so the same
+  `OverlapPolicy::AllowAll` also lets slots overlap, so the same
   stale-cursor risk applies.
 - **Backfills**: backfilled runs participate in the schedule's carryover lineage
   (they share the schedule's `schedule_id` and carry their own `scheduled_for`

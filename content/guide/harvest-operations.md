@@ -310,7 +310,7 @@ correlating shell history across machines.
 
 ### What a drain does with its claims
 
-A `SIGTERM` and a remote drain run the same drain (issue #1813):
+A `SIGTERM` and a remote drain run the same drain:
 
 1. The worker stops claiming tasks.
 2. It gives back each claimed task that has not started. The task is
@@ -330,7 +330,7 @@ A `SIGTERM` and a remote drain run the same drain (issue #1813):
    that handler returns, even after `run` returns, so no peer starts a
    second copy. The worker also gives back each claim it abandoned in the
    drain, such as one whose release write failed. The claim fence
-   (#1789) rejects stale writes. If the process exits, orphan reclaim
+ rejects stale writes. If the process exits, orphan reclaim
    recovers the task.
 
 A cancel cannot be undone. A later remote deadline does not give the
@@ -357,7 +357,7 @@ start. When you need stricter semantics, pass `reuse_policy`:
 
 `reuse_policy` governs a **terminal** prior run. For a collision with a
 currently **active** (RUNNING/PAUSED) prior, use the orthogonal `conflict_policy`
-axis (issue #685) — see [Conflict policies](#conflict-policies) below.
+axis — see [Conflict policies](#conflict-policies) below.
 
 ## Conflict policies
 
@@ -397,7 +397,7 @@ default/omitted `conflict_policy`. The flagship idempotent-starter shape above
 (`terminate_if_running` + `use_existing`) resolves to *attach* and provably
 cannot cancel a live run, so it does **not** require admin — non-admin
 webhook/cron callers can use it directly. Outside `dev`, those callers still
-need a credential or a declared auth layer (issue #1802). `terminate_if_running` +
+need a credential or a declared auth layer. `terminate_if_running` +
 `fail` (resolves to `409`) is likewise non-admin.
 
 `conflict_policy` is **not** supported combined with a throttle / debounce /

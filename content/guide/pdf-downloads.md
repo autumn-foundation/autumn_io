@@ -81,7 +81,7 @@ Pdf::from_html("<h1>Receipt</h1>")
 ## What HTML is supported
 
 `Pdf` is **not** a CSS layout engine — pixel-perfect multi-page layout is
-explicitly out of scope (see issue #1317). It renders a deliberately small
+explicitly out of scope. It renders a deliberately small
 HTML subset, flowed top-to-bottom in a single column with the built-in PDF
 base-14 fonts:
 

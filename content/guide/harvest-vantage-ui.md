@@ -23,7 +23,7 @@ Displays a paginated table of workflow executions across all configured shards.
 | Started after | `started_after` | ISO-8601 datetime string (e.g. `2026-01-01T00:00:00Z`) |
 | Started before | `started_before` | ISO-8601 datetime string |
 | Execution ID search | `exec_id_search` | Prefix match on the execution UUID |
-| Filter | `filter` | An expression with `AND`, `OR` and parentheses, for example `attrs.phase = 'blocked' OR attrs.amount > 1000` (issue #1982). The list ignores a bad expression and shows its error below the field. See [Filter expressions](/docs/harvest-management-api#filter-expressions-get-workflows). |
+| Filter | `filter` | An expression with `AND`, `OR` and parentheses, for example `attrs.phase = 'blocked' OR attrs.amount > 1000`. The list ignores a bad expression and shows its error below the field. See [Filter expressions](/docs/harvest-management-api#filter-expressions-get-workflows). |
 
 Combine any number of filters in a single URL. Hitting **Reset** clears all filters and returns to the default view.
 
@@ -48,7 +48,7 @@ Shows a single workflow execution in full detail.
 **Operator actions**
 
 - **Cancel** — POST to `/workflows/{exec_id}/cancel` with a confirmation dialog. Redirects to the detail page with a flash message.
-- **Terminate** — POST to `/workflows/{exec_id}/terminate` with a confirmation dialog (issue #788). It seals the run as `TERMINATED`. The button is disabled once the workflow is terminal, and the route requires admin auth. Redirects to the detail page with a flash message.
+- **Terminate** — POST to `/workflows/{exec_id}/terminate` with a confirmation dialog. It seals the run as `TERMINATED`. The button is disabled once the workflow is terminal, and the route requires admin auth. Redirects to the detail page with a flash message.
 - **Send signal** — Expandable form (collapsed by default). POST to `/workflows/{exec_id}/signal` with `signal_name` and an optional JSON `payload`. Redirects with flash on success.
 - **Reset to event N** — Expandable form. POST to `/workflows/{exec_id}/reset` with `reset_to_event_id` (1-based event number, as shown in the timeline "#" column) and optional `reason`. Creates a new fork execution. Redirects with flash on success. See [Workflow reset](/docs/harvest-workflow-reset).
 - **Trigger update** — Expandable form. POST to `/workflows/{exec_id}/trigger-update` with `update_name` and optional JSON `payload`. Redirects with flash on success.
@@ -58,7 +58,7 @@ Shows a single workflow execution in full detail.
   render the detail page directly as the POST's own response — no
   redirect — with the rejected form **open**, the operator's entered
   values pre-filled, and the error shown inline next to the field that
-  caused it (issue #1687). A typo does not cost the whole entry. This is
+  caused it. A typo does not cost the whole entry. This is
   deliberately not a redirect: putting a signal or update payload in a
   redirect's query string would put it in browser history, proxy/server
   access logs, and the same-origin referrer, and a large payload could
@@ -98,12 +98,12 @@ endpoint, no new `WorkflowEvent` variant, and no migration**.
 | Kind / Target | `dag_name` / `workflow_name` | `Dag` or `Workflow` |
 | Expression | `schedule_expr` | Cron or `interval:*` |
 | Timezone | `timezone` | UTC is subdued; other zones get a badge |
-| Next Run | `next_run_at` | Plus the jitter-adjusted **effective** fire time and the jitter window when `jitter_secs > 0` (#240) |
+| Next Run | `next_run_at` | Plus the jitter-adjusted **effective** fire time and the jitter window when `jitter_secs > 0` |
 | Last Run | `last_run_at` | |
 | Health | derived | See badges below |
-| Overlap | `overlap_policy` (#241) | Buffering policies also show `buffered <n>` (and `/<cap>` under `buffer_all`) |
-| Catchup | `catchup_policy` (#484) | Effective policy, the `window` duration, and `dropped <n>` from the most recent recovery tick |
-| Bounded runs | `max_runs` / `runs_started` / `end_at` / `exhausted_reason` (#478) | `<remaining> of <max> left · ends <ts> · exhausted: <reason>`. `max_runs = 0` is the engine's *unlimited* (every bound check guards on `max > 0`), so no budget is rendered for it. |
+| Overlap | `overlap_policy` | Buffering policies also show `buffered <n>` (and `/<cap>` under `buffer_all`) |
+| Catchup | `catchup_policy` | Effective policy, the `window` duration, and `dropped <n>` from the most recent recovery tick |
+| Bounded runs | `max_runs` / `runs_started` / `end_at` / `exhausted_reason` | `<remaining> of <max> left · ends <ts> · exhausted: <reason>`. `max_runs = 0` is the engine's *unlimited* (every bound check guards on `max > 0`), so no budget is rendered for it. |
 | Created | `created_at` | |
 | Shard | fan-out | Multi-shard deployments only |
 
@@ -115,9 +115,9 @@ condition:
 | Badge | Condition |
 |---|---|
 | `Paused` | `is_paused` |
-| `Auto-paused` | `auto_paused_at` set (#360) — supersedes `Paused` |
-| `Exhausted: <reason>` | `exhausted_at` set (#478), **or** the row is terminal on its live bounds before a tick has stamped the column: `runs_started >= max_runs` (for `max_runs > 0`), or the **pending slot** is at/past the cutoff (`next_run_at >= end_at`; falling back to `now >= end_at` only when there is no pending slot). An unstamped exhaustion names its bound (`run budget spent` / `past end_at`). The pending slot includes jitter (#1293). Rows with a calendar, or with `MostRecent` or `Window` catchup, use the raw `next_run_at` (#1568). The scheduler may stop such a row before the badge shows. |
-| `Catchup dropped ×N` | `last_catchup_dropped > 0` (#484) |
+| `Auto-paused` | `auto_paused_at` set — supersedes `Paused` |
+| `Exhausted: <reason>` | `exhausted_at` set, **or** the row is terminal on its live bounds before a tick has stamped the column: `runs_started >= max_runs` (for `max_runs > 0`), or the **pending slot** is at/past the cutoff (`next_run_at >= end_at`; falling back to `now >= end_at` only when there is no pending slot). An unstamped exhaustion names its bound (`run budget spent` / `past end_at`). The pending slot includes jitter. Rows with a calendar, or with `MostRecent` or `Window` catchup, use the raw `next_run_at`. The scheduler may stop such a row before the badge shows. |
+| `Catchup dropped ×N` | `last_catchup_dropped > 0` |
 
 Unhealthy schedules **sort above** healthy ones; healthy rows keep their existing
 `next_run_at`-ascending order among themselves. A "Needs attention" strip at the top of
@@ -135,7 +135,7 @@ dialog and each writing an audit record with `source = ui` and the matching oper
 adds no unaudited mutation path.
 
 A row is offered **Resume** when `is_paused` **or** `auto_paused_at` is set. The
-scheduler's auto-pause (#360) sets `auto_paused_at` *without* setting `is_paused`, so a
+scheduler's auto-pause sets `auto_paused_at` *without* setting `is_paused`, so a
 row can be non-firing with `is_paused = false`; keying the action on `is_paused` alone
 would show an "Auto-paused" badge next to a Pause button and leave no way to restore
 firing. Resume — per row and in bulk — clears `auto_paused_at` and resets
@@ -148,7 +148,7 @@ auto-paused schedules alongside the other non-firing states.
 #### Fire-time preview — `/schedules/{id}/preview`
 
 Renders the next N fire times from the same computation as
-`GET /admin/schedules/{id}/preview` (#348), so the two can never disagree:
+`GET /admin/schedules/{id}/preview`, so the two can never disagree:
 
 - **Scheduled** (the raw cron instant), **Local** (in the schedule's timezone), and
   **Effective** (after calendar adjustment and jitter) side by side.
@@ -156,7 +156,7 @@ Renders the next N fire times from the same computation as
   rebased entries show `deferred:calendar`.
 - The jitter window (`[scheduled_at, scheduled_at + jitter_secs]`) per entry.
 - An advisory **Overlap risk** flag when `skip`/`buffer_one` could drop the firing.
-- Bounded-run truncation (#478/#543) is applied, and a preview that comes back empty
+- Bounded-run truncation is applied, and a preview that comes back empty
   says *why*: paused (with the pause reason), **auto-paused** (#360 — the scheduler's
   due-list filters on `auto_paused_at IS NULL`, so such a schedule will not fire even
   though its `is_paused` column is false), exhausted (with `exhausted_reason`), the
@@ -166,7 +166,7 @@ Renders the next N fire times from the same computation as
 
 #### Run history — `/schedules/{id}/runs`
 
-Consumes `GET /admin/schedules/{id}/runs` (#534/#762). Newest-slot-first rows with
+Consumes `GET /admin/schedules/{id}/runs`. Newest-slot-first rows with
 `nominal_fire_time` (`— (no slot)` for a manual trigger), started/completed timestamps,
 a terminal state badge, `origin` (`scheduled` / `backfill` / `manual_trigger`), the
 first line of a terminal failure, and a link to the execution detail view.
@@ -194,7 +194,7 @@ schedule read route the management API gates.
 
 #### Backfill launcher — `/schedules/{id}/backfill`
 
-A two-stage flow over `POST /admin/schedules/{id}/backfill` (#337):
+A two-stage flow over `POST /admin/schedules/{id}/backfill`:
 
 1. `GET` renders the window form (start, end, max slots, include-paused). This is a
    pure read — it dispatches nothing.
@@ -242,8 +242,8 @@ earlier shard is down, and a not-found result during an outage is a `503` rather
 `404`. The preview additionally passes its already-resolved row to
 `compute_schedule_preview_for`, avoiding a second lookup entirely.
 
-**Out of scope (tracked elsewhere):** creating or editing schedules from the UI (#771),
-overdue-schedule detection (#696), recent-runs enrichment (#762).
+**Out of scope (tracked elsewhere):** creating or editing schedules from the UI,
+overdue-schedule detection, recent-runs enrichment.
 
 ## Event label mapping
 
@@ -293,7 +293,6 @@ Event fields are extracted from the inner `data` object of the adjacently-tagged
 
 ## Live refresh
 
-> Issue #1982.
 
 The workflow list and the detail page of a live run update without a reload.
 They load `assets/live.js` with `defer`. The script:
@@ -344,7 +343,7 @@ operator reloads the page.
 - The dashboard emits no inline `<script>` element. The workflow list and detail pages load one same-origin script, `assets/live.js`, served with `X-Content-Type-Options: nosniff`. The script inserts only HTML that the server rendered and escaped. It inserts nothing from a redirect or from a page with no live regions.
 - **Content Security Policy.** Some forms use inline `onsubmit` or `onclick` handlers for a `confirm()` prompt, for example Cancel, Pause, Terminate and Reset. A `script-src 'self'` policy blocks those handlers, so the action then submits with no prompt. A policy for Vantage must allow them, for example with `'unsafe-hashes'` and the hash of each handler.
 - The `require_harvest_admin` middleware (configured via `HarvestBuilder`) can gate Vantage behind token authentication in production.
-- **Cross-site mutation rejection (#1278).** Every `POST` Vantage renders a `<form>` against — every route on this router, plus the two dead-letter bulk routes those forms submit to directly on the sibling management-API router — rejects a request with no same-origin evidence. The DLQ page's per-row buttons post to these same two bulk routes with a single-id filter, so no separate route is needed for them. `POST /dead-letters/{id}/replay` and `POST /dlq/redrive` are bodyless API-only operations no Vantage form targets, so they stay outside this guard. `Sec-Fetch-Site: same-origin` is checked first and, when present, is always decisive; only when it is absent does the request fall back to a matching `Origin`/`Host` pair (default ports normalized, `X-Forwarded-Host` preferred over `Host` when a reverse proxy reports one). That fallback also requires a proxy-confirmed `X-Forwarded-Proto` matching `Origin`'s claimed scheme exactly — `Origin` alone proves only the requesting page's scheme, never this connection's, so an unconfirmed claim is rejected regardless of which scheme it names. Failing all of that, a `Content-Type` a bare cross-site form cannot send (`application/json`, chiefly) is the last resort. Checking `Sec-Fetch-Site` first, ahead of `Content-Type`, matters: hyperlink auditing (`<a ping>`) and `navigator.sendBeacon` can reach a server with a non-CORS-simple content type and no preflight, so content type alone is never proof of safety. `GET`/`HEAD`/`OPTIONS`/`TRACE` and `PUT`/`PATCH`/`DELETE` are exempt outright, since a bare cross-site form or `no-cors` fetch cannot send those methods at all. So is the `harvest` CLI's own `X-Harvest-Source: cli` header, and a request carrying a verified scoped API token. The rest of the management API — the documented, headerless `curl`-and-CLI operator surface in `docs/runbooks/` — is out of scope; see `same_origin.rs` for the full rationale.
+- **Cross-site mutation rejection.** Every `POST` Vantage renders a `<form>` against — every route on this router, plus the two dead-letter bulk routes those forms submit to directly on the sibling management-API router — rejects a request with no same-origin evidence. The DLQ page's per-row buttons post to these same two bulk routes with a single-id filter, so no separate route is needed for them. `POST /dead-letters/{id}/replay` and `POST /dlq/redrive` are bodyless API-only operations no Vantage form targets, so they stay outside this guard. `Sec-Fetch-Site: same-origin` is checked first and, when present, is always decisive; only when it is absent does the request fall back to a matching `Origin`/`Host` pair (default ports normalized, `X-Forwarded-Host` preferred over `Host` when a reverse proxy reports one). That fallback also requires a proxy-confirmed `X-Forwarded-Proto` matching `Origin`'s claimed scheme exactly — `Origin` alone proves only the requesting page's scheme, never this connection's, so an unconfirmed claim is rejected regardless of which scheme it names. Failing all of that, a `Content-Type` a bare cross-site form cannot send (`application/json`, chiefly) is the last resort. Checking `Sec-Fetch-Site` first, ahead of `Content-Type`, matters: hyperlink auditing (`<a ping>`) and `navigator.sendBeacon` can reach a server with a non-CORS-simple content type and no preflight, so content type alone is never proof of safety. `GET`/`HEAD`/`OPTIONS`/`TRACE` and `PUT`/`PATCH`/`DELETE` are exempt outright, since a bare cross-site form or `no-cors` fetch cannot send those methods at all. So is the `harvest` CLI's own `X-Harvest-Source: cli` header, and a request carrying a verified scoped API token. The rest of the management API — the documented, headerless `curl`-and-CLI operator surface in `docs/runbooks/` — is out of scope; see `same_origin.rs` for the full rationale.
 - **Embedder responsibility.** Set `SameSite=Lax` or stricter on the session cookie. Modern browsers already block a cross-site form `POST` under `Lax`. Treat this as a second, independent layer; the guard above does not depend on it.
 
 ---

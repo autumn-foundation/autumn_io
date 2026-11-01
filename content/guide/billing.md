@@ -12,9 +12,8 @@ handlers, and durable retries for failed payments. Stripe ships first behind a
 provider-neutral `BillingProvider` trait.
 
 - **Crate:** `autumn-billing`
-- **Issue:** [#1190](https://github.com/autumn-foundation/autumn/issues/1190)
 - **Builds on:** `SignedWebhook` (verified intake), `#[job]` (durable
-  retries), the notification store (#1148), `plugin_migrations` (mirror tables).
+  retries), the notification store, `plugin_migrations` (mirror tables).
 
 ---
 

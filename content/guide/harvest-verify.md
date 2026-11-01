@@ -20,7 +20,7 @@ the always-on syntactic layer: the `#[workflow]` compile-time guardrails
 sub-second, unconditional and body-or-one-hop scoped. `harvest-verify` is
 opt-in, needs its own MIR build, and follows values across crate boundaries.
 
-It is a **prototype** (issue #962). Read
+It is a **prototype**. Read
 [`docs/rnd/determinism-static-analysis.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/rnd/determinism-static-analysis.md)
 for what it can and cannot prove before relying on a verdict — in particular
 [the soundness boundaries](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/rnd/determinism-static-analysis.md#soundness-boundaries).
@@ -250,7 +250,7 @@ function's own header rather than guessing a line.
 ## Structure manifest
 
 `--emit-structure FILE` writes the call graph that the analysis resolved, one
-graph per workflow (issue #1995). The
+graph per workflow. The
 [upgrade check](/docs/harvest-upgrade-check) diffs two manifests, one per build, to find
 the workflow code that changed. The run builds the manifest only when you
 pass the flag.
@@ -279,7 +279,7 @@ never calls the body.
 
 ### Flow graphs and handlers
 
-Each body also has a `flow` graph (issue #2010). The manifest names its
+Each body also has a `flow` graph. The manifest names its
 format in `flow`, as `harvest-flow/1`. A node is an event. An edge joins two
 events when a path joins them with no other event on it.
 
@@ -425,7 +425,7 @@ rule is how a model rots.
 `--model extra.toml` overlays a file on the builtin one: the result is the
 **union** of the rows, and a later row with the same key replaces an earlier one.
 Overlays compose, applied left to right. **No tool release is required to teach
-it a new primitive** (issue #962, AC4).
+it a new primitive** (AC4).
 
 Two things to know before you rely on an overlay:
 
@@ -708,6 +708,6 @@ blocker for an opt-in check that needs its own MIR build would be a net safety r
 
 Both are static analysis, and neither is the last line. The backstops after a
 history exists are unchanged: `WorkflowReplayer` / `harvest-replay` against
-recorded histories, the replay-drift sample (issue #798), and the live
+recorded histories, the replay-drift sample, and the live
 `HistoryMatcher` non-determinism check at execution time. See
 [the determinism guide's release playbook](/docs/harvest-workflow-determinism#composing-with-the-release-playbook).

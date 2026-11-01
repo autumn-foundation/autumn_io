@@ -152,7 +152,7 @@ For the `autumn migrate` CLI the timeout is always the default.
 
 A DDL statement such as `ALTER TABLE` needs a strong table lock. If a long
 transaction holds a lock on that table, the DDL waits. Every new query on the
-table then waits behind the DDL, and the app stalls (issue #3057).
+table then waits behind the DDL, and the app stalls.
 
 To prevent this, each transactional migration starts with
 `SET LOCAL lock_timeout`. A migration that waits longer fails, and its

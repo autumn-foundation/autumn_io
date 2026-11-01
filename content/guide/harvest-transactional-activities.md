@@ -8,7 +8,7 @@ order = 1340
 
 > **Starting a workflow atomically with your own domain write?** See
 > [Transactional Workflow Start](/docs/harvest-transactional-start) — the same dual-write
-> problem, one step earlier in the pipeline (issue #763).
+> problem, one step earlier in the pipeline.
 
 ## The dual-write problem
 

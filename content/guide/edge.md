@@ -21,7 +21,7 @@ cannot answer falls through to it, and you write no glue for that.
 Worked example: [`examples/edge-greeting`](../../examples/edge-greeting).
 Design record: [ADR-0011](../adr/0011-edge-capsule-read-lane.md).
 
-> **Experimental (issue #1790, first slice).** The `#[edge]` macro surface, the
+> **Experimental (first slice).** The `#[edge]` macro surface, the
 > `autumn-edge` API, and the wire protocol are not covered by the stability
 > policy yet. See [STABILITY.md](../../STABILITY.md).
 

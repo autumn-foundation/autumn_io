@@ -375,7 +375,7 @@ if state.role().runs_workers() {
 predicates; see
 [Self-gating app-owned background work](jobs.md#self-gating-app-owned-background-work).
 Custom/named roles are unsupported today — for finer placement use per-queue
-worker pinning (#1623) plus app-level `state.role()` gating.
+worker pinning plus app-level `state.role()` gating.
 
 ## Migration Jobs
 
@@ -474,7 +474,7 @@ reported too, but does not decide the exit code: it runs on `autumn migrate
 down`, not on deploy. Each finding includes a one-line reason and a concrete
 next action.
 
-Classification follows the app's own backend (#1906). The example below is a
+Classification follows the app's own backend. The example below is a
 Postgres app; on SQLite the same command applies SQLite's rules — see
 [SQLite in production](./sqlite-in-production.md#migration-mechanics-on-sqlite).
 
@@ -500,7 +500,7 @@ Example output:
 | `irreversible` | Cannot be undone without a multi-step expand/contract cycle. |
 | `data-backfill` | Schema change is safe but requires a separate backfill job. |
 | `manual-review` | Autumn cannot auto-classify this statement; operator review required. |
-| `unsupported` | The backend has no syntax for this statement; it fails at apply time. SQLite only (#1906). |
+| `unsupported` | The backend has no syntax for this statement; it fails at apply time. SQLite only. |
 
 ### Adding `autumn migrate check` to CI
 
@@ -1084,7 +1084,7 @@ autumn_web::app()
 
 ## Production Protections
 
-The `prod` profile turns on these protections (issue #3057). Each has a
+The `prod` profile turns on these protections. Each has a
 one-line opt-out.
 
 | Protection | `prod` default | Opt-out |

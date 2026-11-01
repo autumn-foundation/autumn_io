@@ -24,7 +24,7 @@ link rel="stylesheet" href=(autumn_web::ui::WIDGETS_CSS_PATH);
 `autumn new` and the generators add this for you. It is served as a same-origin
 asset (`/static/css/autumn-widgets.css`, immutably cached) — not inline styles —
 so it works under a strict `style-src 'self'` Content-Security-Policy, and it is
-embedded in release builds (`--embed`, #1004) with no loose files to ship.
+embedded in release builds (`--embed`) with no loose files to ship.
 
 No Tailwind build step is required to get styled widgets: the stylesheet is
 plain CSS, not `@apply` rules, so linking it is enough even in a non-Tailwind

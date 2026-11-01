@@ -28,10 +28,10 @@ Harvest has four replay-shaped surfaces. They are complements, not alternatives:
 |---|---|---|
 | [`replay-verify`](/docs/harvest-replay-verify) | "Does my change break these curated **completed** histories?" | CI gate, pre-merge |
 | [`replay-drift gate`](/docs/harvest-replay-drift-gate) | "Does my change break the executions **in flight right now**?" | CI gate, pre-deploy |
-| `POST /workflows/{id}/replay-diagnosis` (#614) | "Is *this one* production run diverging under the code I have deployed?" | One-shot, server-side, during an incident |
+| `POST /workflows/{id}/replay-diagnosis` | "Is *this one* production run diverging under the code I have deployed?" | One-shot, server-side, during an incident |
 | **`harvest debug` (this page)** | "**Where exactly**, and **why**?" | Interactive, local, after the above says *yes* |
 
-The server-side diagnosis (#614) gives you a verdict and a single divergence
+The server-side diagnosis gives you a verdict and a single divergence
 record. The debugger gives you the whole trace leading up to it: every step's
 pending commands, open awaitables, version gates, side effects and markers — and
 a side-by-side diff against a second build.
@@ -111,7 +111,7 @@ events: 9
 Nine events, three activities, one timer. Now find the interesting one.
 
 A history from a worker with [decision boundaries](/docs/harvest-decision-boundaries)
-(issue #1833) also has `DecisionCommitted` rows. The detail column of each one
+ also has `DecisionCommitted` rows. The detail column of each one
 names the build and the worker of that decision, for example
 `decision: build 2026.10.1, worker worker-eu-1`. `replay --step` shows the
 same values under `decision`. Replay skips these rows.
@@ -258,7 +258,7 @@ A step is a replay of `events[0..=k]`, so an **intermediate** step models an
 execution *parked at that truncated frontier*. That is what makes stepping work
 at all — but it has one consequence worth knowing.
 
-A `ctx.patched(...)` gate (#687) or `ctx.version(...)` gate reached at a frontier
+A `ctx.patched(...)` gate or `ctx.version(...)` gate reached at a frontier
 is, correctly, **newly** patched: it records its marker and returns `true`,
 exactly as a live execution reaching that point for the first time would. So a
 gated build legitimately differs from an ungated one at intermediate steps —
@@ -451,9 +451,9 @@ changed, or a certified build whose real branch was never exercised).
 | Builder | Supplies |
 |---|---|
 | `.queries(...)` / `.updates(...)` | The candidate's declarative `#[query]` / `#[update]` registrations. A body branching on `ctx.list_query_names()` sees an **empty** registry without these. Pass the same `queries![…]` / `updates![…]` collection the build registers; entries for other workflow types are filtered out exactly as the worker filters them. |
-| `.payload_caps(...)` / `.payload_offload_threshold(...)` | The candidate's payload limits (#252, #524). |
-| `.payload_offloader(...)` | A `PayloadOffloader` over the deployment's `PayloadStore`, so claim-check reference envelopes (#524) are inflated back to the real payload before the body sees them. **Optional:** with none configured an envelope displays as an envelope and is never an error, which is the contract for an export debugged with no store to hand. |
-| `.activity_defaults(...)` | The candidate's worker-level activity retry and start-to-close defaults. Replay applies them to frontier local-activity commands (#620). |
+| `.payload_caps(...)` / `.payload_offload_threshold(...)` | The candidate's payload limits. |
+| `.payload_offloader(...)` | A `PayloadOffloader` over the deployment's `PayloadStore`, so claim-check reference envelopes are inflated back to the real payload before the body sees them. **Optional:** with none configured an envelope displays as an envelope and is never an error, which is the contract for an export debugged with no store to hand. |
+| `.activity_defaults(...)` | The candidate's worker-level activity retry and start-to-close defaults. Replay applies them to frontier local-activity commands. |
 | `.history_policy(...)` / `.build_id(...)` / `.state(...)` | The candidate's history thresholds, build id, and shared application state. |
 
 The `HistorySnapshot`'s own replay inputs — `workflow_id`, `queue_name`,

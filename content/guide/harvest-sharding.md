@@ -47,7 +47,7 @@ off until an operator turns it on per database.
 
 ---
 
-## Per-Key Concurrency Limits and Sharding (issue #247)
+## Per-Key Concurrency Limits and Sharding
 
 ### Limits are shard-local
 
@@ -74,7 +74,7 @@ curl -X POST /api/harvest/workflows/order_flow/start \
 
 **Trade-off**: routing all of one tenant's workflows to the same shard concentrates load. Size shards to handle the worst-case tenant burst, or use rate limiting above Harvest to bound how fast new workflows can be started per tenant.
 
-### Latest-wins supersede is shard-local too (issue #811)
+### Latest-wins supersede is shard-local too
 
 The same scope contract applies to the `on_conflict = "cancel_running"` overflow strategy:
 
@@ -97,19 +97,19 @@ Two further scoping notes:
 
 - **Supersede is scoped to `(workflow_name, concurrency_key)`, not the key alone.** A *different* workflow type that merely resolved the same key string — and never opted in to latest-wins — is never cancelled. This is what makes the feature migration-free: the resolved key lives on `harvest_task_queue`, so no new column on `harvest_workflow_executions` is needed.
 - **A single admission sheds at most `SUPERSEDE_SCAN_LIMIT` (32) runs.** Latest-wins is a per-key fair-share control, not a bulk-cancel tool: one start must never open an unbounded transaction cancelling hundreds of executions. Any excess beyond that is shed by the *next* admission for the same key, so the population still converges. The candidate scan itself is bounded to `limit + 32` rows for the same reason, so flipping a long-backlogged `Defer` key to `cancel_running` never materialises the whole backlog while holding the advisory lock.
-- **The superseded population is "non-terminal runs", not "runs currently occupying a dispatch slot".** The claim-time gate (issue #247) counts `RUNNING` *task* rows with a live worker; the supersede scan counts `RUNNING`/`PAUSED` *execution* rows. So a paused run — or one whose workflow task is still deferred at the claim gate — occupies no dispatch slot yet is still superseded. That is the intended reading: latest-wins enforces "at most `limit` **non-terminal runs** per key, newest wins", which is the operator-visible population.
+- **The superseded population is "non-terminal runs", not "runs currently occupying a dispatch slot".** The claim-time gate counts `RUNNING` *task* rows with a live worker; the supersede scan counts `RUNNING`/`PAUSED` *execution* rows. So a paused run — or one whose workflow task is still deferred at the claim gate — occupies no dispatch slot yet is still superseded. That is the intended reading: latest-wins enforces "at most `limit` **non-terminal runs** per key, newest wins", which is the operator-visible population.
 
-### Operator note: combining `cancel_running` with `ctx.mutex` (issue #691)
+### Operator note: combining `cancel_running` with `ctx.mutex`
 
-Postgres's one-argument advisory locks share a single 64-bit space, and the durable mutex (`ctx.mutex`, issue #691) takes a *blocking* lock in that same space. A latest-wins admission holds its concurrency lock while cancelling an incumbent, and that cancellation runs the incumbent's terminal chokepoint — which can take a mutex lock. The reverse order also exists (a mutex holder reaching a terminal state whose completion trigger starts a `cancel_running` workflow), so the two orders are inverted.
+Postgres's one-argument advisory locks share a single 64-bit space, and the durable mutex (`ctx.mutex`) takes a *blocking* lock in that same space. A latest-wins admission holds its concurrency lock while cancelling an incumbent, and that cancellation runs the incumbent's terminal chokepoint — which can take a mutex lock. The reverse order also exists (a mutex holder reaching a terminal state whose completion trigger starts a `cancel_running` workflow), so the two orders are inverted.
 
 If both happen concurrently Postgres detects the cycle and aborts one side with SQLSTATE `40P01`, surfacing as a database error on the *start*. The aborted transaction rolls back atomically — no partial supersede, no orphaned cancellation — and the start is safe to retry. It is a **liveness** hazard, not a correctness one, and it needs a workflow that both declares `on_conflict = "cancel_running"` and participates in `ctx.mutex` on the same terminal path. If you see `40P01` on such a start, retry it; if it recurs, split the mutex usage out of the latest-wins workflow.
 
-When the abort hits a workflow-task persist, the engine resets the task and replay runs it again (issue #1822). `harvest.db.transaction_retry{site="workflow_task", reason="deadlock"}` counts it. A start through the API or a client still returns the error, and the caller retries it.
+When the abort hits a workflow-task persist, the engine resets the task and replay runs it again. `harvest.db.transaction_retry{site="workflow_task", reason="deadlock"}` counts it. A start through the API or a client still returns the error, and the caller retries it.
 
 ---
 
-## Explicit shard placement and data residency (issue #697)
+## Explicit shard placement and data residency
 
 By default a new workflow's shard is chosen by rendezvous hashing over `(workflow_name, workflow_id)`. That is the right default — it spreads load evenly and needs no configuration — but a hash cannot know which physical database sits in which jurisdiction, so it cannot satisfy a data-residency obligation. For that, the start path accepts an **explicit placement**.
 
@@ -185,7 +185,7 @@ The chosen shard is observable three ways after a start (AC5) — no new column 
 
 The three surfaces above tell you where one run landed. They cannot tell you whether the **fleet agrees on the map**, and that is the failure mode with the worst blast radius: if two replicas are deployed with different `residency_map`s, the same `residency_key` places workflows in **different jurisdictions** depending on which replica happens to serve the request — silently, because both replicas report identical `readable_shards` / `writable_shards` / `default_shard`.
 
-`GET /api/harvest/admin/config` (issue #695) therefore surfaces the declared map under `shard_topology.residency_map`:
+`GET /api/harvest/admin/config` therefore surfaces the declared map under `shard_topology.residency_map`:
 
 ```bash
 curl -s .../admin/config | jq -S '.shard_topology'
@@ -202,7 +202,7 @@ curl -s .../admin/config | jq -S '.shard_topology'
 }
 ```
 
-`shard_forwards` (issue #964) is the same argument applied to a strictly worse
+`shard_forwards` is the same argument applied to a strictly worse
 failure mode. It is empty until a shard has been decommissioned; after one, two
 replicas that disagree about where a **retired** shard's ids resolve will answer
 the *same* `ExecutionId` from *different* databases — one finding the run, the
@@ -231,12 +231,12 @@ Everything spawned under a pinned parent stays on the parent's shard — this is
 | `ctx.race()` child branch | ✅ |
 | Child-or-deadline race (`execute_child_workflow_timeout`) | ✅ |
 | `continue_as_new` successor | ✅ |
-| Workflow-level retry run (#523) | ✅ |
-| Reset fork (#148) | ✅ |
+| Workflow-level retry run | ✅ |
+| Reset fork | ✅ |
 
 So pinning the **root** of a workflow tree confines the whole tree.
 
-> **One deliberate exception (issue #956).** A spawn can opt *out* of that inheritance per call, with `ChildPlacement`. The default is unchanged and permanent — every entry in the table above still reads ✅ unless the calling code explicitly passes a non-default placement. A residency-bound tree must therefore keep the default; use `ChildPlacement::ResidencyKey` when a child genuinely has its own declared jurisdiction, and never `ChildPlacement::Distributed`. See *Cross-shard child placement* below.
+> **One deliberate exception.** A spawn can opt *out* of that inheritance per call, with `ChildPlacement`. The default is unchanged and permanent — every entry in the table above still reads ✅ unless the calling code explicitly passes a non-default placement. A residency-bound tree must therefore keep the default; use `ChildPlacement::ResidencyKey` when a child genuinely has its own declared jurisdiction, and never `ChildPlacement::Distributed`. See *Cross-shard child placement* below.
 
 
 ### Worked example — a two-region EU/US deployment
@@ -281,16 +281,16 @@ So pinning the **root** of a workflow tree confines the whole tree.
 
 - **`(workflow_name, workflow_id)` uniqueness is per-shard.** A pin moves a run off its hash-derived shard, so a *later, unpinned* start of the same `workflow_id` would route elsewhere and could create a duplicate. When the caller omits `workflow_id`, Harvest mints one that hashes to the pinned shard, closing the hole automatically. When the caller supplies an **explicit** `workflow_id`, be consistent: either always pin it or never pin it. (This is the same consistency requirement idempotency-key routing already documents.)
 - **Placement is resolved before idempotency-key replay.** A retry of a keyed start must carry the same placement as the original delivery. A *committed* keyed replay still returns its original `200` even if the pinned shard has since been drained — the replay creates no new work, so it is validated against `readable_shards` only.
-- **Only the HTTP start route and the CLI carry placement.** `POST /workflows/{name}/signal-with-start` and `/update-with-start` have no `shard_id` / `residency_key` field, and the in-process SDK start APIs (`StartWorkflowParams`, the typed client stubs) carry none either — all of them route by hash. The one exception: a caller that builds `StartWorkflowParams` itself can pin by minting its `exec_id` with `ExecutionId::new_for_shard` (see [Tenant cells](#tenant-cells-issue-1837)). An entity workflow created through the documented signal-with-start pattern therefore **cannot** be pinned today. If a residency-bound workflow must be reachable that way, start it explicitly first (pinned) and let signal-with-start attach to the existing run. `WorkflowHandleClient::resolve_shard_placement` resolves and validates a placement for pre-flight tooling, but does not itself place anything.
-- **Deferred starts cannot be pinned.** Debounce (#499) and batch (#518) admit a start without creating an execution, so there is nothing to place at request time; combining either with `shard_id` / `residency_key` is a `400` rather than a silently discarded pin. A throttled start (#607) *is* pinned — it defers the same concrete placement to its scanner.
+- **Only the HTTP start route and the CLI carry placement.** `POST /workflows/{name}/signal-with-start` and `/update-with-start` have no `shard_id` / `residency_key` field, and the in-process SDK start APIs (`StartWorkflowParams`, the typed client stubs) carry none either — all of them route by hash. The one exception: a caller that builds `StartWorkflowParams` itself can pin by minting its `exec_id` with `ExecutionId::new_for_shard` (see [Tenant cells](#tenant-cells)). An entity workflow created through the documented signal-with-start pattern therefore **cannot** be pinned today. If a residency-bound workflow must be reachable that way, start it explicitly first (pinned) and let signal-with-start attach to the existing run. `WorkflowHandleClient::resolve_shard_placement` resolves and validates a placement for pre-flight tooling, but does not itself place anything.
+- **Deferred starts cannot be pinned.** Debounce and batch admit a start without creating an execution, so there is nothing to place at request time; combining either with `shard_id` / `residency_key` is a `400` rather than a silently discarded pin. A throttled start *is* pinned — it defers the same concrete placement to its scanner.
 - **Rollout ordering.** Placement is enforced by the node handling the start. During a rolling deploy, a pinned request that lands on a pre-#697 node is accepted and hashed, silently ignoring the pin. Upgrade the whole fleet before you begin sending pinned starts, and treat the first pinned start as the cutover point.
 - **Residency keys are an operator-declared, low-cardinality set.** The map is held in memory on every node and validated at boot; it is sized for regions/jurisdictions (single digits to dozens), not per-tenant keys. For per-tenant placement, map the tenant to a region in your own application layer and pass the region as the key.
-- **Out of scope**: migrating a *running* workflow between shards, and inferring residency from payload contents. A quiescent workflow can move; see [Shard rebalancing](#shard-rebalancing-migrating-quiescent-workflows-issue-964). [`cross-region-dr.md`](/docs/harvest-cross-region-dr) covers cross-region replication and failover (issue #954). Per-shard worker assignment is supported; see [Tenant cells](#tenant-cells-issue-1837). Harvest never reads your payload to decide placement — the caller states it explicitly.
+- **Out of scope**: migrating a *running* workflow between shards, and inferring residency from payload contents. A quiescent workflow can move; see [Shard rebalancing](#shard-rebalancing-migrating-quiescent-workflows). [`cross-region-dr.md`](/docs/harvest-cross-region-dr) covers cross-region replication and failover. Per-shard worker assignment is supported; see [Tenant cells](#tenant-cells). Harvest never reads your payload to decide placement — the caller states it explicitly.
 
-### Business-key addressing finds a pinned run wherever it is (issue #1146)
+### Business-key addressing finds a pinned run wherever it is
 
 `ctx.signal_external_workflow_by_id` / `ctx.request_cancel_external_workflow_by_id`
-(issue #751) address a target by `(workflow_name, workflow_id)`. Originally they
+ address a target by `(workflow_name, workflow_id)`. Originally they
 resolved the owning shard by re-deriving `ShardRouter::pick_for_new_workflow` —
 the rendezvous hash a *fresh start* of that key would use. That answers "where
 would new work be placed?", which is not the same question as "where does this
@@ -351,7 +351,7 @@ all, which needs a deployment to mix pinned and unpinned starts of the same
 keep, and for exactly this reason.
 
 **So a by-id cancel reports from a later fan-out than the one that cancelled**
-(issue #1313). The stale view only becomes a wrong answer once the cancel makes
+. The stale view only becomes a wrong answer once the cancel makes
 the run it found terminal, because that promotes the run which started during
 the fan-out to current run for the key. A cancel that ends a live run therefore
 cancels it, withholds `ExternalCancelDelivered`, and leaves the claim to the
@@ -408,8 +408,8 @@ uninspectable *in this process* — a router whose `readable_shards` names a sha
 no pool was ever configured for, say — leaves every affected by-id request
 pending indefinitely, and a workflow awaiting the outcome waits with it. The
 per-row `by-id target resolution inconclusive` warning still names the shard
-and the reason (issue #1146), and three metrics now cover what the warning
-alone could not (issue #1307): the counter
+and the reason, and three metrics now cover what the warning
+alone could not: the counter
 `harvest.external_signal.by_id_indeterminate_shard`, labelled `shard` and
 `kind`, for which shard and why; the gauges
 `harvest.external_signal.by_id_oldest_pending_indeterminate_age` and its
@@ -434,7 +434,7 @@ it.
 
 Distributed counting across shards requires either a coordination service (Redis, a dedicated Postgres coordinator) or accepting bounded inaccuracy (approximate counts via gossip). Both add operational complexity that conflicts with Harvest's goal of being a Postgres-native engine. Cross-shard global limits are therefore **out of scope** for this feature; the per-shard guarantee is the contract.
 
-[Fairness keys](/docs/harvest-fairness-keys) (issue #1976) are shard-local too. Each
+[Fairness keys](/docs/harvest-fairness-keys) are shard-local too. Each
 shard keeps its own key state.
 
 If you need approximate cross-shard fair-share rather than a hard global cap, the metrics observable via `GET /admin/concurrency` can feed an external rate limiter in the layer above Harvest.
@@ -447,7 +447,7 @@ This is handled entirely within the shard where the task lives — no cross-shar
 
 ---
 
-## Tenant cells (issue #1837)
+## Tenant cells
 
 A cell is one shard and one worker pool for one tenant. A flood in a cell
 does not reach tenants outside it. The cell has its own database
@@ -550,7 +550,7 @@ it above 3 s.
 
 ---
 
-## Cross-shard child placement (issue #956)
+## Cross-shard child placement
 
 Children are pinned to the parent's shard by default, and that default is permanent. That is the right default — it keeps a whole workflow tree's ACID, residency and observability story shard-local — but it means a single orchestrator concentrates its entire fan-out's write load on one database. Adding shards helps top-level starts and does nothing for the child-heavy workloads that need sharding most.
 
@@ -623,12 +623,12 @@ Note that the terminal notify is a **pull**, not a push. A push from the child's
 ### Consistency contract
 
 - **Per-execution ACID stays shard-local.** The parent's decision transaction touches one database; so does the child's. There is no two-phase commit and no cross-shard join.
-- **Cross-shard effects are at-least-once with dedupe** (the table above) — the same contract `enforce_external_signals_outbox` / `enforce_external_cancels_outbox` (#492) established.
+- **Cross-shard effects are at-least-once with dedupe** (the table above) — the same contract `enforce_external_signals_outbox` / `enforce_external_cancels_outbox` established.
 - **Latency, not correctness, is the price.** A cross-shard child's start and its terminal wake are each one scanner tick away rather than one transaction away.
 - **Placement never falls back silently.** A target shard this node has no pool for fails the spawn with the typed, retryable `HarvestError::ShardUnavailable`; the parent's decision cycle rolls back with nothing recorded and is re-driven once the shard is reachable. It is never quietly re-placed on the parent's shard.
 - **Zero event-schema impact.** No new `WorkflowEvent` variant and no change to the adjacently-tagged JSON contract. The child's shard is recoverable from the `child_id` recorded in `ChildWorkflowStarted`, so a parent replays byte-identically regardless of where its children live.
 - **Replay never re-resolves placement.** The router is consulted once, on the fresh dispatch; every later wake reuses the `child_id` already in history. This is what makes the byte-identical replay above true, and it also means a topology edit after dispatch — a shard removed, a residency mapping changed, a worker that has not installed its router yet — cannot fail a parent that is merely replaying.
-- **Restore every shard to the same instant.** A point-in-time restore that rolls shards back to *different* instants can leave a child alive on a target shard whose parent-side `ChildWorkflowStarted` and lifecycle row were rolled away — an orphan the relay cannot see, because it is driven entirely off that row. `harvest backup verify` derives its child checks from parent-side events, so it does not currently catch the reverse direction either (tracked in issue #1263). The same hazard exists for same-shard children; more databases simply make skew easier to produce. Restoring all shards to one common instant avoids it entirely.
+- **Restore every shard to the same instant.** A point-in-time restore that rolls shards back to *different* instants can leave a child alive on a target shard whose parent-side `ChildWorkflowStarted` and lifecycle row were rolled away — an orphan the relay cannot see, because it is driven entirely off that row. `harvest backup verify` derives its child checks from parent-side events, so it does not currently catch the reverse direction either. The same hazard exists for same-shard children; more databases simply make skew easier to produce. Restoring all shards to one common instant avoids it entirely.
 
 ### Operating it
 
@@ -667,7 +667,7 @@ There is **no dedicated metric** for the relay yet; the queries above and the `T
 
 The parent **detail** view (`GET /workflows/{id}`) resolves no children — it returns the execution row's own `parent_id` and nothing else — so there is nothing there to degrade.
 
-## Shard rebalancing — migrating quiescent workflows (issue #964)
+## Shard rebalancing — migrating quiescent workflows
 
 Before this, the sharding contract ended at *"cross-shard rebalancing of existing
 workflows is out of scope"*. That had two consequences that compound over time:
@@ -762,12 +762,12 @@ time.
 | No `ACTIVE` worker sessions | Session state lives on exactly one worker. |
 | No live children, same-shard or cross-shard | Same reason as the parent rule. |
 | Not non-determinism-blocked | A re-dispatch backoff is pending. |
-| Holds no durable mutex (`ctx.mutex`, #691) | The lock row is shard-local and keyed by the holder; moving the holder away leaves the key held by an execution that no longer lives here, and every waiter on it blocked forever. |
+| Holds no durable mutex (`ctx.mutex`) | The lock row is shard-local and keyed by the holder; moving the holder away leaves the key held by an execution that no longer lives here, and every waiter on it blocked forever. |
 | Queued for no durable mutex | The grant is delivered by waking the waiter **on this shard**, so a migrated waiter's grant would be delivered to a sealed row — a lost wake. |
 | No dead-letter rows | Redriving a DLQ entry enqueues a task on this shard, which after a migration would target a sealed row. Redrive or discard it first. |
 | Not schedule-attributed (`schedule_id IS NULL`) | A schedule row does not move with its runs, and its overlap enforcement is **shard-local**: the tick counts `RUNNING`/`PAUSED` executions on its own shard for `max_active_runs`, and `CancelOther`/`TerminateOther` cancel priors with the same shard-local query. After a migration the local row reads `MIGRATED`, so the schedule stops counting the still-running copy and stops cancelling it — silently exceeding its own cap, or starting a run without terminating the prior it was told to replace. Making this safe means teaching schedule overlap enforcement to see forwarded residences, which is a change to the scheduler rather than to this feature. |
-| Not a fork (`start_source` is not `fork`, issue #2000) | A recorded fork reads its source, and a new fork walks the fork lineage, on the shard of the fork. Only the fork moves, so on the target both lookups would miss: every recorded result would fail closed, and an erased ancestor would go unseen. |
-| Not in the fork lineage of a live fork (issue #2000) | A recorded fork reads the outcomes of its source on the shard of the fork. A migrated source records later outcomes on the target, so the fork would fail closed. A reset of a fork reads the source of the fork it resets, so the check walks the lineage up, for at most 64 links. The partial index on `start_source` keeps the walk small. |
+| Not a fork (`start_source` is not `fork`) | A recorded fork reads its source, and a new fork walks the fork lineage, on the shard of the fork. Only the fork moves, so on the target both lookups would miss: every recorded result would fail closed, and an erased ancestor would go unseen. |
+| Not in the fork lineage of a live fork | A recorded fork reads the outcomes of its source on the shard of the fork. A migrated source records later outcomes on the target, so the fork would fail closed. A reset of a fork reads the source of the fork it resets, so the check walks the lineage up, for at most 64 links. The partial index on `start_source` keeps the walk small. |
 | No live children, **including paused ones** | A paused child still completes eventually, and its terminal appends to the parent's history on the shard the parent used to be on. |
 
 **A run waiting on a timer or a signal IS migratable — that is the point.** Both
@@ -809,7 +809,7 @@ outstanding:
 Only `VERIFIED → COMMITTED` changes who is authoritative, and it is a single
 statement on one database. Run `harvest shard rebalance-resume` after any crash.
 A worker also settles a `COMMITTED` row on its own. See
-[automatic resume](#automatic-resume-after-a-stalled-cutover-issue-1839).
+[automatic resume](#automatic-resume-after-a-stalled-cutover).
 
 **Why the cutover re-checks the history and not only quiescence.** Verification
 proves the copy matches the source *as of the copy*. On the end-to-end path the
@@ -831,7 +831,7 @@ current history rather than wedged.
 > would need a two-phase commit across two databases, which the sharding design
 > rules out.
 
-### Automatic resume after a stalled cutover (issue #1839)
+### Automatic resume after a stalled cutover
 
 The worker closes the gap above without an operator. Each worker runs one
 rebalance-resume scanner per assigned shard, when a `ShardedDbPool` is
@@ -880,12 +880,12 @@ The loop reports as scanner `rebalance_resume` in `scanner_liveness` and in
 | Durable timers | ✅ verbatim, including `fires_at` | none |
 | Signals, including `idempotency_key` | ✅ verbatim | none |
 | Payload refs (`harvest_payload_refs`) | ✅ | none — the blob store is shard-external |
-| Agent cost ledger (`harvest_llm_ledger`, issue #1996) | ✅ verbatim, including `recorded_at` | none — the usage report counts the source until the move is done, then the target |
+| Agent cost ledger (`harvest_llm_ledger`) | ✅ verbatim, including `recorded_at` | none — the usage report counts the source until the move is done, then the target |
 | The parked workflow task row | ✅ | none |
 | Terminal task rows (activity history) | ❌ stays on the sealed source | none — the durable record is in `harvest_events` |
 | Workflow logs | ✅ | none — copied for a privacy reason as much as an operational one: they are free text, so a PII sink, and `erase.rs` scrubs them via the execution's own shard. Logs left behind would be out of reach of an erasure issued against the run. |
-| Durable stream chunks (`harvest_stream_chunks`, #1974) | ✅ in pages of 1,000 rows, and again at activation, so a chunk stored after verification is not lost | none — copied for the same reason as the logs: they are author output, and erasure must reach them |
-| Entity state projection (`harvest_entity_state`, #2259) | ✅ rebuilt, not copied: the projection trigger on the target writes the row as the event copy inserts each snapshot | none — the target row is the last snapshot of the copied history. The cutover deletes the row of the sealed source run. An aborted copy gives the target row back to the runs that stay there. |
+| Durable stream chunks (`harvest_stream_chunks`) | ✅ in pages of 1,000 rows, and again at activation, so a chunk stored after verification is not lost | none — copied for the same reason as the logs: they are author output, and erasure must reach them |
+| Entity state projection (`harvest_entity_state`) | ✅ rebuilt, not copied: the projection trigger on the target writes the row as the event copy inserts each snapshot | none — the target row is the last snapshot of the copied history. The cutover deletes the row of the sealed source run. An aborted copy gives the target row back to the runs that stay there. |
 | Start idempotency keys | ❌ | none for an existing run: a keyed start still hashes to the same shard |
 | Debounce rows | ❌ | at most one extra debounced start per key immediately after the move |
 | Start-throttle tokens, rate-limit buckets | ❌ | already per-shard; unaffected for an existing run |
@@ -993,7 +993,7 @@ the actor, the execution, and the outcome.
 
 A worker with a `ShardedDbPool` also writes to two shards: its
 rebalance-resume scanner finishes a cutover that an operator already committed
-(see [automatic resume](#automatic-resume-after-a-stalled-cutover-issue-1839)).
+(see [automatic resume](#automatic-resume-after-a-stalled-cutover)).
 It never starts a migration and never commits a cutover.
 
 **Run the migration before deploying the binary.** `db_conn_for_execution` now
@@ -1008,7 +1008,7 @@ default (identity) codec registry, because the CLI has no key material and
 putting decryption keys on an operator's workstation is not a default worth
 having. That does not weaken the guarantee: the load-bearing half of
 verification is the **raw byte-identity** check over the stored event tuples,
-which is codec-independent. On a deployment using keyed codecs (issue #948) the
+which is codec-independent. On a deployment using keyed codecs the
 decode-and-replay half will refuse with an unknown-key error, so the migration
 fails closed rather than proceeding unverified. Drive rebalancing from a process
 that has the registry installed if you need both halves.
@@ -1057,7 +1057,7 @@ Response:
 
 The `pending` field shows how many tasks are currently deferred because the key is at or above its cap.
 
-Each row also carries a `workflows` array attributing the key to the workflow type(s) with live tasks on it, and the effective overflow strategy each declares (issue #811). It is omitted when empty:
+Each row also carries a `workflows` array attributing the key to the workflow type(s) with live tasks on it, and the effective overflow strategy each declares. It is omitted when empty:
 
 ```json
 [
@@ -1076,7 +1076,7 @@ A workflow whose registered `WorkflowInfo` declares no concurrency policy report
 
 The `harvest.concurrency.in_flight` metric (tagged by concurrency key) is emitted by the concurrency sampler at regular intervals. **Note**: the raw key value is tagged on the metric — ensure your key cardinality is bounded (e.g., use `tenant_id`, not `execution_id`) to avoid metric cardinality explosion. See ADR-0001 §7.
 
-### Historical per-tenant usage report (issue #596)
+### Historical per-tenant usage report
 
 `GET /admin/concurrency` above is strictly **point-in-time**: it answers "how many tasks are in flight for this key right now?" It cannot answer the question every multi-tenant embedder eventually asks finance: "how much did tenant `acme` actually consume last month?" ADR-0001's cardinality rule deliberately keeps `MetricsRecorder` low-cardinality, so that answer cannot come from Prometheus either.
 
@@ -1128,7 +1128,7 @@ Executions that lack the requested `search_attrs` key are grouped under the lite
 - `activity_executions_failed`: count of terminal `ActivityFailed`/`ActivityTimedOut` events in the window that have a matching `ActivityStarted` (non-final retry attempts emit no event, so this counts exhausted-retry-or-timeout only). The start-match requirement excludes external activities, whose `ActivityTimedOut` can be appended with no `ActivityStarted` at all.
 - `activity_compute_seconds`: for each activity whose terminal event falls in the window, the wall-clock span from that activity's most recent (final-attempt) start to its terminal event, summed. Retry backoff wall time is excluded by construction.
 - Local activities and externally-completed activities are excluded from the activity counters — they never emit `ActivityStarted`, so they're not worker compute.
-- `llm_calls`, `llm_input_tokens`, `llm_output_tokens`, `llm_cost_usd_micros`, `llm_unpriced_calls` and `llm_latency_ms` (issue #1996): sums over the agent cost ledger rows whose `recorded_at` falls in the window. Cost is in millionths of a US dollar. A row with no cost counts in `llm_unpriced_calls`. The report skips a shard move's staged target copy and counts the sealed source until the move is done, so one shard reports each run. See [the agent cost ledger](/docs/harvest-agent-cost-ledger).
+- `llm_calls`, `llm_input_tokens`, `llm_output_tokens`, `llm_cost_usd_micros`, `llm_unpriced_calls` and `llm_latency_ms`: sums over the agent cost ledger rows whose `recorded_at` falls in the window. Cost is in millionths of a US dollar. A row with no cost counts in `llm_unpriced_calls`. The report skips a shard move's staged target copy and counts the sealed source until the move is done, so one shard reports each run. See [the agent cost ledger](/docs/harvest-agent-cost-ledger).
 
 **Window ceiling**: a `from`/`to` window wider than a configurable ceiling (default 90 days, `HarvestApiState::set_usage_window_ceiling`) is rejected with `400`, naming the ceiling, so an operator cannot accidentally trigger a full-table scan across every shard.
 
@@ -1142,27 +1142,27 @@ Renders a table by default; pass `--json` for piping.
 
 ### Adding a shard to a deployment that uses per-key concurrency
 
-Follow the standard add-a-shard procedure in [`docs/architecture.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/architecture.md#sharding). The new shard starts with no task queue rows, so the cap is independent from day one. A running workflow cannot move to the new shard. A quiescent one can; see [Shard rebalancing](#shard-rebalancing-migrating-quiescent-workflows-issue-964).
+Follow the standard add-a-shard procedure in [`docs/architecture.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/architecture.md#sharding). The new shard starts with no task queue rows, so the cap is independent from day one. A running workflow cannot move to the new shard. A quiescent one can; see [Shard rebalancing](#shard-rebalancing-migrating-quiescent-workflows).
 
 ---
 
-## Debounce coordination is shard-local (issue #499)
+## Debounce coordination is shard-local
 
-Debounce pending-start records (`harvest_debounce`) are routed to the same shard as the debounce key (via `ShardRouter`), matching the per-key concurrency scope above. All burst admissions for the same `(workflow_name, debounce_key)` pair must land on the same shard for the `UNIQUE (workflow_name, debounce_key)` upsert collapse to work. Cross-shard global debounce coordination is **out of scope**: embedders requiring a global cap should ensure all executions for a given debounce key route to a single shard (see [Explicit shard placement and data residency](#explicit-shard-placement-and-data-residency-issue-697) above).
+Debounce pending-start records (`harvest_debounce`) are routed to the same shard as the debounce key (via `ShardRouter`), matching the per-key concurrency scope above. All burst admissions for the same `(workflow_name, debounce_key)` pair must land on the same shard for the `UNIQUE (workflow_name, debounce_key)` upsert collapse to work. Cross-shard global debounce coordination is **out of scope**: embedders requiring a global cap should ensure all executions for a given debounce key route to a single shard (see [Explicit shard placement and data residency](#explicit-shard-placement-and-data-residency) above).
 
 ---
 
-## Per-key activity rate limits are shard-local (issue #699)
+## Per-key activity rate limits are shard-local
 
 Per-key **activity** rate-limit buckets (`dyn-rate:{key_expr}:{resolved}` in `harvest_rate_limit_buckets`, declared via `#[activity(rate_limit(key = "input.tenant_id", rps = …))]`) are enforced **within a shard**, exactly like the per-key concurrency limits and the workflow-start throttle above. An activity dispatched from a workflow runs on that workflow's own shard, so the token bucket for a given `(key_expr, resolved_value)` is consulted on that shard only. Buckets are never coordinated across shards.
 
-**Consequence**: the effective per-tenant RPS across a multi-shard cluster is `per-shard-rate × number-of-shards-the-tenant's-workflows-land-on`. If a tenant's workflows spread across N shards via rendezvous hashing, that tenant's activities can run at up to N × the declared `rps`. Cross-shard global rate coordination is **out of scope** (it would require a coordination service or bounded-inaccuracy gossip, both of which conflict with the Postgres-native design). Embedders needing a true global per-tenant activity cap should route all of a tenant's executions to a single shard (see [Explicit shard placement and data residency](#explicit-shard-placement-and-data-residency-issue-697) above), so every one of that tenant's activities consults the same bucket.
+**Consequence**: the effective per-tenant RPS across a multi-shard cluster is `per-shard-rate × number-of-shards-the-tenant's-workflows-land-on`. If a tenant's workflows spread across N shards via rendezvous hashing, that tenant's activities can run at up to N × the declared `rps`. Cross-shard global rate coordination is **out of scope** (it would require a coordination service or bounded-inaccuracy gossip, both of which conflict with the Postgres-native design). Embedders needing a true global per-tenant activity cap should route all of a tenant's executions to a single shard (see [Explicit shard placement and data residency](#explicit-shard-placement-and-data-residency) above), so every one of that tenant's activities consults the same bucket.
 
 ---
 
-## TTL'd pacing overrides apply per shard, fanned out to all of them (issue #945)
+## TTL'd pacing overrides apply per shard, fanned out to all of them
 
-A runtime pacing override (`POST`/`DELETE /admin/rate-limits/{activity_name}/override` and `POST`/`DELETE /admin/start-throttle/{workflow_name}/override`) layers a temporary, self-expiring quota change on top of an **existing, statically-declared** rate limit or throttle. Because that underlying bucket is itself shard-local — each shard database holds its own independent `harvest_rate_limit_buckets` row for the same bucket key — a single override call **fans out and writes the same override to every shard**, mirroring the pre-existing `set_rate_limit`/`declare_compat` fan-out pattern (issue #332). This is what makes "one CLI call, effective everywhere in under a minute" true for a multi-shard deployment: the operator does not need to know which shards a given activity/workflow's traffic lands on.
+A runtime pacing override (`POST`/`DELETE /admin/rate-limits/{activity_name}/override` and `POST`/`DELETE /admin/start-throttle/{workflow_name}/override`) layers a temporary, self-expiring quota change on top of an **existing, statically-declared** rate limit or throttle. Because that underlying bucket is itself shard-local — each shard database holds its own independent `harvest_rate_limit_buckets` row for the same bucket key — a single override call **fans out and writes the same override to every shard**, mirroring the pre-existing `set_rate_limit`/`declare_compat` fan-out pattern. This is what makes "one CLI call, effective everywhere in under a minute" true for a multi-shard deployment: the operator does not need to know which shards a given activity/workflow's traffic lands on.
 
 **Consequence**: a partial fan-out failure (one shard's database unreachable while the others succeed) can leave the override live on some shards and absent on others until retried — the response reports per-shard failures (`shard_errors`) and the audit record for that call is marked failed when any shard did not receive the write, so this state is never silent. If every shard fails, the call returns `503` with no override applied anywhere. Because expiry is enforced by each shard reading its own row's `override_expires_at > NOW()` independently, there is no cross-shard coordination of *when* an override reverts — every shard's copy reverts on its own clock at the same wall-clock instant, with no drift beyond ordinary clock skew between shard hosts.
 
@@ -1170,21 +1170,21 @@ A runtime pacing override (`POST`/`DELETE /admin/rate-limits/{activity_name}/ove
 
 ---
 
-## Durable mutex is shard-local (issue #691)
+## Durable mutex is shard-local
 
 The durable named mutex `ctx.mutex(key).acquire()` (the `harvest_mutex_locks` / `harvest_mutex_waiters` tables) is enforced **within a shard**, exactly the same scope as the per-key concurrency limits above. The lock table, the FIFO waiter queue, and the `pg_advisory_xact_lock` that serializes each acquire/release/reclaim all live on the workflow's own shard, so "at most one holder per key" holds only among executions that resolve to that shard.
 
-**Consequence**: two workflows that must serialize on a shared resource must land on the **same** shard for the mutex to actually serialize them. Route all contending executions for a given lock key to a single shard (see [Explicit shard placement and data residency](#explicit-shard-placement-and-data-residency-issue-697) above) — e.g. derive the mutex key from the same field you shard on. Cross-shard global mutual exclusion is **out of scope** for the same Postgres-native reasons as cross-shard concurrency and rate limits.
+**Consequence**: two workflows that must serialize on a shared resource must land on the **same** shard for the mutex to actually serialize them. Route all contending executions for a given lock key to a single shard (see [Explicit shard placement and data residency](#explicit-shard-placement-and-data-residency) above) — e.g. derive the mutex key from the same field you shard on. Cross-shard global mutual exclusion is **out of scope** for the same Postgres-native reasons as cross-shard concurrency and rate limits.
 
 ---
 
-## Per-tenant resource quotas are shard-local (issue #946)
+## Per-tenant resource quotas are shard-local
 
 Declared per-tenant quotas (`#[workflow(quota(key = "input.tenant_id", max_active_executions = 100, max_history_bytes = …, max_dead_letters = …))]`, or `WorkflowInfo::with_quota(QuotaPolicy)`) are enforced **within a shard**, the same scope as the per-key concurrency limits, the workflow-start throttle, per-key activity rate limits, and the durable mutex above. The `quota_key` resolved at start time (via the identical `resolve_concurrency_key` dot-path resolver #247 already uses — there is no second resolver) is stamped on `harvest_workflow_executions.quota_key`; usage — the `RUNNING`/`SUSPENDED`/`PAUSED` execution count, the aggregate `harvest_events` payload bytes, and the DLQ row count for that key — is computed with a single indexed query **against the workflow's own shard only**, inside the same admission transaction the `FOR UPDATE`-locked start already runs. A cross-shard execution row for the same tenant key is invisible to the check.
 
-**Consequence**: a tenant whose workflows spread across N shards via rendezvous hashing effectively gets `declared-limit × N` of each resource fleet-wide, not the declared limit globally. This is the exact "`per-shard-limit × shards`" behaviour the per-key concurrency and rate-limit sections above already document, applied to quotas. Cross-shard coordinated quotas are **explicitly out of scope** (per issue #946) for the same Postgres-native reasons as every other per-key primitive on this page: a genuinely global cap would require a coordination service or a bounded-inaccuracy gossip protocol, both of which conflict with the shard-local, no-cross-shard-transaction design this engine is built around.
+**Consequence**: a tenant whose workflows spread across N shards via rendezvous hashing effectively gets `declared-limit × N` of each resource fleet-wide, not the declared limit globally. This is the exact "`per-shard-limit × shards`" behaviour the per-key concurrency and rate-limit sections above already document, applied to quotas. Cross-shard coordinated quotas are **explicitly out of scope** for the same Postgres-native reasons as every other per-key primitive on this page: a genuinely global cap would require a coordination service or a bounded-inaccuracy gossip protocol, both of which conflict with the shard-local, no-cross-shard-transaction design this engine is built around.
 
-**Achieving a true global cap** for a tenant's aggregate resource footprint requires routing every one of that tenant's executions to a **single** shard — see [Explicit shard placement and data residency](#explicit-shard-placement-and-data-residency-issue-697) above (derive the same `residency_key`/`shard_id` you pin on from the same tenant field the quota's `key` expression resolves). With all of a tenant's executions confined to one shard, that shard's quota check sees every one of them and the declared limit is the tenant's true fleet-wide ceiling.
+**Achieving a true global cap** for a tenant's aggregate resource footprint requires routing every one of that tenant's executions to a **single** shard — see [Explicit shard placement and data residency](#explicit-shard-placement-and-data-residency) above (derive the same `residency_key`/`shard_id` you pin on from the same tenant field the quota's `key` expression resolves). With all of a tenant's executions confined to one shard, that shard's quota check sees every one of them and the declared limit is the tenant's true fleet-wide ceiling.
 
 **Adding a shard** to a deployment using per-tenant quotas follows the same procedure as the [per-key concurrency section](#adding-a-shard-to-a-deployment-that-uses-per-key-concurrency) above: a tenant whose workflows begin landing on the new shard (because it entered `writable_shards`) gets a *fresh* quota budget on that shard, independent of whatever usage already exists on its prior shard(s), until the rebalancing settles.
 
@@ -1240,7 +1240,7 @@ CREATE INDEX IF NOT EXISTS idx_harvest_we_created_id
 
 This index must be present on every shard for deep-page performance to remain flat. The migration is idempotent (`IF NOT EXISTS`) and is applied by the normal migration step (`autumn migrate`, or `harvest migrate run` against a dedicated Harvest database).
 
-## Cross-shard typed search-attribute predicates (`search_attr_filter`, issue #506)
+## Cross-shard typed search-attribute predicates (`search_attr_filter`)
 
 The `search_attr_filter=key:op:value` predicates (comparison/set filtering over
 `search_attrs`) are pushed down to **each shard's `WHERE` clause** and the
@@ -1280,7 +1280,7 @@ merged result is deterministic. Numeric comparison matches only number-typed
 stored values; a value stored as a string on one shard is excluded uniformly on
 all shards, never a partial false match.
 
-### Filter expressions (`filter`, issue #1982)
+### Filter expressions (`filter`)
 
 A `filter` expression compiles to one parenthesized fragment in the same
 per-shard `WHERE` clause. Its attribute leaves use the SQL in the table above.
@@ -1293,7 +1293,7 @@ example with `BitmapOr`, and an `OR` never forces a full scan of a shard.
 
 ---
 
-## Adding a Shard — Operational Runbook (issue #522)
+## Adding a Shard — Operational Runbook
 
 Follow this procedure to add a new shard to a live deployment. Each step is safe to stop and retry.
 
@@ -1333,7 +1333,7 @@ Wait for `readiness: "ready"`. A `degraded` row includes machine-readable `reaso
 
 | `reason_code` | Meaning | Resolution |
 |---|---|---|
-| `no_live_worker` | The shard is `Writable` and has claimable tasks, but **no live worker** covers this shard. | Widen a worker's coverage and redeploy — either add the shard to its `shard_assignments`, or remove the explicit `shard_assignments` narrowing entirely so "auto" coverage applies (issue #961). Verify with `GET /admin/config` → `worker.shard_assignments`. |
+| `no_live_worker` | The shard is `Writable` and has claimable tasks, but **no live worker** covers this shard. | Widen a worker's coverage and redeploy — either add the shard to its `shard_assignments`, or remove the explicit `shard_assignments` narrowing entirely so "auto" coverage applies. Verify with `GET /admin/config` → `worker.shard_assignments`. |
 | `worker_queue_uncovered` | No healthy worker covers a required queue on this shard. | Same as above — check queue bindings. |
 | `schema_migration_missing` | The shard is missing required migrations. | Re-run `harvest migrate run` against the shard (DSN via `HARVEST_DATABASE_URL`). |
 
@@ -1346,7 +1346,7 @@ Add the new shard to `writable_shards` and deploy. The fleet **automatically dra
 Shard coverage is configured in **Rust**, not in `autumn.toml` — there is no
 `[harvest.worker] shard_assignments` key. Multi-shard also runs through
 `HarvestRunner` only: `HarvestPlugin` rejects a multi-shard pool by design, so a
-plugin-hosted app is always single-shard. `HarvestEmbedding` (issue #1613) is the
+plugin-hosted app is always single-shard. `HarvestEmbedding` is the
 standalone entry point for a multi-shard process. It needs one result-notification
 database URL per shard, and it refuses to start when a shard has none.
 [`embedding.md`](/docs/harvest-embedding) is the reference for the standalone path.
@@ -1386,7 +1386,7 @@ Once flipped:
 - In-flight workflows on existing shards continue draining through their own worker tasks.
 - Workers covering both shards poll each shard's pool independently on every tick (round-robin, so a deep backlog on one shard cannot starve the other), preserving per-shard ACID locality.
 
-#### Verify coverage — don't assume it (issue #961)
+#### Verify coverage — don't assume it
 
 "New workflows begin landing on it" is only true if a live worker actually *covers* the shard. Run all three checks after the flip; each is falsifiable, none requires reading source:
 
@@ -1423,7 +1423,7 @@ The `harvest.shard.stranded_pending` gauge (emitted by the stranded-work sampler
 harvest_shard_stranded_pending{shard="1"} > 0
 ```
 
-A non-zero value means tasks are queued on that shard but no worker is draining them. Healthy steady state is `0` on all shards. Use this as an alerting signal: if it stays non-zero for more than `2 × poll_interval`, check the fleet's *effective* coverage with `GET /admin/config` → `worker.shard_assignments` (see [Verify coverage](#verify-coverage-don-t-assume-it-issue-961)).
+A non-zero value means tasks are queued on that shard but no worker is draining them. Healthy steady state is `0` on all shards. Use this as an alerting signal: if it stays non-zero for more than `2 × poll_interval`, check the fleet's *effective* coverage with `GET /admin/config` → `worker.shard_assignments` (see [Verify coverage](#verify-coverage-don-t-assume-it)).
 
 ### Pre-flip checklist
 

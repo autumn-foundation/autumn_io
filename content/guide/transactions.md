@@ -189,7 +189,7 @@ connection taken from the pool directly is not covered either. That includes
 the `autumn-billing` database store (`DbBillingStore`), so its webhook and
 dunning writes keep the role or database defaults. A savepoint keeps the outer values. A transaction pooler
 (`PgBouncer` in transaction mode) keeps a `SET LOCAL`, but drops a session
-`SET`. The `prod` profile sets `30s` and `60s` (#3057). A route's
+`SET`. The `prod` profile sets `30s` and `60s`. A route's
 `StatementTimeout` extension replaces the statement value for the
 transactions of that request. An unset statement timeout is sent as `0`, the
 same value `Db` and repositories set for the session when none is configured.

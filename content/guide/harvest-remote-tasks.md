@@ -116,7 +116,7 @@ start. The engine rounds it up to whole seconds, with a minimum of 1 s.
   the same on each retry. It goes in the `Idempotency-Key` header and in
   `_meta["io.autumn-harvest/idempotencyKey"]` (MCP), or as the A2A
   `messageId`. A server that honours the key starts one task. A Harvest
-  server does so (issue #2005).
+  server does so.
 - The handle is in history, under the payload codec. The token row is in
   `harvest_external_tasks`. A restart re-runs the workflow from history, and
   the poller finds the token again.
@@ -149,7 +149,7 @@ page.
 
 ## Durable promises
 
-A durable promise (issue #1985) and a remote task call settle a durable
+A durable promise and a remote task call settle a durable
 handle the same way:
 
 | | Durable promise | Remote task call |

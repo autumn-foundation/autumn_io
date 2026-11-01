@@ -55,7 +55,7 @@ of a developer already working in a built project. A brand-new user has a
 different, decisive first experience: `autumn new my-app` → `autumn dev` → a page
 in the browser, which includes Rust's **first clean compile**. That cold-start
 journey is the single biggest onboarding DX tax versus Rails/Django/Phoenix, so
-it gets its own budget and gate (issue #977).
+it gets its own budget and gate.
 
 | Change class | p50 ms | p95 ms | max ms | Gate |
 |---|---:|---:|---:|---|
@@ -126,7 +126,7 @@ autumn dev-loop-bench --cold-start --include-db
 
 ### Cold-start budget history
 
-The `Cold-Start Onboarding Gate` (issue #977) began at p95 60s / max 90s. It
+The `Cold-Start Onboarding Gate` began at p95 60s / max 90s. It
 failed every scheduled run from 2026-06-29 through at least 2026-09-14 (issue
 #2309). The root cause: `autumn-macros` had no `[features]` section. A no-DB
 app compiled the full `db` codegen (`model.rs` and `repository.rs`, about 40k
@@ -370,7 +370,7 @@ small app size. Autumn leans heavily on proc-macros (`#[get]`, `#[model]`,
 forces re-expansion or re-monomorphization proportional to the total
 route/model count, edit-refresh latency rots silently as real apps reach
 50–200 routes — invisible in CI because no example is large enough to surface
-it (issue #983).
+it.
 
 ### Scaling budget
 
@@ -380,7 +380,7 @@ it (issue #983).
 | Slope (p95@N=100 / p95@N=1) | ≤ **2×** | Near-flat growth guarantee |
 | Slope regression vs baseline | ≤ **20%** | Once a baseline is established; skipped until then |
 
-**Success metric (issue #983):** single-file handler-edit warm incremental
+**Success metric:** single-file handler-edit warm incremental
 rebuild p95 grows ≤ 2× from N=1 to N=100 routes **and** stays under 8 s
 absolute on the reference runner.
 
@@ -467,7 +467,7 @@ the decision in `RELEASE_NOTES.md`.
 
 ---
 
-## Overload / Load-Shedding Benchmark (issue #1006)
+## Overload / Load-Shedding Benchmark
 
 `autumn dev-loop-bench --overload` measures the Success Metric declared by
 the overload-protection feature (`server.max_concurrent_requests`, see

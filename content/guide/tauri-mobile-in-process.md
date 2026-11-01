@@ -1,6 +1,6 @@
 +++
 title = "Mobile Apps with Tauri: In-Process Backend + Remote Database (`autumn generate tauri-mobile`)"
-description = "autumn generate tauri-mobile scaffolds a src-tauri/ sub-project that wraps an existing autumn app in a Tauri v2 mobile shell for iOS and Android. It implements the in-process model (issue #1507, \"Option B\"): the Autumn Axum server runs on a background thread inside the app process itself, and the webview loads the app from http://127.0.0.1:<port>. The database is a remote Postgres instance reached over the device's network."
+description = "autumn generate tauri-mobile scaffolds a src-tauri/ sub-project that wraps an existing autumn app in a Tauri v2 mobile shell for iOS and Android. It implements the in-process model (\"Option B\"): the Autumn Axum server runs on a background thread inside the app process itself, and the webview loads the app from http://127.0.0.1:<port>. The database is a remote Postgres instance reached over the device's network."
 order = 930
 +++
 
@@ -8,7 +8,7 @@ order = 930
 
 `autumn generate tauri-mobile` scaffolds a `src-tauri/` sub-project that wraps
 an existing autumn app in a **Tauri v2 mobile shell** for iOS and Android. It
-implements the **in-process model** (issue #1507, "Option B"): the Autumn Axum
+implements the **in-process model** ("Option B"): the Autumn Axum
 server runs on a background thread *inside the app process itself*, and the
 webview loads the app from `http://127.0.0.1:<port>`. The database is a
 **remote Postgres** instance reached over the device's network.
@@ -304,7 +304,7 @@ fail once. Design accordingly:
    succeed (possibly slower on the first hit, per the recycle caveat above).
 
 **When you need offline**, this model is the wrong tool: it requires network
-for every query. That is "Option C" (issue #1508) territory — a local
+for every query. That is "Option C" territory — a local
 store with sync — not a pool-tuning problem.
 
 ## 4. App Store guideline compliance

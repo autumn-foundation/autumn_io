@@ -204,7 +204,7 @@ Both `PushPrincipal::from(42_i64)` and `PushPrincipal::from("42")` produce the
 same principal, so the `i64` and string spellings of one id are
 interchangeable — but two *different* namespaces are not.
 
-## Composing with the in-app feed (#1148)
+## Composing with the in-app feed
 
 Push is a *delivery leg*, not a replacement for the feed. The feed is the
 durable record the user can come back to; the push is the nudge that brings

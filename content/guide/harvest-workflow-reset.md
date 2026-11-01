@@ -15,20 +15,20 @@ surfaces and the rules that apply to all of them.
 
 | Surface | Source states | Notes |
 |---|---|---|
-| `POST /workflows/{id}/reset` (issue #148) | `RUNNING`, `PAUSED` | One run. `?dry_run=true` previews. |
+| `POST /workflows/{id}/reset` | `RUNNING`, `PAUSED` | One run. `?dry_run=true` previews. |
 | Vantage "Reset to event N" | `RUNNING`, `PAUSED` | Calls the same engine. See [Vantage UI](/docs/harvest-vantage-ui). |
-| `POST /workflows/batch_reset` (issue #538) | `RUNNING`, `PAUSED`, `FAILED`, `CANCELLED`, `TIMED_OUT` | A cohort. Each run gets an outcome. `preview: true` forks nothing. |
-| `POST /dags/{dag_name}/runs/{run_exec_id}/retry` (issue #366) | `FAILED`, `CANCELLED`, `TIMED_OUT` | See [DAG retry](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/dag-retry-from-failed-node.md). |
-| `POST /workflows/{id}/fork` (issue #2000) | Any state | Non-destructive. The source does not change. See the [fork runbook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/fork-a-run.md). |
+| `POST /workflows/batch_reset` | `RUNNING`, `PAUSED`, `FAILED`, `CANCELLED`, `TIMED_OUT` | A cohort. Each run gets an outcome. `preview: true` forks nothing. |
+| `POST /dags/{dag_name}/runs/{run_exec_id}/retry` | `FAILED`, `CANCELLED`, `TIMED_OUT` | See [DAG retry](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/dag-retry-from-failed-node.md). |
+| `POST /workflows/{id}/fork` | Any state | Non-destructive. The source does not change. See the [fork runbook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/fork-a-run.md). |
 
 No reset surface forks a run in any other state, or a child run.
 
 ## A fork never uses a PII-erased source
 
-Erasure (issue #495) replaces each payload field with the
+Erasure replaces each payload field with the
 `{"_harvest_erased": true}` tombstone. It applies to terminal runs only.
 
-The engine refuses an erased source on every fork path (issue #1999). The
+The engine refuses an erased source on every fork path. The
 check runs under the row lock that the fork takes, before the fork copies an
 event. The reset engine takes it `FOR UPDATE`. The non-destructive fork takes
 it `FOR SHARE`. An erasure either commits before that lock, and the fork
@@ -49,7 +49,7 @@ There is no opt-out. To run the work again, start a fresh run with new input.
 `POST /workflows/{id}/rerun` does this when you give it an explicit `input`.
 It refuses an erased input otherwise. See [`api-contract.json`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/api-contract.json).
 
-### Decision record (issue #1999)
+### Decision record
 
 Before issue #1999, the refusal was an in-process opt-in,
 `WorkflowResetRequest::refuse_erased_source`. Only DAG retry set it. Batch

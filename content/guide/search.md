@@ -16,7 +16,6 @@ semantic similarity — through one engine-agnostic API. It is an optional plugi
 crate; an app that never installs it pays nothing.
 
 - **Crate:** `autumn-search`
-- **Issue:** [#1191](https://github.com/autumn-foundation/autumn/issues/1191)
 - **Builds on:** [#842](https://github.com/autumn-foundation/autumn/issues/842)
   (in-core FTS), which it subsumes as one backend rather than replacing.
 - **Example:** `examples/wiki` mounts the plugin on `Page` — the same model
@@ -66,7 +65,7 @@ Rules the macro enforces at compile time:
 - at most **one** `embed` field — a record has one embedding, so two is
   ambiguous rather than last-wins;
 - `embed` requires the model-level `#[searchable]`;
-- `#[encrypted]` and `#[searchable]` remain mutually exclusive (#805).
+- `#[encrypted]` and `#[searchable]` remain mutually exclusive.
 
 A `#[searchable]` model whose primary key is not `i64` keeps its #842 behaviour
 and simply has no plugin index — search indexes key on `i64`.

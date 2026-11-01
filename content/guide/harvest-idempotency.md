@@ -54,7 +54,7 @@ Idempotency also matters in the other direction: webhook and event sources
 (Stripe, GitHub, SQS) deliver **at-least-once**, so the same logical event can
 reach a running workflow twice. Supplying an idempotency key with the signal
 collapses duplicate deliveries into exactly one `SignalReceived` event — no
-hand-rolled "seen event ids" dedup set in the workflow body (issues #521/#753):
+hand-rolled "seen event ids" dedup set in the workflow body:
 
 - **HTTP** — `POST /workflows/{id}/signal/{signal_name}` with an
   `Idempotency-Key:` header (or `?idempotency_key=` query param; the header
@@ -65,7 +65,7 @@ hand-rolled "seen event ids" dedup set in the workflow body (issues #521/#753):
 - **Untyped client** — `signal::send_signal_idempotent(conn, exec_id, name,
   payload, Some(key))`.
 - **First delivery for a workflow** — `signal-with-start` carries its own
-  `idempotency_key` field (issue #244); the surfaces above cover the
+  `idempotency_key` field; the surfaces above cover the
   steady-state "signal an already-running workflow" case.
 
 Dedupe scope is per execution — `(execution_id, idempotency_key)` — so the
@@ -76,10 +76,10 @@ while the run was still active (a retry acknowledges a delivery that already
 happened; a fresh key or an unkeyed signal to a terminal run still gets the
 terminal error). Omitting the key preserves the legacy at-least-once behavior
 exactly. Full contract and curl examples:
-[signals chapter](/docs/harvest-signals#idempotent-standalone-signals-over-http-issue-521)
+[signals chapter](/docs/harvest-signals#idempotent-standalone-signals-over-http)
 and the [signal-delivery section of the management-API reference](/docs/harvest-management-api#signal-delivery-post-workflows-id-signal-signal-name).
 
-## Idempotent workflow start — `idempotency_key` vs `workflow_id` (issue #808)
+## Idempotent workflow start — `idempotency_key` vs `workflow_id`
 
 The same at-least-once problem hits the **start** path: a webhook or event
 source that retries `POST /workflows/{name}/start` would launch a redundant
@@ -130,9 +130,9 @@ Semantics:
 - **Byte-identical when unused** — a start with no key omits the
   `started_fresh`/`deduplicated` response fields entirely.
 - **A committed keyed replay short-circuits to the `200` no-op _before_
-  fresh-start-only validations** — input-schema validation (#373),
-  completion-callback SSRF validation (#605), and the delay/`start_at` checks —
-  **and before the admission gate** (#377). Tightening any of those rules (or
+  fresh-start-only validations** — input-schema validation,
+  completion-callback SSRF validation, and the delay/`start_at` checks —
+  **and before the admission gate**. Tightening any of those rules (or
   raising a gate during an incident) between the original delivery and a retry
   never rejects a retry of already-done work; the retry returns the original
   execution regardless of its own body. A genuinely fresh keyed start (no live

@@ -4,9 +4,11 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use autumn_io::docs::slugify_heading;
 use pulldown_cmark::{Event, Options, Parser, Tag};
+use regex::Regex;
 
 const DEFAULT_AUTUMN_REPO: &str = "../autumn";
 const DEFAULT_DESTINATION: &str = "content/guide";
@@ -392,7 +394,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let source_file = source.join(file_name);
         let raw = fs::read_to_string(&source_file)
             .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
-        let raw = rebase_nested_links(&rewrite_org_urls(&raw), file_name);
+        let raw = strip_issue_references(&rebase_nested_links(&rewrite_org_urls(&raw), file_name));
         let title = first_heading(&raw).ok_or_else(|| {
             format!(
                 "guide file {} must start with a level-one heading",
@@ -448,7 +450,7 @@ fn prepare_harvest_guide(harvest_source: &Path) -> Result<Vec<PreparedGuide>, Bo
         let source_file = source.join(file_name);
         let raw = fs::read_to_string(&source_file)
             .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
-        let raw = rewrite_org_urls(&raw);
+        let raw = strip_issue_references(&rewrite_org_urls(&raw));
         let raw = rewrite_harvest_links(&raw, HARVEST_GUIDE_DIR);
 
         let heading = first_heading(&raw).ok_or_else(|| {
@@ -477,7 +479,10 @@ fn prepare_harvest_guide(harvest_source: &Path) -> Result<Vec<PreparedGuide>, Bo
         let source_file = reference.join(file_name);
         let raw = fs::read_to_string(&source_file)
             .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
-        let raw = rewrite_harvest_links(&rewrite_org_urls(&raw), HARVEST_DOCS_DIR);
+        let raw = strip_issue_references(&rewrite_harvest_links(
+            &rewrite_org_urls(&raw),
+            HARVEST_DOCS_DIR,
+        ));
 
         let heading = first_heading(&raw).ok_or_else(|| {
             format!(
@@ -996,6 +1001,12 @@ fn headings(markdown: &str) -> Vec<String> {
 /// word character, space, or hyphen, then spaces to hyphens. Underscores survive
 /// and runs of punctuation collapse to nothing rather than to a separator, so
 /// `#[secured("role")]` anchors as `securedrole`.
+/// The tail that an issue or PR reference leaves in a heading anchor:
+/// `-issue-1802`, `--pr-77` or a bare `-819` at the end.
+static FRAGMENT_REFERENCE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"-+(?:(?:issues?|prs?)-\d+|\d{2,}$)").unwrap_or_else(|error| panic!("{error}"))
+});
+
 fn github_anchor(heading: &str) -> String {
     let mut anchor = String::with_capacity(heading.len());
 
@@ -1086,13 +1097,23 @@ fn normalize_destination(
         return destination.to_owned();
     }
 
-    match target_headings
+    // The sync strips issue references from headings, so a fragment written
+    // against the old heading can end in `-issue-1802` or `-819`. Try it
+    // again without that tail. Only a real heading on the target page counts.
+    let without_references = FRAGMENT_REFERENCE.replace_all(fragment, "");
+    target_headings
         .iter()
         .find(|heading| github_anchor(heading) == fragment)
-    {
-        Some(heading) => format!("{path}#{}", slugify_heading(heading)),
-        None => destination.to_owned(),
-    }
+        .or_else(|| {
+            target_headings.iter().find(|heading| {
+                slugify_heading(heading) == without_references
+                    || github_anchor(heading) == without_references
+            })
+        })
+        .map_or_else(
+            || destination.to_owned(),
+            |heading| format!("{path}#{}", slugify_heading(heading)),
+        )
 }
 
 /// The vendored slug a link destination points at, for the link shapes that can
@@ -1171,6 +1192,108 @@ fn clamp_heading_levels(markdown: &str) -> String {
     }
     output.push_str(&markdown[copied..]);
     output
+}
+
+/// Issue and PR numbers in the upstream docs tie a passage to its source
+/// change. A reader of the public guides has no use for them, so the sync
+/// removes them. It removes these shapes, outside code:
+///
+/// - a parenthetical that holds only references: `(issue #2269)`, `(#2283)`,
+///   `(issues #342, #1792)`, `(see [#1190](…))`;
+/// - a reference at the start or end of a parenthetical:
+///   `(issue #684, and the rest)` becomes `(and the rest)`;
+/// - a sentence that holds only references: `Issue #953.` or
+///   `**Issue #958.**`;
+/// - a metadata line such as `**Issue:** [#1190](…)`.
+///
+/// A reference inside running prose (`Before issue #1667 …`) stays. Its
+/// sentence needs an edit upstream.
+fn strip_issue_references(markdown: &str) -> String {
+    static RULES: LazyLock<IssueReferenceRules> = LazyLock::new(IssueReferenceRules::new);
+    let rules = &*RULES;
+
+    let mut output = String::with_capacity(markdown.len());
+    let mut in_fence = false;
+    for line in markdown.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+        } else if !in_fence {
+            if rules.metadata_line.is_match(line) {
+                continue;
+            }
+            let stripped = rules.strip_line(line);
+            // A line that held only a reference sentence goes away.
+            let rest = stripped.trim();
+            if (rest.is_empty() || rest == ">") && line.trim() != rest {
+                continue;
+            }
+            output.push_str(&stripped);
+            output.push('\n');
+            continue;
+        }
+        output.push_str(line);
+        output.push('\n');
+    }
+    output
+}
+
+/// The patterns behind [`strip_issue_references`].
+struct IssueReferenceRules {
+    parenthetical: Regex,
+    leading: Regex,
+    trailing: Regex,
+    sentence: Regex,
+    bold_sentence: Regex,
+    metadata_line: Regex,
+}
+
+impl IssueReferenceRules {
+    fn new() -> Self {
+        // One reference: a linked `[#123](…)` or a bare `#123`.
+        let one = r"(?:\[#\d+\]\([^)]*\)|#\d{2,}\b)";
+        // A list of references: `#342, #1792`, `#12 and #13`.
+        let many = format!(r"{one}(?:\s*(?:,|and|/|&)\s*(?:{one}|\d{{2,}}\b))*");
+        let lead_in = r"(?i:(?:(?:see|tracked in|tracking|follow-?up(?: to)?|from|per|part of)\s+)?(?:issues?|prs?|pull requests?)?\s*)";
+        let build =
+            |pattern: String| Regex::new(&pattern).unwrap_or_else(|error| panic!("{error}"));
+        Self {
+            parenthetical: build(format!(r"(^|[^\]\s])\s*\(\s*{lead_in}{many}\s*\)")),
+            leading: build(format!(r"\(\s*{lead_in}{many}\s*[,;:]\s*")),
+            trailing: build(format!(r"\s*(?:[,;]|\s[—–-])\s*{lead_in}{many}\s*\)")),
+            sentence: build(format!(r"^(\s*(?:>\s*)?\*?)(?i:issues?)\s+{many}\.\s*")),
+            bold_sentence: build(format!(
+                r"^(\s*(?:>\s*)?)\*\*(?i:issues?)\s+{many}\.\*\*\s*"
+            )),
+            metadata_line: build(format!(
+                r"^\s*(?:>\s*)?(?:[-*]\s+)?\*\*(?i:issues?|prs?):?\*\*:?\s*{many}\.?\s*$"
+            )),
+        }
+    }
+
+    /// Strip one line. Inline code spans stay as they are.
+    fn strip_line(&self, line: &str) -> String {
+        let mut output = String::with_capacity(line.len());
+        for (index, segment) in line.split('`').enumerate() {
+            if index > 0 {
+                output.push('`');
+            }
+            if index % 2 == 1 {
+                output.push_str(segment);
+                continue;
+            }
+            let text = self.parenthetical.replace_all(segment, "$1");
+            let text = self.leading.replace_all(&text, "(");
+            let text = self.trailing.replace_all(&text, ")");
+            let text = if index == 0 {
+                let text = self.bold_sentence.replace(&text, "$1");
+                self.sentence.replace(&text, "$1").into_owned()
+            } else {
+                text.into_owned()
+            };
+            output.push_str(&text);
+        }
+        output
+    }
 }
 
 /// The site slug a guide file is served at: its file stem. Entries in
@@ -1275,10 +1398,12 @@ fn toml_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::{
         HARVEST_DOCS_DIR, HARVEST_GUIDE_DIR, HARVEST_GUIDE_FILES, HARVEST_REFERENCE_FILES,
-        clamp_heading_levels, clean_harvest_title, clean_reference_title, rebase_nested_links,
-        replace_first_heading, rewrite_harvest_destination,
+        clamp_heading_levels, clean_harvest_title, clean_reference_title, normalize_destination,
+        rebase_nested_links, replace_first_heading, rewrite_harvest_destination,
     };
 
     #[test]
@@ -1328,6 +1453,113 @@ mod tests {
              [up]: https://example.com/a.md\n\
              ```\n[code]: ./replay-verify.md\n```\n"
         );
+    }
+
+    #[test]
+    fn issue_references_are_stripped_from_guides() {
+        use super::strip_issue_references as strip;
+
+        // Headings and parentheticals that hold only references.
+        assert_eq!(
+            strip("## 13. Durable peers (issue #2269)\n"),
+            "## 13. Durable peers\n"
+        );
+        assert_eq!(strip("### Hard deletes (#2265)\n"), "### Hard deletes\n");
+        assert_eq!(
+            strip("Retry jitter (issues #342, #1792) is deterministic.\n"),
+            "Retry jitter is deterministic.\n"
+        );
+        assert_eq!(
+            strip("The flag (see [#1190](https://github.com/a/b/issues/1190)).\n"),
+            "The flag.\n"
+        );
+        // A reference at the start or end of a longer parenthetical.
+        assert_eq!(
+            strip("Shards (issue #684, reconciled below) move.\n"),
+            "Shards (reconciled below) move.\n"
+        );
+        assert_eq!(
+            strip("Shards (reconciled; #1273) move.\n"),
+            "Shards (reconciled) move.\n"
+        );
+        // A sentence or a metadata line that holds only references.
+        assert_eq!(
+            strip("Issue #953. Ships every record off-box.\n"),
+            "Ships every record off-box.\n"
+        );
+        assert_eq!(
+            strip("*Issue #843. Builds on retry.*\n"),
+            "*Builds on retry.*\n"
+        );
+        assert_eq!(
+            strip("> Issue #1982. A live signal.\n"),
+            "> A live signal.\n"
+        );
+        assert_eq!(
+            strip("a\n- **Issue:** [#1190](https://x/1190)\nb\n"),
+            "a\nb\n"
+        );
+        assert_eq!(
+            strip("**Issue #958.** An opt-in layout.\n"),
+            "An opt-in layout.\n"
+        );
+        assert_eq!(
+            strip("> Tip.\n> Issue [#1716](https://x/1716).\n"),
+            "> Tip.\n"
+        );
+        assert_eq!(
+            strip("Gauges (canonical SLI, issue #501) and tokens (opt-in — issue #942).\n"),
+            "Gauges (canonical SLI) and tokens (opt-in).\n"
+        );
+        assert_eq!(
+            strip("(`autumn schema`, tracking issue #1975)\n"),
+            "(`autumn schema`)\n"
+        );
+    }
+
+    #[test]
+    fn fragments_find_headings_after_references_are_stripped() {
+        let headings = HashMap::from([(
+            "security",
+            vec![
+                "Scoped API tokens (built in, opt-in)".to_owned(),
+                "Step-up vs session rotation".to_owned(),
+                "403 vs 404".to_owned(),
+            ],
+        )]);
+        let fix = |destination: &str| normalize_destination(destination, "security", &headings);
+
+        assert_eq!(
+            fix("/docs/security#scoped-api-tokens-built-in-opt-in--issue-942"),
+            "/docs/security#scoped-api-tokens-built-in-opt-in"
+        );
+        assert_eq!(
+            fix("#step-up-vs-session-rotation-819"),
+            "#step-up-vs-session-rotation"
+        );
+        // A real heading ID stays, and an unknown fragment is not touched.
+        assert_eq!(fix("#403-vs-404"), "#403-vs-404");
+        assert_eq!(fix("#missing-issue-12"), "#missing-issue-12");
+    }
+
+    #[test]
+    fn issue_reference_stripping_leaves_other_text_alone() {
+        use super::strip_issue_references as strip;
+
+        for kept in [
+            // Code, inline and fenced.
+            "Call `wait(#12)` here.\n",
+            "```\nlet x = (#123);\n```\n",
+            // Anchors, links and colors.
+            "See [the decision](#403-vs-404).\n",
+            "See [step two](#12).\n",
+            "color: #0284c7;\n",
+            // A reference in running prose needs an upstream edit.
+            "Before issue #1667 the flag did nothing.\n",
+            "Rust attributes such as #[derive(Debug)] stay.\n",
+        ] {
+            assert_eq!(strip(kept), kept);
+        }
     }
 
     #[test]

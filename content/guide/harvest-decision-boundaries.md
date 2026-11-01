@@ -1,13 +1,13 @@
 +++
 title = "Decision boundaries"
-description = "A decision boundary records which build and which worker made each decision of a workflow (issue #1833). Use it to find the build that caused a drift after an incident, or to audit the builds that ran a workflow."
+description = "A decision boundary records which build and which worker made each decision of a workflow. Use it to find the build that caused a drift after an incident, or to audit the builds that ran a workflow."
 order = 1430
 +++
 
 # Decision boundaries
 
 A decision boundary records which build and which worker made each decision
-of a workflow (issue #1833). Use it to find the build that caused a drift
+of a workflow. Use it to find the build that caused a drift
 after an incident, or to audit the builds that ran a workflow.
 
 ## What the worker writes

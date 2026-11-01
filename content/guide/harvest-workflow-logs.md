@@ -1,12 +1,12 @@
 +++
 title = "Durable per-execution workflow logs"
-description = "Issue #790. Opt-in. Additive."
+description = "Opt-in. Additive."
 order = 1410
 +++
 
 # Durable per-execution workflow logs
 
-*Issue #790. Opt-in. Additive.*
+*Opt-in. Additive.*
 
 A workflow author can already emit replay-safe log lines from workflow code:
 
@@ -22,7 +22,7 @@ async fn fulfill_order(ctx: &WorkflowContext, order: Order) -> Result<(), String
 }
 ```
 
-Those lines go to the host application's `tracing` subscriber (issue #379), which
+Those lines go to the host application's `tracing` subscriber, which
 means reading them back means leaving Vantage for Loki/Elastic/OTel and
 correlating by `execution_id` by hand. That context switch dominates MTTR for the
 exact question an operator asks first: *what did this run actually say?*
@@ -228,7 +228,7 @@ marker exists to prevent) and `max_message_bytes(0)` would empty every message.
 saturates a line's ordinal just below it. A workflow would have to make ~2^63
 `ctx.log_*` calls in one run to reach that ceiling, and the per-execution cap
 stops storing long before — but note the failure *shape* differs from the
-sibling `publish_progress` (#791) primitive, whose saturation is harmless: here
+sibling `publish_progress` primitive, whose saturation is harmless: here
 two distinct calls that both saturate would carry the same `seq`, so the second
 is deduplicated away rather than stored. Unreachable in practice; documented so
 the clamp is not mistaken for a no-op.
@@ -241,12 +241,12 @@ statement — so log retention is **tied to, and can never outlive,**
 workflow-history retention. There is no separate log-retention setting to
 misconfigure and no separate janitor to fall behind.
 
-Targeted PII erasure (issue #495) **deletes** an execution's log rows rather than
+Targeted PII erasure **deletes** an execution's log rows rather than
 tombstoning them: a log line is a single free-form author string with no field
 structure to preserve, so a tombstone would carry no information a plain absence
 does not. The `EraseOutcome` reports `logs_deleted`.
 
-**Archival asymmetry.** A registered `HistoryArchiver` (issue #345) receives the
+**Archival asymmetry.** A registered `HistoryArchiver` receives the
 execution's *event history* before retention deletes it, so archived history
 outlives the row. Logs have **no** archival hook: they cascade away with the row
 and are not included in the archived snapshot. If a run's author-emitted lines
@@ -277,11 +277,11 @@ replays or what it computes.
 
 | Want | Use instead |
 |---|---|
-| A live tail of a running workflow's output | `GET /workflows/{id}/stream` (issue #791), or `GET /workflows/{id}/stream/durable` to resume after a disconnect (issue #1974) |
-| A single "what is it doing right now" status string | `ctx.set_current_details` (issues #473/#593) |
+| A live tail of a running workflow's output | `GET /workflows/{id}/stream`, or `GET /workflows/{id}/stream/durable` to resume after a disconnect |
+| A single "what is it doing right now" status string | `ctx.set_current_details` |
 | Engine machinery (activity scheduled/completed, timers) | `GET /workflows/{id}/history` |
-| Where the time went | `GET /workflows/{id}/timeline` (issue #739) |
-| What a run is parked on | `GET /workflows/{id}/awaitables` (issue #615) |
+| Where the time went | `GET /workflows/{id}/timeline` |
+| What a run is parked on | `GET /workflows/{id}/awaitables` |
 | Full-text search across many executions | Your log aggregator — out of scope here |
 
 Also out of scope: capturing the host app's general `tracing` output,
