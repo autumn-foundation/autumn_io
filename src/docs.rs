@@ -1503,7 +1503,11 @@ mod tests {
             "Before.\n\n<!-- multi\n     line -->\n\n<!-- config-key-allow: AUTUMN_X \u{2014} note -->\n\n```http\nGET /\n```\n\nInline <!-- x --> after, and <b>bold</b>.\n",
         );
 
-        assert!(!rendered.html.contains("config-key-allow"), "{}", rendered.html);
+        assert!(
+            !rendered.html.contains("config-key-allow"),
+            "{}",
+            rendered.html
+        );
         assert!(!rendered.html.contains("line -->"), "{}", rendered.html);
         assert!(!rendered.html.contains("&lt;!--"), "{}", rendered.html);
         assert!(rendered.html.contains("&lt;b&gt;bold&lt;/b&gt;"));
