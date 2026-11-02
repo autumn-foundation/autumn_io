@@ -8,6 +8,9 @@ cd "$(dirname "$0")/.."
 grep -rnoE 'autumn_web::[A-Za-z0-9_]+(::[A-Za-z0-9_]+)*' content | while IFS=: read -r f l p; do
   last="${p##*::}"
   [ "$last" = "prelude" ] && continue
+  # `autumn_web::reexports::<crate>::<item>` names a third-party crate's item
+  # (e.g. redis::RedisResult); only `<crate>` itself is defined in autumn-web.
+  case "$p" in autumn_web::reexports::*::*) continue;; esac
   if ! grep -rqE "(fn|struct|enum|trait|mod|const|static|type|union|macro_rules!|use .*[ :{,])[[:space:]]*$last\b|as $last\b|\b$last[,;}]" "${src[@]}" --include='*.rs' 2>/dev/null; then
     echo "$f:$l: $p"
   fi

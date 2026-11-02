@@ -75,6 +75,23 @@ jobs:
       # 9 syntax_highlighting_backend), 0 failures. Five of those had never
       # passed before this workflow existed; see the note at the top.
 
+  docs-audit:
+    name: Docs audit (drift, links)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Drift is measured against the autumn-web/autumn-macros versions pinned
+      # in Cargo.lock, so a version bump that renames a symbol fails here.
+      - run: |
+          d="$RUNNER_TEMP/crates"; mkdir -p "$d"
+          for c in autumn-web autumn-macros; do
+            v="$(grep -A1 "name = \"$c\"" Cargo.lock | sed -n 's/version = "\(.*\)"/\1/p')"
+            curl -sSfL "https://static.crates.io/crates/$c/$c-$v.crate" | tar xz -C "$d"
+          done
+          scripts/docs-drift-scan.sh "$d"/autumn-web-*/src "$d"/autumn-macros-*/src | tee "$d/drift.txt"
+          test ! -s "$d/drift.txt"
+      - run: python3 scripts/docs-link-check.py
+
   release-build:
     name: Release build (fat LTO)
     runs-on: ubuntu-latest
