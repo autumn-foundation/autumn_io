@@ -1118,9 +1118,31 @@ fn render_markdown_events<'a>(events: impl IntoIterator<Item = Event<'a>>) -> Ve
     let mut rendered = Vec::new();
     let mut events = events.into_iter();
     let mut in_table_head = false;
+    let mut in_comment = false;
 
     while let Some(event) = events.next() {
         match event {
+            // Author annotations (`<!-- sync: ... -->`, `<!-- config-key-allow: ... -->`)
+            // are not content. Escaping them printed them as prose, and one
+            // long unbroken line overflowed `/docs/media` at 320px (WCAG
+            // 1.4.10). A block comment arrives as one event per source line,
+            // so track whether we are inside one; anything after the closing
+            // `-->` on the same line is kept (escaped like other raw HTML).
+            Event::Html(html) | Event::InlineHtml(html)
+                if in_comment || html.trim_start().starts_with("<!--") =>
+            {
+                let text = html.as_ref();
+                match text.find("-->") {
+                    Some(end) => {
+                        in_comment = false;
+                        let rest = &text[end + 3..];
+                        if !rest.trim().is_empty() {
+                            rendered.push(Event::Html(html_escaped_text(rest).into()));
+                        }
+                    }
+                    None => in_comment = true,
+                }
+            }
             Event::Start(Tag::CodeBlock(kind)) => {
                 let code = collect_code_block_text(&mut events);
                 rendered.push(Event::Html(render_code_block(&kind, &code).into()));
@@ -1474,6 +1496,19 @@ fn push_html_escaped(output: &mut String, value: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn html_comments_are_dropped_not_rendered_as_prose() {
+        let rendered = render_markdown(
+            "Before.\n\n<!-- multi\n     line -->\n\n<!-- config-key-allow: AUTUMN_X \u{2014} note -->\n\n```http\nGET /\n```\n\nInline <!-- x --> after, and <b>bold</b>.\n",
+        );
+
+        assert!(!rendered.html.contains("config-key-allow"), "{}", rendered.html);
+        assert!(!rendered.html.contains("line -->"), "{}", rendered.html);
+        assert!(!rendered.html.contains("&lt;!--"), "{}", rendered.html);
+        assert!(rendered.html.contains("&lt;b&gt;bold&lt;/b&gt;"));
+        assert!(rendered.html.contains("GET /"));
+    }
 
     #[test]
     fn duplicate_heading_ids_get_stable_suffixes() {
