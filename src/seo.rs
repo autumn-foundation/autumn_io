@@ -15,7 +15,7 @@ pub const AUTUMN_VERSION: &str = "0.9.0";
 pub const HARVEST_REPOSITORY_URL: &str = "https://github.com/autumn-foundation/autumn-harvest";
 pub const HARVEST_CRATES_IO_URL: &str = "https://crates.io/crates/autumn-harvest";
 pub const HARVEST_RUSTDOC_URL: &str = "https://docs.rs/autumn-harvest";
-pub const HARVEST_VERSION: &str = "0.8.0";
+pub const HARVEST_VERSION: &str = "0.9.0";
 
 #[must_use]
 pub fn absolute_url(path: &str) -> String {

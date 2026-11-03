@@ -1,12 +1,12 @@
 +++
 title = "Autumn Harvest"
-description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.8.0."
+description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.9.0."
 order = 1015
 +++
 
 # Autumn Harvest
 
-Autumn Harvest 0.8.0 is the durable workflow engine for Autumn apps. Use it
+Autumn Harvest 0.9.0 is the durable workflow engine for Autumn apps. Use it
 when a request should start work that must survive restarts, retries, timers,
 signals, child workflows, and scheduled dependency graphs.
 
@@ -49,33 +49,54 @@ history instead of a hopeful background task.
   retry with the same `Idempotency-Key` gets the stored result.
 - `autumn-harvest-agent`, an optional crate that runs an LLM agent loop as a
   workflow, with token and cost budgets and replay-as-evaluation.
+- Agent profile overlays under ceilings, best-of-N draws with scorers, and a
+  context reset for long agent runs.
+- `HarvestPlugin` on SQLite, for an Autumn app built on `autumn-web/sqlite`,
+  a SQLite fleet app included.
+- Cost-aware deferral: a worker holds named activity types while the
+  autumn-web `CostSignal` is high, and runs them when it falls.
 
-## What's New in 0.8.0
+## What's New in 0.9.0
 
-Harvest 0.8.0 moves to autumn-web 0.9, so an app bumps `autumn-web`,
-`autumn-harvest`, and `autumn-harvest-plugin` in one change. A leftover
-`autumn-web = "0.8"` compiles a second copy of the framework whose `Plugin`
-trait `HarvestPlugin` does not implement. The plugin contract declares
-`autumn-web = "0.9"`, so `AppBuilder::plugin` catches a mismatch at boot.
+Harvest 0.9.0 stays on autumn-web 0.9. Bump every Harvest crate in one
+change:
 
 ```toml
 [dependencies]
-autumn-harvest = "0.8"
-autumn-harvest-plugin = "0.8"
+autumn-harvest = { version = "0.9", features = ["db"] }
+autumn-harvest-plugin = "0.9"
 autumn-web = "0.9"
 ```
 
-`HarvestPlugin` now declares `[harvest]` as its own config root. Autumn 0.9's
-`prod` profile turns on `server.strict_config`, which refuses an undeclared
-table and stops the boot.
+The minimum supported Rust version rises from 1.88 to 1.97.
 
-The SQLite backend now runs child workflows, signals, updates, queries,
-cancellation, schedules and retention, and a conformance suite checks it
-against Postgres. A worker runs up to two claims at once by default. The AEAD
-codec now encrypts every payload column.
+New in this release:
 
-Some defaults and APIs changed. Before you deploy, read the
-[0.8.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.8.0.md).
+- [HarvestPlugin on SQLite](harvest-sqlite-plugin.md). The `sqlite` feature of
+  `autumn-harvest-plugin` boots the plugin in an Autumn app on the SQLite
+  lane. Harvest keeps its own file next to the app database. A fleet app can
+  give each tenant its own Harvest file, or point Harvest at Postgres in
+  split mode.
+- [Cost-aware deferral](harvest-cost-deferral.md). A worker holds named
+  activity types while the autumn-web `CostSignal` is high. A held task stays
+  `PENDING`, uses no attempt, and holds no worker slot. One threshold drives
+  Autumn jobs and Harvest activities.
+- [Agent profile overlays](harvest-durable-agents.md). An overlay changes an
+  agent's system prompt, guardrails, model and bounds under fixed ceilings.
+  A versioned store keeps each version, and a rollback activates an earlier
+  one. Each op records the overlay it read, so replay never reads the store.
+- Best-of-N draws and scorers. `run_draws` runs each draw as a child run, a
+  `Scorer` records a verdict, and `select` picks the best draw.
+- Context reset. Near the window cap, a long agent run saves progress notes
+  and starts again from the prompt, the task and the notes.
+- New indexes for signal reads and dead-letter reads, and a retention index
+  migration that no longer deadlocks.
+
+Some APIs and behaviors changed. The `schema` feature moves to `schemars`
+1.x, three Diesel tables split into a core and an extension declaration, and
+`reqwest` now uses the OS trust store. Turn on the new agent features only
+after every worker runs 0.9.0. Before you deploy, read the
+[0.9.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.9.0.md).
 Each change has its own section and check.
 
 ## Autumn Integration

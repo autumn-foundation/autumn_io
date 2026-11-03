@@ -1578,6 +1578,7 @@ a `JSONB` column has no row here. Each clear column has a reason.
 | `harvest_schedules.buffered_runs` | Clear | Fire times only. |
 | `harvest_schedules.retry_policy` | Clear | Engine configuration, not payload. |
 | `harvest_schedule_overrides.workflow_fields` | Clear | Operator schedule settings of a code-declared workflow schedule: cadence, policies and caps. An override never holds a run input. |
+| `harvest_agent_overlays.body` | Clear | An agent profile overlay: prompt text, bounds and a model name. `BYTEA`, not `JSONB`. A run reads it as configuration. Do not put secrets or PII in an overlay. |
 | `harvest_signals.payload` | Covered | The signal payload. Signal ingest decodes it before it records `SignalReceived`. |
 | `harvest_entity_state.snapshot` | Covered | The latest keyed-entity state. A trigger copies the encoded value of the snapshot event, so it holds the same envelope. Entity reads decode it. Erasure tombstones it. |
 | `harvest_stream_chunks.chunk` | Clear | Durable output chunks. The stream route sends them as stored. PII erasure deletes them. Do not put secrets in a chunk. |
@@ -1696,7 +1697,7 @@ credentials. The plugin re-exports `aws_sdk_kms`.
 
 ```toml
 [dependencies]
-autumn-harvest-plugin = { version = "0.8", features = ["aws-kms"] }
+autumn-harvest-plugin = { version = "0.9", features = ["aws-kms"] }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 ```
 
@@ -1741,7 +1742,7 @@ path "transit/decrypt/harvest" { capabilities = ["update"] }
 
 ```toml
 [dependencies]
-autumn-harvest-plugin = { version = "0.8", features = ["vault-transit"] }
+autumn-harvest-plugin = { version = "0.9", features = ["vault-transit"] }
 ```
 
 ```rust,ignore
@@ -1893,10 +1894,10 @@ Verify the signature. Replace the version in each name:
 
 ```sh
 cosign verify-blob \
-  --bundle harvest-0.8.0-x86_64-unknown-linux-gnu.tar.gz.sigstore.json \
-  --certificate-identity https://github.com/autumn-foundation/autumn-harvest/.github/workflows/release.yml@refs/tags/v0.8.0 \
+  --bundle harvest-0.9.0-x86_64-unknown-linux-gnu.tar.gz.sigstore.json \
+  --certificate-identity https://github.com/autumn-foundation/autumn-harvest/.github/workflows/release.yml@refs/tags/v0.9.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  harvest-0.8.0-x86_64-unknown-linux-gnu.tar.gz
+  harvest-0.9.0-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 Verify the build provenance and the SBOM attestation. Always pass the tag
@@ -1904,13 +1905,13 @@ and the workflow. `--repo` alone accepts an attestation from any workflow
 run of this repository.
 
 ```sh
-gh attestation verify harvest-0.8.0-x86_64-unknown-linux-gnu.tar.gz \
+gh attestation verify harvest-0.9.0-x86_64-unknown-linux-gnu.tar.gz \
   --repo autumn-foundation/autumn-harvest \
-  --source-ref refs/tags/v0.8.0 \
+  --source-ref refs/tags/v0.9.0 \
   --signer-workflow autumn-foundation/autumn-harvest/.github/workflows/release.yml
-gh attestation verify harvest-0.8.0-x86_64-unknown-linux-gnu.tar.gz \
+gh attestation verify harvest-0.9.0-x86_64-unknown-linux-gnu.tar.gz \
   --repo autumn-foundation/autumn-harvest \
-  --source-ref refs/tags/v0.8.0 \
+  --source-ref refs/tags/v0.9.0 \
   --signer-workflow autumn-foundation/autumn-harvest/.github/workflows/release.yml \
   --predicate-type https://cyclonedx.org/bom
 ```

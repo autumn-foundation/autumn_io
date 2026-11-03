@@ -365,7 +365,7 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.8.0"));
+    assert!(html.contains("Autumn Harvest 0.9.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
@@ -782,6 +782,41 @@ fn bundled_site_docs_include_the_harvest_reference_docs() {
         .page("harvest-durable-agents")
         .expect("durable agents should be bundled");
     assert_eq!(agents.title, "Durable agents: the agent adapter");
+}
+
+#[test]
+fn bundled_site_docs_include_the_harvest_090_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Reference docs new in Harvest 0.9.0.
+    for slug in ["harvest-sqlite-plugin", "harvest-cost-deferral"] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} reference doc should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+        assert!(
+            !page.title.contains('#'),
+            "{slug} should drop upstream issue numbers from its title"
+        );
+        assert!(!page.html().is_empty(), "{slug} should render a body");
+    }
+
+    // The Harvest overview describes the 0.9.0 release and links its
+    // upgrade guide.
+    let overview = registry
+        .page("autumn-harvest")
+        .expect("Harvest overview should be bundled");
+    assert!(overview.description.contains("0.9.0"));
+    let html = overview.html();
+    assert!(html.contains("What&#x27;s New in 0.9.0") || html.contains("What's New in 0.9.0"));
+    assert!(html.contains("docs/upgrading/0.9.0.md"));
+    assert!(html.contains(r#"href="/docs/harvest-sqlite-plugin""#));
+    assert!(html.contains(r#"href="/docs/harvest-cost-deferral""#));
+    assert!(!html.contains("issue #"));
 }
 
 #[test]

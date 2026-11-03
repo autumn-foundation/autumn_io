@@ -241,7 +241,7 @@ async fn list_tool_returns_every_guide_with_its_group() {
     let index = call_tool(&app, "list_autumn_docs", json!({})).await;
 
     assert_eq!(index["autumn_version"], "0.9.0");
-    assert_eq!(index["harvest_version"], "0.8.0");
+    assert_eq!(index["harvest_version"], "0.9.0");
 
     let guides = index["guides"].as_array().expect("guides array");
     assert_eq!(index["count"].as_u64().unwrap() as usize, guides.len());
