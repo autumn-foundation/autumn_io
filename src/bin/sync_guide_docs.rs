@@ -330,6 +330,8 @@ const HARVEST_REFERENCE_FILES: &[(&str, &str, u32)] = &[
     ("retry-jitter.md", "harvest-retry-jitter", 1460),
     ("embedding.md", "harvest-embedding", 1470),
     ("sqlite-backend.md", "harvest-sqlite-backend", 1480),
+    // New in Harvest 0.9.0.
+    ("sqlite-plugin.md", "harvest-sqlite-plugin", 1485),
     // Determinism and replay.
     (
         "why-deterministic-replay.md",
@@ -365,6 +367,8 @@ const HARVEST_REFERENCE_FILES: &[(&str, &str, u32)] = &[
     ("archival.md", "harvest-archival", 1690),
     ("audit-export.md", "harvest-audit-export", 1700),
     ("cross-region-dr.md", "harvest-cross-region-dr", 1710),
+    // New in Harvest 0.9.0.
+    ("cost-deferral.md", "harvest-cost-deferral", 1720),
     // Adoption.
     ("comparison.md", "harvest-comparison", 1800),
     (

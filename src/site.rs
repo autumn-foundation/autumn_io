@@ -114,6 +114,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "harvest-retry-jitter",
             "harvest-embedding",
             "harvest-sqlite-backend",
+            "harvest-sqlite-plugin",
         ],
     },
     DocsNavGroup {
@@ -145,6 +146,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "harvest-archival",
             "harvest-audit-export",
             "harvest-cross-region-dr",
+            "harvest-cost-deferral",
             "harvest-comparison",
             "harvest-migrating-from-temporal",
         ],

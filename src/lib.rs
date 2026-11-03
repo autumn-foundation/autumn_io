@@ -202,6 +202,7 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("harvest-retry-jitter"),
         guide_doc!("harvest-embedding"),
         guide_doc!("harvest-sqlite-backend"),
+        guide_doc!("harvest-sqlite-plugin"),
         guide_doc!("harvest-why-deterministic-replay"),
         guide_doc!("harvest-workflow-determinism"),
         guide_doc!("harvest-workflow-schema-contract"),
@@ -223,6 +224,7 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("harvest-archival"),
         guide_doc!("harvest-audit-export"),
         guide_doc!("harvest-cross-region-dr"),
+        guide_doc!("harvest-cost-deferral"),
         guide_doc!("harvest-comparison"),
         guide_doc!("harvest-migrating-from-temporal"),
         // New in Autumn 0.7.0.
