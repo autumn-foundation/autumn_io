@@ -34,7 +34,7 @@ is [`DESIGN-2471.md`](https://github.com/autumn-foundation/autumn-harvest/blob/t
 
 ```toml
 [dependencies]
-autumn-web = { version = "0.9", features = ["sqlite"] }
+autumn-web = { version = "0.10", features = ["sqlite"] }
 autumn-harvest = { version = "0.10", default-features = false }
 autumn-harvest-plugin = { version = "0.10", features = ["sqlite"] }
 ```

@@ -275,8 +275,8 @@ can differ from `effective_limit` until the older rows finish.
 
 Each admission reads the quota caps again. No row stores a cap. So:
 
-- **A lower cap** refuses the next admission of a key over it, with the `429`
-  of issue #946. Admission is the only place where a cap applies. A run in
+- **A lower cap** refuses the next admission of a key over it, with the quota
+  `429`. Admission is the only place where a cap applies. A run in
   flight continues, and no run ends. A workflow retry is still exempt. A
   continue-as-new successor has no quota check. A child spawn that the cap
   refuses defers its parent with a backoff, as before. The parent waits, and
