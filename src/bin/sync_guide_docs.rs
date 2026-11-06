@@ -223,6 +223,17 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("cell-isolation.md", 1780),
     ("sqlite-fleet.md", 1790),
     ("kubernetes.md", 1800),
+    // New in Autumn 0.10.0. Synced from the `v0.10.0` tag.
+    ("route-groups.md", 1810),
+    ("table-ownership.md", 1820),
+    ("table-width.md", 1830),
+    ("keyboard.md", 1840),
+    ("widget-packs.md", 1850),
+    ("display-widgets.md", 1860),
+    ("accordion.md", 1870),
+    ("drawer.md", 1880),
+    ("popover-and-menu.md", 1890),
+    ("tooltip.md", 1900),
 ];
 
 const DEFAULT_HARVEST_REPO: &str = "../autumn-harvest";

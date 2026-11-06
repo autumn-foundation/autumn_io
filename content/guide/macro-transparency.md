@@ -9,7 +9,7 @@ order = 80
 Autumn relies on procedural macros to eliminate boilerplate. This guide shows
 you exactly what those macros generate so there are no surprises at runtime.
 
-Examples in this guide track the Autumn 0.9.x line and Rust 1.88.0+ as of
+Examples in this guide track the Autumn 0.10.x line and Rust 1.97.0+ as of
 2026-10-01.
 
 The code snippets are **illustrative**, not compiled doctests: the "what it
@@ -44,7 +44,7 @@ When your application starts, Autumn logs every decision it makes. A typical
 startup sequence looks like this:
 
 ```
-  INFO autumn: Autumn starting version="0.9.0" profile="dev"
+  INFO autumn: Autumn starting version="0.10.0" profile="dev"
   INFO autumn: Database pool configured max_connections=10
   INFO autumn: Registered task name="db_cleanup" schedule="every 5m"
   INFO autumn: Listening addr=127.0.0.1:3000
@@ -53,7 +53,7 @@ startup sequence looks like this:
 If you omit the database:
 
 ```
-  INFO autumn: Autumn starting version="0.9.0" profile="dev"
+  INFO autumn: Autumn starting version="0.10.0" profile="dev"
   INFO autumn: Database not configured
   INFO autumn: Listening addr=127.0.0.1:3000
 ```
@@ -80,7 +80,7 @@ AUTUMN_SHOW_CONFIG=1 cargo run
 This produces output like:
 
 ```
-  INFO autumn: Autumn starting version="0.9.0" profile="dev"
+  INFO autumn: Autumn starting version="0.10.0" profile="dev"
   INFO autumn: Registered routes:
     /            GET      -> index
     /todos       GET      -> list_todos
@@ -297,7 +297,7 @@ A WebSocket upgrade route built on a **two-function** pattern: your outer
 function runs at upgrade time (with normal extractors) and returns a value
 implementing `WsHandler` that owns the live socket.
 
-Behind the non-default `ws` Cargo feature — `autumn-web = { version = "0.9",
+Behind the non-default `ws` Cargo feature — `autumn-web = { version = "0.10",
 features = ["ws"] }`. Without it the attribute does not exist, and the block
 below fails to compile against your own file. See
 [WebSockets](./websockets.md).
@@ -1656,7 +1656,7 @@ Every macro in this section is behind a non-default Cargo feature:
 and `#[inbound_mail]` needs `inbound-mail`.
 
 ```toml
-autumn-web = { version = "0.9", features = ["mail", "inbound-mail"] }
+autumn-web = { version = "0.10", features = ["mail", "inbound-mail"] }
 ```
 
 See [Mail](./mail.md) for the subsystem itself.
@@ -1739,7 +1739,7 @@ full matching rules.
 
 Translates an i18n key, with **compile-time validation** that the key exists in
 the default locale's `.ftl` file. Behind the non-default `i18n` feature —
-`autumn-web = { version = "0.9", features = ["i18n"] }`; see
+`autumn-web = { version = "0.10", features = ["i18n"] }`; see
 [Internationalization](./i18n.md).
 
 **You write:**

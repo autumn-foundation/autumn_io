@@ -698,6 +698,39 @@ fn bundled_site_docs_include_the_autumn_090_guides() {
 }
 
 #[test]
+fn bundled_site_docs_include_the_autumn_0100_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // Every guide new in the 0.10.0 sync.
+    for slug in [
+        "route-groups",
+        "table-ownership",
+        "table-width",
+        "keyboard",
+        "widget-packs",
+        "display-widgets",
+        "accordion",
+        "drawer",
+        "popover-and-menu",
+        "tooltip",
+    ] {
+        let page = registry
+            .page(slug)
+            .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
+        assert!(!page.title.is_empty(), "{slug} should carry a title");
+        assert!(!page.html().is_empty(), "{slug} should render a body");
+        assert!(
+            !page.title.contains('#'),
+            "{slug} should drop upstream issue numbers from its title"
+        );
+        assert!(
+            is_grouped_docs_nav_slug(slug),
+            "{slug} should be slotted into a docs sidebar group"
+        );
+    }
+}
+
+#[test]
 fn bundled_site_docs_include_the_harvest_reference_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
 

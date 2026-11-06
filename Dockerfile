@@ -4,7 +4,7 @@
 # This base is buildpack-deps-derived and already ships gcc, so nothing extra is
 # installed for it — but a `-slim` or `-alpine` builder has no C compiler, and
 # that failure appears only in Docker, never in a local `cargo build`.
-FROM rust:1.88-bookworm AS builder
+FROM rust:1.97-bookworm AS builder
 
 WORKDIR /app
 
