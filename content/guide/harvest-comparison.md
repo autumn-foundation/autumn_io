@@ -262,8 +262,7 @@ confirmed one ([PR #4061](https://github.com/golemcloud/golem/pull/4061)).
 Those snapshots need XFS with reflink
 ([PR #4061](https://github.com/golemcloud/golem/pull/4061)). A Harvest workspace is a set of files
 that the codec encrypts and that its digest names. History records the
-reference that a tool call made, so only a recorded result moves the head
-.
+reference that a tool call made, so only a recorded result moves the head.
 It needs no file system feature.
 
 **Harvest limits for agents.**
@@ -365,13 +364,11 @@ where one exists.
 - **Rust-only — no polyglot SDK.** If your workflows or activity workers aren't in
   Rust, harvest can't author them today. Non-Rust systems can only be _callers_
   (HTTP API, MCP, JSON Schema). This is the single biggest adoption gate versus
-  Temporal (7 SDKs) and Restate (6). A TypeScript management-API client ships
-, but it only calls the API. [ADR 0002](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0002-rust-native-execution-boundary.md)
+  Temporal (7 SDKs) and Restate (6). A TypeScript management-API client ships, but it only calls the API. [ADR 0002](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0002-rust-native-execution-boundary.md)
   keeps workers Rust-only, so this gap stays open by design.
 - **DR is operator-driven, not automatic.** Each shard replicates to a standby
   region, and an operator runs a fenced failover
-  ([cross-region DR](/docs/harvest-cross-region-dr),
-  [#954](https://github.com/autumn-foundation/autumn-harvest/issues/954)). There is
+  ([cross-region DR](/docs/harvest-cross-region-dr)). There is
   no automatic promotion, no active-active writing and no zero-RPO mode. Temporal
   (Global Namespaces / Cloud 2-region) and the managed clouds are ahead here.
 - **No managed cloud.** There is no hosted harvest — every competitor in this set
@@ -385,14 +382,11 @@ where one exists.
   (sharded) Postgres fleet can carry, that is a real constraint.
 - **UI parity is incomplete.** The embedded Vantage dashboard has a
   [Workers tab](https://github.com/autumn-foundation/autumn-harvest/issues/142),
-  a DLQ inspection page with a summary view
-  ([#226](https://github.com/autumn-foundation/autumn-harvest/issues/226) /
-  [#385](https://github.com/autumn-foundation/autumn-harvest/issues/385)), a
+  a DLQ inspection page with a summary view, a
   [schedules management page](https://github.com/autumn-foundation/autumn-harvest/issues/333),
   [DAG list + detail pages](https://github.com/autumn-foundation/autumn-harvest/issues/426)
   and a rendered DAG run graph. The workflow list takes `AND`/`OR` filter
-  expressions, and the list and detail pages update live
-.
+  expressions, and the list and detail pages update live.
   Temporal, Inngest, Hatchet, DBOS (Conductor), and Restate all
   ship more mature UIs today.
 - **Younger project, smaller ecosystem.** harvest is pre-1.0 (0.x, breaking
@@ -403,18 +397,15 @@ where one exists.
 - **Cross-shard composition is limited.** A workflow's own state (events, tasks,
   timers, signals, DLQ) stays on one shard, and there is no cross-shard
   transaction. A child can run on another shard only when its spawn opts in
-  ([cross-shard child placement](/docs/harvest-sharding#cross-shard-child-placement),
-  [#956](https://github.com/autumn-foundation/autumn-harvest/issues/956)). Its start
+  ([cross-shard child placement](/docs/harvest-sharding#cross-shard-child-placement)). Its start
   and its terminal wake are each one scanner tick away, or longer after a failed
   attempt. Delivery is at least once with dedupe, so the parent sees one terminal
   event. An operator can move quiescent workflows between shards
-  ([shard rebalancing](/docs/harvest-sharding#shard-rebalancing-migrating-quiescent-workflows),
-  [#964](https://github.com/autumn-foundation/autumn-harvest/issues/964)), but not
+  ([shard rebalancing](/docs/harvest-sharding#shard-rebalancing-migrating-quiescent-workflows)), but not
   running ones.
 - **Keyed entities are a library, not a native primitive.** `autumn_harvest::entity`
   gives each key one handler at a time and durable state
-  ([ADR 0006](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0006-keyed-entity.md),
-  [#1975](https://github.com/autumn-foundation/autumn-harvest/issues/1975)). An
+  ([ADR 0006](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0006-keyed-entity.md)). An
   operation has no reply, so a caller reads state with a query. A Restate
   virtual object call returns a result. An Azure durable entity call made from
   an orchestration also returns one.
@@ -424,8 +415,7 @@ where one exists.
   model call never sees an interrupt. See [durable agents](#12-durable-agents).
 - **Behind Temporal on throughput, on one measured box.** harvest publishes
   its own reproducible end-to-end numbers and the harness that produces them
-  ([`benchmarks.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/benchmarks.md),
-  [#941](https://github.com/autumn-foundation/autumn-harvest/issues/941)).
+  ([`benchmarks.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/benchmarks.md)).
   [Assay #14](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/assays/0014-harvest-vs-temporal-0.7.0-depth-sweep.md)
   measures harvest 0.7.0 against Temporal 1.25.2 on one 4-core box. Both
   engines use one Postgres server and run a 3-activity workflow. Temporal
@@ -500,18 +490,14 @@ Temporal-style Schedule object.
 
 - **[README](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/README.md)** — project overview and quick start.
 - **[Getting started](/docs/autumn-harvest)** — the chapter-by-chapter guide.
-- **[Temporal migration guide](/docs/harvest-migrating-from-temporal)**
-: a
+- **[Temporal migration guide](/docs/harvest-migrating-from-temporal)**: a
   concept map, a workflow-porting checklist, and a dual-run cutover playbook.
   This page answers _why / whether_ harvest; the migration guide answers
   _how_ to move.
-- **[Why Harvest keeps deterministic replay](/docs/harvest-why-deterministic-replay)**
-:
+- **[Why Harvest keeps deterministic replay](/docs/harvest-why-deterministic-replay)**:
   what replay buys over checkpoint-only steps, and how Harvest lowers its cost.
-- **[Durable agents](/docs/harvest-durable-agents)** and the **[agent mesh](/docs/harvest-agent-mesh)**
-:
+- **[Durable agents](/docs/harvest-durable-agents)** and the **[agent mesh](/docs/harvest-agent-mesh)**:
   the agent, its wakes, peers, mandates, flow rules and budgets.
-- **[Safety report](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/safety-report.md)**
-:
+- **[Safety report](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/safety-report.md)**:
   the claim, tests, results and known limits for leases, fencing,
   exactly-once completion and signal ordering.

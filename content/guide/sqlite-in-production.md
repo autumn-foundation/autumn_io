@@ -106,8 +106,7 @@ That means the SQLite tier does not do:
   scope; those are different products, not a mode of this tier.
 - **Streaming replication to another *server*.** Continuous replication ships
   the write-ahead log to offsite *storage* for recovery
-  ([durability](#durability-continuous-replication-and-point-in-time-restore),
-  #1628) — it does not feed a second live process. There is still exactly one
+  ([durability](#durability-continuous-replication-and-point-in-time-restore)) — it does not feed a second live process. There is still exactly one
   writer and exactly one host.
 
 If your deployment is genuinely one host, all of the above are non-constraints
@@ -497,8 +496,7 @@ the last `mode` and the last `vfs` win, and `mode=memory` or `vfs=memdb` is in
 memory. On Windows, `file:///C:/data/app.db` names `C:\data\app.db`.
 
 [`db scrub`](./data-scrubbing.md#sqlite) and the
-[retention sweeps](./data-retention.md) run against the SQLite file
-. `autumn db scrub --artifact <run-dir>` restores a `.sqlite` backup and
+[retention sweeps](./data-retention.md) run against the SQLite file. `autumn db scrub --artifact <run-dir>` restores a `.sqlite` backup and
 scrubs it in one command. Snapshots are the coarse-grained,
 cross-backend story; for second-granularity durability see
 [Durability: continuous replication](#durability-continuous-replication-and-point-in-time-restore)

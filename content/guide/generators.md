@@ -1368,8 +1368,7 @@ deserialization.
 (`autumn generate admin`) and the **delete** actions bump or write
 without a `WHERE lock_version = …` guard — the admin handler
 deserializes `NewPost`, which excludes the column, so the expected
-version never reaches it, and locking across deletes is out of scope
-. Both remain last-write-wins.
+version never reaches it, and locking across deletes is out of scope. Both remain last-write-wins.
 
 **Not yet wired (HTML scaffolds only):** `--live`, `--sharded`, a `slug`
 column, and scaffolds with an `Attachment` column write through paths that
@@ -1757,8 +1756,7 @@ with the bulk-actions widgets, `#[scheduled]`, and your own policy.
 Autumn ships the whole Fluent stack — the `t!(locale, "key")` macro with
 compile-time key validation, `Locale::t()`, the `i18n/<tag>.ftl`
 convention, fallback chains, and an `Accept-Language` `Locale` extractor
-(see [i18n](./i18n.md)). `--i18n` is what wires the scaffold into it
-, so a generated resource is translatable the moment it
+(see [i18n](./i18n.md)). `--i18n` is what wires the scaffold into it, so a generated resource is translatable the moment it
 exists instead of needing every English string hand-replaced:
 
 ```bash

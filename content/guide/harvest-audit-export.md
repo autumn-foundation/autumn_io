@@ -218,7 +218,7 @@ collector:
 | `occurred_at` | `timeUnixNano` / `timeObservedUnixNano` |
 | `operation` | `body` (or `event.name`) |
 | `status` | `severityText` — `"succeeded"` → `INFO`, `"failed"` → `ERROR`. **Lowercase on the wire**: these are the audit table's own values (`audit::STATUS_SUCCEEDED` / `STATUS_FAILED`), passed through verbatim. A receiver matching `"FAILED"` will silently classify every failed privileged action as `INFO`. |
-| `error_summary` | `attributes["exception.message"]` |
+| `error_summary` | `attributes["exception.message"]`. A few succeeded rows also use it as a summary: the ramp guard row and the agent profile rows, such as `from v1 to v2`, and the refine policy rows, such as `revision 2: auto_adopt.parts +["system"] -[]`. A policy row lists the settings that widen the gate first, and marks a cut summary with its revision. Map it by `status`. |
 | `shard_id` | `attributes["harvest.shard.id"]` — the shard the **operation acted on**, and the one a correlation should key off |
 | `shard` | `attributes["harvest.audit.source_shard"]` — the shard whose **database this record was read from**. Together with `seq` it is the dedup and gap-detection key, *not* an operation attribute |
 | `seq` | `attributes["harvest.audit.seq"]` |
@@ -447,8 +447,7 @@ the SIEM, with nothing anywhere to show it was lost.
 
 That guard only matters once the purge actually runs at all. It needs
 `audit_retention_days > 0` and `dry_run` set to false; either one unmet
-means no sweep touches `harvest_audit_log`, unexported row or not (issue
-#1272).
+means no sweep touches `harvest_audit_log`, unexported row or not.
 
 Given the purge runs, the guard applies when any of three signals says an
 exporter still owes this shard records — but the first two are not simply
@@ -497,8 +496,7 @@ authoritative**, retired or not:
   cannot work either: that process does not know whether an exporter is
   coming, which is exactly the information this flag supplies instead.
 
-  This flag overrides a retired cursor too, unlike `is_configured` (issue
-  #1266, reconciled with #1273 below). An earlier draft scoped it to "no
+  This flag overrides a retired cursor too, unlike `is_configured` (reconciled with #1273 below). An earlier draft scoped it to "no
   cursor row at all" instead, which reopened the exact re-enablement window
   it exists to close. See "Retiring audit export on a shard" below for the
   cost this brings.
@@ -733,8 +731,7 @@ authoritative**, retired or not:
   Forgetting it only reopens the original bootstrap window; it never causes
   data loss beyond that.
 
-  This is no longer a gap once a shard's own cursor is retired (issue
-  #1273): decommissioning shard A now resumes purging there regardless of
+  This is no longer a gap once a shard's own cursor is retired: decommissioning shard A now resumes purging there regardless of
   whether some other colocated shard's sink stays configured in the same
   process, since `is_configured()` no longer overrides a specific shard's
   own retirement outside the zero-cursor bootstrap case above. Exempting

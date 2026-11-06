@@ -225,6 +225,8 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("harvest-audit-export"),
         guide_doc!("harvest-cross-region-dr"),
         guide_doc!("harvest-cost-deferral"),
+        guide_doc!("harvest-process-roles"),
+        guide_doc!("harvest-run-default-overrides"),
         guide_doc!("harvest-comparison"),
         guide_doc!("harvest-migrating-from-temporal"),
         // New in Autumn 0.7.0.

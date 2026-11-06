@@ -429,7 +429,7 @@ Enable the `debugger` feature (it implies `testing`):
 
 ```toml
 [dev-dependencies]
-autumn-harvest = { version = "0.9", default-features = false, features = ["debugger"] }
+autumn-harvest = { version = "0.10", default-features = false, features = ["debugger"] }
 ```
 
 | Item | Purpose |
@@ -465,5 +465,4 @@ are threaded automatically; they are recorded in the export.
 ## Out of scope
 
 Per issue #949: Vantage UI embedding (TUI-first), live debugging of a *running*
-execution, editing history or "fix-forward from event N" (that is workflow reset,
-#148/#366), and breakpoints inside activity code.
+execution, editing history or "fix-forward from event N" (that is workflow reset), and breakpoints inside activity code.

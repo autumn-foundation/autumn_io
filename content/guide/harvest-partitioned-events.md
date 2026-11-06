@@ -588,8 +588,7 @@ The sweeper reports every cohort it considered and left alone, with the reason:
   read-back failed. Only the retention runtime exports, so
   this reason shows in `GET /admin/retention`, not in
   `harvest partition status`. Check the backend. The next tick tries again.
-- `changed since export` — a row changed between the export and the drop
-. The sweep exports the partition again.
+- `changed since export` — a row changed between the export and the drop. The sweep exports the partition again.
 - `export check exceeded its budget` — the row checksum under `SHARE` ran
   past `exact_scan_timeout`. Raise the timeout or narrow the
   cohort width.
@@ -598,8 +597,7 @@ The sweeper reports every cohort it considered and left alone, with the reason:
   reports it on such a shard. Nothing drops until a process with the
   archiver sweeps, or until you delete the row in `harvest_partition_export`.
 - `another process holds the export lock of this shard` — an exporter holds
-  the lock exclusive, or a sweep with no archiver holds it shared (issue
-  #2009). Expected with more than one runner. The next pass tries again.
+  the lock exclusive, or a sweep with no archiver holds it shared. Expected with more than one runner. The next pass tries again.
 - `unbounded upper bound` — a partition with no upper bound, which this engine
   never creates. It means something else attached one by hand; it can never be
   swept.

@@ -147,6 +147,8 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "harvest-audit-export",
             "harvest-cross-region-dr",
             "harvest-cost-deferral",
+            "harvest-process-roles",
+            "harvest-run-default-overrides",
             "harvest-comparison",
             "harvest-migrating-from-temporal",
         ],

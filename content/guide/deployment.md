@@ -954,8 +954,7 @@ and `--no-rollback`; no existing flag changed meaning.
 ### Bake: roll back on post-cutover metrics
 
 The `/ready` gate finds a release that does not start. It does not find a
-release that starts and then fails real requests. The bake finds this problem
-. After each host cuts over, `autumn deploy up` samples the new
+release that starts and then fails real requests. The bake finds this problem. After each host cuts over, `autumn deploy up` samples the new
 release. It rolls the host back on a bad result.
 
 The bake is off by default. Turn it on in `autumn.toml`:
@@ -1547,8 +1546,7 @@ online-safe snapshot of the file with no external tools.
   default); any other runtime secret (OAuth/SMTP/Redis/storage/etc.) must be
   provisioned on the target separately. The file is rebuilt on every `deploy
   up`, so hand-added entries do not persist.
-- **Your project's `autumn.toml` is deployed**
-. `autumn deploy up`
+- **Your project's `autumn.toml` is deployed**. `autumn deploy up`
   uploads your `autumn.toml` (and the profile sibling `autumn-<profile>.toml`
   when present) into the **per-release directory** at mode `0600` (owner-only, so
   secrets are never exposed to other local accounts) and sets

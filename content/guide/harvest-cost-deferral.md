@@ -144,5 +144,4 @@ incident.
   `signal_refresh_secs`.
 - **Postgres only.** The `autumn-harvest-sqlite` backend does not use the
   hold. On the plugin's `sqlite` feature, `cost_deferrable_activities` and
-  `WorkerConfig::with_cost_hold` fail the build and name the SQLite epic
-, so a held type never runs unheld by accident.
+  `WorkerConfig::with_cost_hold` fail the build and name the SQLite epic, so a held type never runs unheld by accident.

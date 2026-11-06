@@ -127,8 +127,7 @@ autumn dev-loop-bench --cold-start --include-db
 ### Cold-start budget history
 
 The `Cold-Start Onboarding Gate` began at p95 60s / max 90s. It
-failed every scheduled run from 2026-06-29 through at least 2026-09-14 (issue
-#2309). The root cause: `autumn-macros` had no `[features]` section. A no-DB
+failed every scheduled run from 2026-06-29 through at least 2026-09-14. The root cause: `autumn-macros` had no `[features]` section. A no-DB
 app compiled the full `db` codegen (`model.rs` and `repository.rs`, about 40k
 lines), even though it could not reach either macro.
 

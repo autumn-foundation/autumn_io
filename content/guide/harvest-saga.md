@@ -108,8 +108,7 @@ Consequences for the cancel-and-compensate branch specifically:
 - A **durable** compensation in the cancel branch fails the unwind; the
   workflow observes `SagaCompensationFailed`, and the
   `harvest.saga.compensation_failed` page fires — correctly, since the state
-  is genuinely dangling.  Remediation is manual reconciliation (or reset,
-  issue #148), the same as any durable-compensation failure.
+  is genuinely dangling.  Remediation is manual reconciliation (or reset), the same as any durable-compensation failure.
 - Durable compensations in the **step-failure rollback path**
   (`rollback_after`, triggered by a forward step's error while the run is
   still live) are unaffected — the limitation is specific to unwinding after

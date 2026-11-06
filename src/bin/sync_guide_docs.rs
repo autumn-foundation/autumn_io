@@ -369,6 +369,13 @@ const HARVEST_REFERENCE_FILES: &[(&str, &str, u32)] = &[
     ("cross-region-dr.md", "harvest-cross-region-dr", 1710),
     // New in Harvest 0.9.0.
     ("cost-deferral.md", "harvest-cost-deferral", 1720),
+    // New on the site with Harvest 0.10.0.
+    ("operations/process-roles.md", "harvest-process-roles", 1730),
+    (
+        "operations/run-default-overrides.md",
+        "harvest-run-default-overrides",
+        1740,
+    ),
     // Adoption.
     ("comparison.md", "harvest-comparison", 1800),
     (
@@ -485,7 +492,7 @@ fn prepare_harvest_guide(harvest_source: &Path) -> Result<Vec<PreparedGuide>, Bo
             .map_err(|error| format!("failed to read {}: {error}", source_file.display()))?;
         let raw = strip_issue_references(&rewrite_harvest_links(
             &rewrite_org_urls(&raw),
-            HARVEST_DOCS_DIR,
+            &reference_link_base(file_name),
         ));
 
         let heading = first_heading(&raw).ok_or_else(|| {
@@ -798,6 +805,16 @@ fn harvest_site_slug(resolved: &str) -> Option<&'static str> {
         .iter()
         .find(|(name, _, _)| *name == file_name)
         .map(|(_, slug, _)| *slug)
+}
+
+/// The repository directory that holds a Harvest reference doc. Relative
+/// links in a nested doc, such as `operations/process-roles.md`, resolve
+/// from its own directory, not from `docs/`.
+fn reference_link_base(file_name: &str) -> String {
+    match file_name.rsplit_once('/') {
+        Some((dir, _)) => format!("{HARVEST_DOCS_DIR}/{dir}"),
+        None => HARVEST_DOCS_DIR.to_owned(),
+    }
 }
 
 /// Resolve a path relative to `base` (a repository directory) into a
@@ -1218,12 +1235,38 @@ fn strip_issue_references(markdown: &str) -> String {
 
     let mut output = String::with_capacity(markdown.len());
     let mut in_fence = false;
-    for line in markdown.lines() {
+    let mut lines = markdown.lines().peekable();
+    while let Some(line) = lines.next() {
         if line.trim_start().starts_with("```") {
             in_fence = !in_fence;
         } else if !in_fence {
             if rules.metadata_line.is_match(line) {
                 continue;
+            }
+            // A wrapped paragraph can open a reference parenthetical at the
+            // end of one line and close it on the next. Join the two lines
+            // only when the join strips a reference.
+            if line.matches('(').count() > line.matches(')').count()
+                && let Some(next) = lines.peek()
+                && !next.trim().is_empty()
+            {
+                let separator = if line.trim_end().ends_with('(') {
+                    ""
+                } else {
+                    " "
+                };
+                let joined = format!("{}{separator}{}", line.trim_end(), next.trim_start());
+                let stripped = rules.strip_line(&joined);
+                let apart = format!(
+                    "{}{separator}{}",
+                    rules.strip_line(line).trim_end(),
+                    rules.strip_line(next).trim_start()
+                );
+                if stripped != apart {
+                    lines.next();
+                    push_stripped_line(&mut output, &stripped);
+                    continue;
+                }
             }
             let stripped = rules.strip_line(line);
             // A line that held only a reference sentence goes away.
@@ -1231,14 +1274,39 @@ fn strip_issue_references(markdown: &str) -> String {
             if (rest.is_empty() || rest == ">") && line.trim() != rest {
                 continue;
             }
-            output.push_str(&stripped);
-            output.push('\n');
+            if stripped == line {
+                output.push_str(line);
+                output.push('\n');
+            } else {
+                push_stripped_line(&mut output, &stripped);
+            }
             continue;
         }
         output.push_str(line);
         output.push('\n');
     }
     output
+}
+
+/// Push a line that lost a reference. When the strip leaves punctuation at
+/// the start of the line, the punctuation goes back to the end of the line
+/// above, so that no line starts with `.` or `,`.
+fn push_stripped_line(output: &mut String, stripped: &str) {
+    let rest = stripped.trim_start();
+    let previous_is_text = output
+        .trim_end_matches('\n')
+        .rsplit('\n')
+        .next()
+        .is_some_and(|previous| !previous.trim().is_empty());
+    if rest.starts_with(['.', ',', ';', ':']) && output.ends_with('\n') && previous_is_text {
+        output.pop();
+        let kept = output.trim_end().len();
+        output.truncate(kept);
+        output.push_str(rest);
+    } else {
+        output.push_str(stripped);
+    }
+    output.push('\n');
 }
 
 /// The patterns behind [`strip_issue_references`].
@@ -1256,8 +1324,10 @@ impl IssueReferenceRules {
         // One reference: a linked `[#123](…)` or a bare `#123`.
         let one = r"(?:\[#\d+\]\([^)]*\)|#\d{2,}\b)";
         // A list of references: `#342, #1792`, `#12 and #13`.
-        let many = format!(r"{one}(?:\s*(?:,|and|/|&)\s*(?:{one}|\d{{2,}}\b))*");
-        let lead_in = r"(?i:(?:(?:see|tracked in|tracking|follow-?up(?: to)?|from|per|part of)\s+)?(?:issues?|prs?|pull requests?)?\s*)";
+        let many = format!(
+            r"{one}(?:\s*(?:,|and|/|&)\s*(?i:(?:issues?|epics?|prs?)\s+)?(?:{one}|\d{{2,}}\b))*"
+        );
+        let lead_in = r"(?i:(?:(?:see|tracked in|tracking|follow-?up(?: to)?|from|per|part of)\s+)?(?:issues?|epics?|prs?|pull requests?)?\s*)";
         let build =
             |pattern: String| Regex::new(&pattern).unwrap_or_else(|error| panic!("{error}"));
         Self {
@@ -1407,8 +1477,31 @@ mod tests {
     use super::{
         HARVEST_DOCS_DIR, HARVEST_GUIDE_DIR, HARVEST_GUIDE_FILES, HARVEST_REFERENCE_FILES,
         clamp_heading_levels, clean_harvest_title, clean_reference_title, normalize_destination,
-        rebase_nested_links, replace_first_heading, rewrite_harvest_destination,
+        rebase_nested_links, reference_link_base, replace_first_heading,
+        rewrite_harvest_destination,
     };
+
+    #[test]
+    fn nested_reference_docs_resolve_links_from_their_own_directory() {
+        assert_eq!(reference_link_base("agent-mesh.md"), HARVEST_DOCS_DIR);
+        let base = reference_link_base("operations/process-roles.md");
+        assert_eq!(base, "docs/operations");
+        // A link one level up reaches a vendored reference doc.
+        assert_eq!(
+            rewrite_harvest_destination("../sqlite-plugin.md", &base),
+            "/docs/harvest-sqlite-plugin"
+        );
+        // A vendored sibling in the same directory.
+        assert_eq!(
+            rewrite_harvest_destination("run-default-overrides.md#rules", &base),
+            "/docs/harvest-run-default-overrides#rules"
+        );
+        // A sibling the site does not vendor keeps its directory.
+        assert_eq!(
+            rewrite_harvest_destination("kubernetes-probes.md", &base),
+            "https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/operations/kubernetes-probes.md"
+        );
+    }
 
     #[test]
     fn harvest_links_resolve_to_site_pages_from_both_directories() {
@@ -1456,6 +1549,33 @@ mod tests {
             "[replay canary]: /docs/harvest-replay-verify \"Canary\"\n\
              [up]: https://example.com/a.md\n\
              ```\n[code]: ./replay-verify.md\n```\n"
+        );
+    }
+
+    #[test]
+    fn epic_references_are_stripped_across_a_line_break() {
+        use super::strip_issue_references as strip;
+
+        assert_eq!(
+            strip("values at runtime, with no deploy (issues #2387 and #2406,\nepic #2384).\n"),
+            "values at runtime, with no deploy.\n"
+        );
+        assert_eq!(strip("A run (epic #2466) ends.\n"), "A run ends.\n");
+        // An open parenthesis that holds prose keeps its line break.
+        assert_eq!(strip("a list (\nsee below).\n"), "a list (\nsee below).\n");
+        // Punctuation left at the start of a line goes back to the line above.
+        assert_eq!(
+            strip("The outbox runs in embedded mode only\n(epic #2466).\n"),
+            "The outbox runs in embedded mode only.\n"
+        );
+        assert_eq!(
+            strip("  a summary view\n  ([#226](u) /\n  [#385](u)), a\n  page.\n"),
+            "  a summary view, a\n  page.\n"
+        );
+        // A line that strips on its own is not joined to the line above.
+        assert_eq!(
+            strip("Text (see\n- an item (issue #12).\n"),
+            "Text (see\n- an item.\n"
         );
     }
 

@@ -814,9 +814,7 @@ schemas and side-effect value schemas.
   the generator binary.
 - **Runtime enforcement / per-build pinning** — [issue #171](https://github.com/autumn-foundation/autumn-harvest/issues/171).
 - **Auto-migration or upcasting** of recorded payloads.
-- **Non-deterministic *code*** — [`harvest det-check`](/docs/harvest-workflow-determinism#running-the-check-in-ci)
-  (
-  [#778](https://github.com/autumn-foundation/autumn-harvest/issues/778)).
+- **Non-deterministic *code*** — [`harvest det-check`](/docs/harvest-workflow-determinism#running-the-check-in-ci).
 
 A workflow that publishes **no** schema is not gated at all — the check is
 opt-in, exactly like #373 itself. `coverage` in the artifact makes that visible
