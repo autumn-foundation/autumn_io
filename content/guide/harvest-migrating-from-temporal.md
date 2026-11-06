@@ -112,8 +112,7 @@ original call took a timeout. Each accepts a closure. The closure reads
 local workflow state and returns a `bool`.
 
 Port a multi-signal `condition(predicate, timeout?)` call this way.
-Register a push handler for each signal (`ctx.register_signal_handler`,
-issue #546). Have each handler set its own flag. Pass a closure that
+Register a push handler for each signal (`ctx.register_signal_handler`). Have each handler set its own flag. Pass a closure that
 checks the combined flags to `ctx.await_condition` or
 `ctx.await_condition_timeout`. `await_condition_timeout` also takes a
 timer ID and a duration in whole seconds. Use the same duration the
@@ -407,15 +406,13 @@ your whole application.
    Do not create the harvest schedule earlier and leave it paused,
    waiting for the cutover timestamp. A slot can come due during that
    wait, and neither engine's catchup policy resolves it cleanly for
-   you. Temporal's `CatchupWindow` and harvest's `CatchupPolicy` (issue
-   #484) each govern a missed interval as a whole, not slot by slot.
+   you. Temporal's `CatchupWindow` and harvest's `CatchupPolicy` each govern a missed interval as a whole, not slot by slot.
    Neither has a mode that reliably fires none of it. Harvest's
    `CatchupPolicy::SkipAll` still fires the oldest missed slot, for one
    example.
 
    Pause the Temporal Schedule first, then create and unpause the
-   harvest schedule with `POST /admin/schedules/{id}/resume` (issue
-   #229). A small gap between the two calls is still possible. Treat a
+   harvest schedule with `POST /admin/schedules/{id}/resume`. A small gap between the two calls is still possible. Treat a
    slot missed inside it as a deliberate, bounded loss, or fire it by
    hand through `POST /admin/schedules/{id}/trigger`. Keep the gap short
    enough that this stays rare.

@@ -725,8 +725,9 @@ loopback. The scope must include `openid`.
 **Limits.**
 
 - Roles are fixed at login. After `max_session_age` (default 12 hours) the
-  user must log in again. Set it with `OidcLogin::with_max_session_age`. An
-  age under one second becomes one second.
+  user must log in again. Set it with `OidcLogin::with_max_session_age`. The
+  login time has a one-second resolution, so a session can end up to one
+  second early. An age under two seconds becomes two seconds.
 - The claim map reads the signed ID token only.
 - Logout does not end the session at the identity provider.
 - `api_with_oidc` and `api_with_auth` replace each other. The last call
@@ -1157,8 +1158,7 @@ by its stable `(workflow_name, workflow_id)` business key instead of its
 ## Keyed entities
 
 [ADR 0006](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/adr/0006-keyed-entity.md) records the design. An entity adds no
-route. The `harvest_entity_state` table holds the latest state of each key
-.
+route. The `harvest_entity_state` table holds the latest state of each key.
 
 - **Any signal route sends an operation.** Signal-with-start, the signal
   routes by execution id and by business id, and batch signal jobs all reach
@@ -1225,8 +1225,7 @@ Without authentication middleware:
 - Read routes with no admin gate stay reachable without credentials.
 - Every **mutating** route and every **admin-gated** route depends on the
   deployment profile. It is reachable without credentials under
-  `AUTUMN_PROFILE=dev`. It answers `401` under every other profile (issues
-  #1284 and #1802). The `allow_unauthenticated_mutations()` opt-out reopens
+  `AUTUMN_PROFILE=dev`. It answers `401` under every other profile. The `allow_unauthenticated_mutations()` opt-out reopens
   the mutating routes that have no admin gate. So a bare `harvest preflight`
   or `harvest workflow start` works against a local dev app and fails closed
   against anything else.
@@ -1441,8 +1440,7 @@ queries. It also covers retries, reruns, forks and DLQ replay. So do
 completion triggers and callbacks, cross-shard children, external awaits and
 the quota reconciler.
 
-The management API and the Vantage UI follow the read-path decode rules
-. An admin sees plaintext when `decode_payloads_on_read` is on.
+The management API and the Vantage UI follow the read-path decode rules. An admin sees plaintext when `decode_payloads_on_read` is on.
 Any other caller sees the stored envelope. The list surfaces and the MCP
 status and watch tools always show the stored envelope. See
 [`docs/operations/read-path-decode.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/operations/read-path-decode.md).
@@ -1649,8 +1647,7 @@ The spend of an erased run then leaves the LLM budget sums.
 Retention deletes them with the run. The cross-region DR publication copies
 them to the standby. The history archive does not hold them.
 
-The SQLite backend keeps the same columns in its own `harvest_llm_ledger`
-. There, `exec_id` names the run and `event_seq` names the
+The SQLite backend keeps the same columns in its own `harvest_llm_ledger`. There, `exec_id` names the run and `event_seq` names the
 completion event. That backend has no codec, so its whole file is in clear.
 
 ### Key providers
@@ -1697,7 +1694,7 @@ credentials. The plugin re-exports `aws_sdk_kms`.
 
 ```toml
 [dependencies]
-autumn-harvest-plugin = { version = "0.9", features = ["aws-kms"] }
+autumn-harvest-plugin = { version = "0.10", features = ["aws-kms"] }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 ```
 
@@ -1742,7 +1739,7 @@ path "transit/decrypt/harvest" { capabilities = ["update"] }
 
 ```toml
 [dependencies]
-autumn-harvest-plugin = { version = "0.9", features = ["vault-transit"] }
+autumn-harvest-plugin = { version = "0.10", features = ["vault-transit"] }
 ```
 
 ```rust,ignore
@@ -1873,8 +1870,8 @@ quotes the scan output. To close the issue, fix each finding or add a reasoned
 ### Pinned actions and Dependabot
 
 Each `uses:` pins a commit SHA, with a `# <tag>` comment. A tag can move to new
-code, and a SHA cannot. `docs/audits/action-sha-pin.py` fails the `lint` job on
-any other form.
+code, and a SHA cannot. `cargo xtask audit action-sha-pin` fails the `lint` job
+on any other form.
 
 `.github/dependabot.yml` opens weekly update pull requests against `trunk-dev`,
 for `cargo` and `github-actions`. Dependabot changes the SHA and the comment
@@ -1894,10 +1891,10 @@ Verify the signature. Replace the version in each name:
 
 ```sh
 cosign verify-blob \
-  --bundle harvest-0.9.0-x86_64-unknown-linux-gnu.tar.gz.sigstore.json \
-  --certificate-identity https://github.com/autumn-foundation/autumn-harvest/.github/workflows/release.yml@refs/tags/v0.9.0 \
+  --bundle harvest-0.10.0-x86_64-unknown-linux-gnu.tar.gz.sigstore.json \
+  --certificate-identity https://github.com/autumn-foundation/autumn-harvest/.github/workflows/release.yml@refs/tags/v0.10.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  harvest-0.9.0-x86_64-unknown-linux-gnu.tar.gz
+  harvest-0.10.0-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 Verify the build provenance and the SBOM attestation. Always pass the tag
@@ -1905,13 +1902,13 @@ and the workflow. `--repo` alone accepts an attestation from any workflow
 run of this repository.
 
 ```sh
-gh attestation verify harvest-0.9.0-x86_64-unknown-linux-gnu.tar.gz \
+gh attestation verify harvest-0.10.0-x86_64-unknown-linux-gnu.tar.gz \
   --repo autumn-foundation/autumn-harvest \
-  --source-ref refs/tags/v0.9.0 \
+  --source-ref refs/tags/v0.10.0 \
   --signer-workflow autumn-foundation/autumn-harvest/.github/workflows/release.yml
-gh attestation verify harvest-0.9.0-x86_64-unknown-linux-gnu.tar.gz \
+gh attestation verify harvest-0.10.0-x86_64-unknown-linux-gnu.tar.gz \
   --repo autumn-foundation/autumn-harvest \
-  --source-ref refs/tags/v0.9.0 \
+  --source-ref refs/tags/v0.10.0 \
   --signer-workflow autumn-foundation/autumn-harvest/.github/workflows/release.yml \
   --predicate-type https://cyclonedx.org/bom
 ```
@@ -1942,8 +1939,7 @@ HarvestPlugin::new()
 
 Run each command **without credentials**. Every request must return `401` or
 `403` before any workflow, DLQ, schedule, batch, or retention side effect occurs.
-Outside the `dev` profile, Harvest returns `401` here even with no middleware
-. A `2xx` or a handler error means one of three things. The
+Outside the `dev` profile, Harvest returns `401` here even with no middleware. A `2xx` or a handler error means one of three things. The
 profile is `dev`, the opt-out is set, or your declared auth layer admits
 anonymous callers.
 

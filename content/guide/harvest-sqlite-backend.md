@@ -63,8 +63,7 @@ would write, so it replays unchanged on the core `WorkflowReplayer`.
 when** you need distributed / multi-worker execution, multi-server crash
 recovery, high throughput, `LISTEN`/`NOTIFY` push wake-ups, DAGs, the full
 management API, worker sessions, or sharding. `HarvestPlugin` serves the core
-management routes on this backend: see [`sqlite-plugin.md`](/docs/harvest-sqlite-plugin)
-(epic #2466).
+management routes on this backend: see [`sqlite-plugin.md`](/docs/harvest-sqlite-plugin).
 
 | | SQLite backend | Postgres core |
 | --- | --- | --- |
@@ -82,8 +81,8 @@ management routes on this backend: see [`sqlite-plugin.md`](/docs/harvest-sqlite
 
 ```toml
 [dependencies]
-autumn-harvest = { version = "0.9", default-features = false }
-autumn-harvest-sqlite = "0.9"
+autumn-harvest = { version = "0.10", default-features = false }
+autumn-harvest-sqlite = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -187,8 +186,7 @@ rt.register_activity(&reserve_inventory_info());
 ```
 
 - **`register_workflow(&WorkflowInfo)`** retains the workflow's `name`,
-  `handler`, `execution_timeout` and workflow-level `retry_policy` (issue
-  #2029). If `#[workflow(...)]` declares a feature this v0.1 backend cannot
+  `handler`, `execution_timeout` and workflow-level `retry_policy`. If `#[workflow(...)]` declares a feature this v0.1 backend cannot
   honor, registration **panics at setup time** and names it. These features
   are `concurrency`, `debounce`, `batch`, `throttle`, `quota` and a raised
   `max_input_bytes`. A setting is never dropped silently.
@@ -862,6 +860,21 @@ fires no timer and runs no activity body.
 > event runs again in each query, a `ctx.side_effect` closure included. Keep
 > that code free of external effects. Put an external effect in an activity.
 
+A declarative `#[query(workflow = "...")]` handler works too.
+Register it with `register_query`. It serves only runs of its workflow. A
+handler that the body registers with the same name wins, as on Postgres.
+
+```rust
+#[query(workflow = "order")]
+fn phase(ctx: &WorkflowContext) -> Result<String, String> {
+    Ok(ctx.workflow_id().to_owned())
+}
+
+for info in queries![phase] {
+    rt.register_query(&info);
+}
+```
+
 The future resolves to one of these errors:
 
 | Error | Cause |
@@ -1023,6 +1036,22 @@ Limits:
   `upsert_search_attrs` rules, as on Postgres. Search attributes have no
   size cap of their own.
 - The memo is stored as plain JSON. This backend has no payload codec.
+
+### Operator reads
+
+`SqliteReader` also serves the reads behind the plugin's management routes:
+
+| Read | Gives |
+|---|---|
+| `count_executions` | the number of runs per state and workflow name |
+| `children`, `parents_with_children` | the child runs of a set of parents |
+| `timed_history` | the history with the append time of each event |
+| `pending_work` | the open tasks, the unfired timers and the undelivered signals |
+| `workflow_logs`, `count_workflow_logs`, `workflow_log_truncated` | the durable log lines |
+| `replay_input` | the rows of a replay, with a context that matches the drive |
+
+These reads expect the current schema. Open the file with a runtime first,
+so that the runtime migrates it.
 
 ---
 
@@ -1278,8 +1307,19 @@ Six commands append no event: `SetCurrentDetails`
 (`ctx.set_current_details`), `PublishProgress`, `PublishDurableProgress`,
 `RecordLog`, a re-park `WaitForActivity` and `WaitForSignal`. Postgres
 appends no event for them either. `WaitForSignal` only names the wait. This
-backend does not keep the current details, the durable progress chunks or
-the log lines.
+backend does not keep the current details or the durable progress chunks.
+
+`RecordLog` goes to `harvest_workflow_logs` when a log policy is set. Set it with `set_workflow_log_policy(Some(WorkflowLogPolicy::new()))`.
+The rules are those of Postgres:
+
+- Each line is stored once, also when a cycle runs again.
+- A run keeps at most `max_lines` lines. One marker row records the loss.
+- The lines share the cycle transaction. A purge removes them with the run.
+- The write is best effort. A savepoint rolls back a failed write, so the
+  cycle commits without those lines.
+
+Read them with `SqliteReader::workflow_logs`, `count_workflow_logs` and
+`workflow_log_truncated`.
 
 ### Parity with Postgres
 

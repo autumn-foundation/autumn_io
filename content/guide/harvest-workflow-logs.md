@@ -143,8 +143,7 @@ re-driven. It is deliberately *not* an exactly-once delivery guarantee — see
 
 Two mechanisms combine:
 
-A durable write inherits `ctx.logger()`'s existing replay suppression (issue
-#379): emission is a no-op while `ctx.is_replaying()` is true, so a replayed
+A durable write inherits `ctx.logger()`'s existing replay suppression: emission is a no-op while `ctx.is_replaying()` is true, so a replayed
 cycle re-emits nothing.
 
 That alone is *not* sufficient. A decision cycle that logs and then parks can be

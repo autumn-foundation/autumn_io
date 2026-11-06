@@ -426,8 +426,7 @@ directly; work another process enqueued is seen within
 `jobs.sqlite.poll_interval_ms` (default 250ms). Lower it for latency, raise it
 to cut idle wakeups.
 
-The runtime prunes terminal rows. `autumn db retention` also sweeps them
-. Set `retention.job_history` to bound the table; leave it
+The runtime prunes terminal rows. `autumn db retention` also sweeps them. Set `retention.job_history` to bound the table; leave it
 unset and history is kept forever, exactly as on Postgres.
 
 The runtime creates the table and its indexes at start, because framework
@@ -514,8 +513,7 @@ job that did not start.
 ## Retry/backoff and dead letters
 
 - Jobs retry with exponential backoff and full jitter: the wait is a random
-  value in `[0, min(max_backoff_ms, initial_backoff_ms * 2^(attempt-1))]`
-. Jobs that fail together do not retry together. All four
+  value in `[0, min(max_backoff_ms, initial_backoff_ms * 2^(attempt-1))]`. Jobs that fail together do not retry together. All four
   backends use the same rule. Under a `Sim`, the jitter replays from the seed.
 - `max_backoff_ms` caps the wait. Default: 3 600 000 (1 hour). Set it in
   `[jobs]` or with `AUTUMN_JOBS__MAX_BACKOFF_MS`.

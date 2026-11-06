@@ -448,8 +448,7 @@ Explicitly **not** provided by the best-effort mode (see the issue for rationale
   or buffering for late subscribers** — best-effort only. The durable mode
   gives ordered, at-least-once delivery with backfill.
 - **Final-result delivery** — use the await-completion long-poll.
-- **Snapshot state reads** — use a query handler or `set_current_details`
-.
+- **Snapshot state reads** — use a query handler or `set_current_details`.
 - **Client → workflow streaming** — that is signals and updates.
 - **Cross-shard fan-in of one logical stream** — a stream is scoped to a single
   `exec_id` on its owning shard.

@@ -119,7 +119,7 @@ directories are never removed.
 
 ```toml
 [dev-dependencies]
-autumn-harvest = { version = "0.9", features = ["testing"] }
+autumn-harvest = { version = "0.10", features = ["testing"] }
 ```
 
 ```rust

@@ -40,8 +40,11 @@ New route families added in **0.5.0** (all in the contract; each has a CLI verb)
 - `GET /admin/config` — redacted effective runtime config.
 - `GET /admin/usage` — per-tenant/per-workflow historical usage report.
 - `GET /admin/workflow-types/reachability` — safe-handler-removal pre-flight.
-- `GET` / `PATCH /admin/workflow-types/{workflow_name}/run-defaults` — runtime SLA and execution-timeout override.
+- `GET` / `PATCH /admin/workflow-types/{workflow_name}/run-defaults` — runtime SLA, execution-timeout, chain-cap, concurrency-limit, quota-cap and workflow-retry override.
 - `GET /admin/overrides` — every schedule and run-default override, with actor, reason and time.
+- `GET` / `PUT` / `DELETE /admin/agents/{kind}/sampling-policy` — the sampling policy of an agent kind. Only an operator sets or resets it.
+- `GET /agents/{kind}/profile`, `.../versions`, `.../versions/{version}`, `.../diff` and `POST .../activate`, `.../rollback` — agent profile overlays.
+- `GET` and `PUT /agents/{kind}/profile/policy`, `POST .../policy/reset` and `GET .../policy/changes` — the refine policy of an agent kind.
 - `GET /dags/{dag_name}/runs/{run_exec_id}` — DAG run graph view.
 
 ## Authorization: token scopes and the authorizer hook
@@ -449,8 +452,7 @@ guessability of business ids removes the unguessable-`exec_id` defense-in-depth,
 mount the harvest management API **behind your own auth boundary** (e.g.
 `api_with_auth` / your app's authenticated admin surface) rather than relying on
 id opacity to gate read/signal access. Outside the `dev` profile, the by-id
-signal route answers `401` to an anonymous caller even with no auth layer
-. The by-id read routes stay open.
+signal route answers `401` to an anonymous caller even with no auth layer. The by-id read routes stay open.
 
 ### Examples
 
@@ -968,8 +970,7 @@ A fork copies the start of a run to a new execution with a new workflow id.
 The source does not change, so a run in any state can be forked. By default,
 the fork takes each activity result from the source record and never runs an
 effect for real. `"effects": "live"` opts in to real effects. An erased source
-is always refused. See the [fork runbook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/fork-a-run.md) (issue
-#2000).
+is always refused. See the [fork runbook](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/runbooks/fork-a-run.md).
 
 ## Signal delivery (`POST /workflows/{id}/signal/{signal_name}`)
 

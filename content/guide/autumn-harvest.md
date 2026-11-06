@@ -1,12 +1,12 @@
 +++
 title = "Autumn Harvest"
-description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.9.0."
+description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.10.0."
 order = 1015
 +++
 
 # Autumn Harvest
 
-Autumn Harvest 0.9.0 is the durable workflow engine for Autumn apps. Use it
+Autumn Harvest 0.10.0 is the durable workflow engine for Autumn apps. Use it
 when a request should start work that must survive restarts, retries, timers,
 signals, child workflows, and scheduled dependency graphs.
 
@@ -55,48 +55,54 @@ history instead of a hopeful background task.
   a SQLite fleet app included.
 - Cost-aware deferral: a worker holds named activity types while the
   autumn-web `CostSignal` is high, and runs them when it falls.
+- Process roles: a `web` replica serves the API, and `worker` replicas run
+  the workflows. Operators override run defaults at runtime.
 
-## What's New in 0.9.0
+## What's New in 0.10.0
 
-Harvest 0.9.0 stays on autumn-web 0.9. Bump every Harvest crate in one
-change:
+Harvest 0.10.0 moves to autumn-web 0.10. Bump every Harvest crate and
+`autumn-web` in one change:
 
 ```toml
 [dependencies]
-autumn-harvest = { version = "0.9", features = ["db"] }
-autumn-harvest-plugin = "0.9"
-autumn-web = "0.9"
+autumn-harvest = { version = "0.10", features = ["db"] }
+autumn-harvest-plugin = "0.10"
+autumn-web = "0.10"
 ```
 
-The minimum supported Rust version rises from 1.88 to 1.97.
+A leftover `autumn-web = "0.9"` builds two copies, and `HarvestPlugin` does
+not match the app's `AppBuilder`. The minimum supported Rust version stays at
+1.97.
 
 New in this release:
 
-- [HarvestPlugin on SQLite](harvest-sqlite-plugin.md). The `sqlite` feature of
-  `autumn-harvest-plugin` boots the plugin in an Autumn app on the SQLite
-  lane. Harvest keeps its own file next to the app database. A fleet app can
-  give each tenant its own Harvest file, or point Harvest at Postgres in
-  split mode.
-- [Cost-aware deferral](harvest-cost-deferral.md). A worker holds named
-  activity types while the autumn-web `CostSignal` is high. A held task stays
-  `PENDING`, uses no attempt, and holds no worker slot. One threshold drives
-  Autumn jobs and Harvest activities.
-- [Agent profile overlays](harvest-durable-agents.md). An overlay changes an
-  agent's system prompt, guardrails, model and bounds under fixed ceilings.
-  A versioned store keeps each version, and a rollback activates an earlier
-  one. Each op records the overlay it read, so replay never reads the store.
-- Best-of-N draws and scorers. `run_draws` runs each draw as a child run, a
-  `Scorer` records a verdict, and `select` picks the best draw.
-- Context reset. Near the window cap, a long agent run saves progress notes
-  and starts again from the prompt, the task and the notes.
-- New indexes for signal reads and dead-letter reads, and a retention index
-  migration that no longer deadlocks.
+- [Process roles](harvest-process-roles.md). Harvest follows the Autumn
+  process role. An `AUTUMN_ROLE=web` replica serves the management API, but
+  runs no Harvest worker, scheduler or retention janitor. A fleet with only
+  `web` replicas claims no task, so add `worker` replicas before the roll.
+  `[harvest.worker] queues` narrows the queues that one process polls.
+- [Run-default overrides](harvest-run-default-overrides.md). An operator can
+  change the chain cap, the concurrency limit, the quota admission caps and
+  the retry policy of a workflow type at runtime, with no deploy.
+- [HarvestPlugin on SQLite](harvest-sqlite-plugin.md) now serves the read
+  routes and Vantage, API tokens, roles, OIDC and audit, the transactional
+  outbox, schedules, retention, MCP, webhooks and connectors. It runs in
+  split and external mode, and with one Harvest file for each fleet tenant.
+- [Durable agents](harvest-durable-agents.md) gain operator-managed profile
+  overlays with rollback, a per-kind refine policy, the `agent_refine`
+  workflow, best-of-N and rejection sampling, an answer check, and an
+  episode log with a consolidation pass. A `postgres` module mirrors the
+  `sqlite` helpers.
+- `autumn_harvest::history_shape` fingerprints the shape of a history and
+  finds where two histories diverge.
 
-Some APIs and behaviors changed. The `schema` feature moves to `schemars`
-1.x, three Diesel tables split into a core and an extension declaration, and
-`reqwest` now uses the OS trust store. Turn on the new agent features only
-after every worker runs 0.9.0. Before you deploy, read the
-[0.9.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.9.0.md).
+Some APIs and behaviors changed. `HarvestRuntimeConfig` gains fields, and
+`worker_enabled` and `scheduler_enabled` are now `Option<bool>`.
+`consolidate::schedule` takes one schedule for every agent. A `[roles.<name>]
+mount` list must name the `harvest` route group. Turn on a new override or
+agent feature only after every process runs 0.10.0. Before you deploy, read
+the
+[0.10.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.10.0.md).
 Each change has its own section and check.
 
 ## Autumn Integration

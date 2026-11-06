@@ -350,8 +350,7 @@ all, which needs a deployment to mix pinned and unpinned starts of the same
 `workflow_id` — exactly the discipline the *Caveats* section above asks you to
 keep, and for exactly this reason.
 
-**So a by-id cancel reports from a later fan-out than the one that cancelled**
-. The stale view only becomes a wrong answer once the cancel makes
+**So a by-id cancel reports from a later fan-out than the one that cancelled**. The stale view only becomes a wrong answer once the cancel makes
 the run it found terminal, because that promotes the run which started during
 the fan-out to current run for the key. A cancel that ends a live run therefore
 cancels it, withholds `ExternalCancelDelivered`, and leaves the claim to the
