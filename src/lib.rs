@@ -299,6 +299,17 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("cell-isolation"),
         guide_doc!("sqlite-fleet"),
         guide_doc!("kubernetes"),
+        // New in Autumn 0.10.0.
+        guide_doc!("route-groups"),
+        guide_doc!("table-ownership"),
+        guide_doc!("table-width"),
+        guide_doc!("keyboard"),
+        guide_doc!("widget-packs"),
+        guide_doc!("display-widgets"),
+        guide_doc!("accordion"),
+        guide_doc!("drawer"),
+        guide_doc!("popover-and-menu"),
+        guide_doc!("tooltip"),
     ])
 });
 

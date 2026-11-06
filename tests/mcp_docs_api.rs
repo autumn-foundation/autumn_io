@@ -240,7 +240,7 @@ async fn list_tool_returns_every_guide_with_its_group() {
 
     let index = call_tool(&app, "list_autumn_docs", json!({})).await;
 
-    assert_eq!(index["autumn_version"], "0.9.0");
+    assert_eq!(index["autumn_version"], "0.10.0");
     assert_eq!(index["harvest_version"], "0.10.0");
 
     let guides = index["guides"].as_array().expect("guides array");
@@ -399,7 +399,7 @@ async fn get_tool_returns_markdown_and_the_section_list() {
 
     assert_eq!(doc["slug"], "mcp");
     assert_eq!(doc["group"], "APIs and integrations");
-    assert_eq!(doc["autumn_version"], "0.9.0");
+    assert_eq!(doc["autumn_version"], "0.10.0");
     assert!(doc["url"].as_str().unwrap().ends_with("/docs/mcp"));
     assert!(doc["notice"].is_null(), "a guide this size needs no notice");
 

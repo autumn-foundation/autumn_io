@@ -51,7 +51,7 @@ from mail they actually need — keep those mailers plain.
 Mailers are behind the non-default `mail` feature:
 
 ```toml
-autumn-web = { version = "0.9", features = ["mail"] }
+autumn-web = { version = "0.10", features = ["mail"] }
 ```
 
 ### 1. Scaffold a list mailer
@@ -183,7 +183,8 @@ preference center). Your handler keeps its own CSRF/CAPTCHA protections.
 
 The suppression list lives in **your app database** — no external ESP
 dependency. With the `db` feature and a configured pool, Autumn auto-wires a
-Diesel-backed `DbSuppressionStore` over the `mail_unsubscribes` table. To plug a
+Diesel-backed `DbSuppressionStore` over the `mail_unsubscribes` table. It
+works on Postgres and SQLite. To plug a
 custom backend (e.g. Redis), implement `SuppressionStore` and register it:
 
 ```rust
