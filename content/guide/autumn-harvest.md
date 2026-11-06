@@ -70,7 +70,7 @@ autumn-harvest-plugin = "0.10"
 autumn-web = "0.10"
 ```
 
-A leftover `autumn-web = "0.9"` builds two copies, and `HarvestPlugin` does
+A leftover autumn-web 0.9 dependency builds two copies, and `HarvestPlugin` does
 not match the app's `AppBuilder`. The minimum supported Rust version stays at
 1.97.
 
