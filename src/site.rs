@@ -18,7 +18,7 @@ pub mod markdown;
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
-const VERSION_LABEL: &str = "Autumn 0.9.0";
+const VERSION_LABEL: &str = "Autumn 0.10.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const HARVEST_GUIDE_START_PATH: &str = "/docs/harvest-project-skeleton";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
@@ -171,6 +171,13 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "nested-forms",
             "flash",
             "tabs",
+            "keyboard",
+            "widget-packs",
+            "display-widgets",
+            "accordion",
+            "drawer",
+            "popover-and-menu",
+            "tooltip",
             "seo",
             "pdf-downloads",
             "extractors",
@@ -204,6 +211,8 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "hooks-and-transactions",
             "repositories",
             "migrations",
+            "table-ownership",
+            "table-width",
             "soft-delete",
             "state-machines",
             "version-history",
@@ -360,6 +369,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "media",
             "cloud-native",
             "kubernetes",
+            "route-groups",
             "i18n",
             "upgrading",
             "edge",

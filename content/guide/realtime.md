@@ -19,7 +19,7 @@ connection limits ([Server Connection Limits](connection-limits.md)).
 
 ```toml
 [dependencies]
-autumn-web = { version = "0.9", features = ["ws"] }
+autumn-web = { version = "0.10", features = ["ws"] }
 ```
 
 ## Publish
@@ -90,7 +90,7 @@ async fn private_events(
 }
 ```
 
-## Resumable SSE with `Last-Event-ID` (unreleased — trunk-dev)
+## Resumable SSE with `Last-Event-ID` (0.6.0)
 
 `sse::stream_resumable` is a drop-in upgrade to `sse::stream` that survives a
 brief client disconnect. Every event carries an automatic epoch-tagged per-topic

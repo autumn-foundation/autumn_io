@@ -17,9 +17,11 @@ edition = "2024"
 # size. `cache-moka`, `http-client`, `flash`, and `tailwind` (this app's own
 # `build.rs` shells out to the Tailwind CLI directly; the Cargo feature gates
 # no code at all) are dropped as unused.
-autumn-web = { version = "0.9.0", default-features = false, features = [
+autumn-web = { version = "0.10.0", default-features = false, features = [
     "maud",
     "htmx",
+    # 0.10 puts the active-search widget behind its own feature.
+    "widgets-search",
     "markdown",
     "mcp",
     "reporting",
@@ -28,8 +30,8 @@ autumn-web = { version = "0.9.0", default-features = false, features = [
 # landing page's entrances, the docs reading-progress bar, and the htmx search
 # results cascade. Vendors Motion and serves it from memory under
 # `/static/_plugins/motion/`, so no npm and no CDN — see
-# `docs/adr/0003-motion-plugin.md`. Motion 0.3 requires autumn-web 0.9.
-autumn-plugin-motion = "0.3.0"
+# `docs/adr/0003-motion-plugin.md`. Motion 0.4 requires autumn-web 0.10.
+autumn-plugin-motion = "0.4.0"
 maud = "0.27.0"
 memchr = "2.8.0"
 pulldown-cmark = "0.13.3"
