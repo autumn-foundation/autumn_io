@@ -11,6 +11,9 @@ grep -rnoE 'autumn_web::[A-Za-z0-9_]+(::[A-Za-z0-9_]+)*' content | while IFS=: r
   # `autumn_web::reexports::<crate>::<item>` names a third-party crate's item
   # (e.g. redis::RedisResult); only `<crate>` itself is defined in autumn-web.
   case "$p" in autumn_web::reexports::*::*) continue;; esac
+  # `autumn_web::time` re-exports jiff types (`Timestamp`, `SignedDuration`).
+  # `autumn_web::time::<Type>::<item>` names a jiff method, not autumn-web code.
+  case "$p" in autumn_web::time::[A-Z]*::*) continue;; esac
   if ! grep -rqE "(fn|struct|enum|trait|mod|const|static|type|union|macro_rules!|use .*[ :{,])[[:space:]]*$last\b|as $last\b|\b$last[,;}]" "${src[@]}" --include='*.rs' 2>/dev/null; then
     echo "$f:$l: $p"
   fi

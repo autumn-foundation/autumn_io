@@ -17,7 +17,7 @@ endpoints, profile-aware configuration, and a project CLI behind a Spring
 Boot-style developer experience.
 
 > **Version note:** This guide tracks the published `autumn-web` and
-> `autumn-cli` **0.10.x** release line. If you are working from a source
+> `autumn-cli` **0.11.x** release line. If you are working from a source
 > checkout of the Autumn repository, the workspace may be ahead of the
 > published crates — see [local development](#local-development) below.
 
@@ -91,7 +91,7 @@ directory.
 To build it from crates.io instead:
 
 ```bash
-cargo install autumn-cli --version 0.10.0
+cargo install autumn-cli --version 0.11.0
 ```
 
 ### Local development
@@ -109,8 +109,8 @@ work, only for a release. So `autumn new` pins whatever `autumn-web` version
 your source-built CLI was compiled with, and that number is normally already
 on crates.io; it is the *code* behind it that has moved on. That means
 `autumn doctor`'s `version_compat` check, which compares version strings, will
-print a reassuring `✅ version_compat — autumn-cli 0.10.0 matches autumn-web
-0.10.0` even when your checkout and the published crate have diverged — it has
+print a reassuring `✅ version_compat — autumn-cli 0.11.0 matches autumn-web
+0.11.0` even when your checkout and the published crate have diverged — it has
 no way to see API drift that the version number doesn't carry.
 
 The real symptom is a `cargo build` failure right after `autumn new`, usually
@@ -226,7 +226,7 @@ On a fresh project, before `autumn setup`, you will see something like:
 🍂 autumn doctor
 
 ✅ rust_toolchain — rustc 1.97.0 ≥ MSRV 1.97.0
-✅ version_compat — autumn-cli 0.10.0 matches autumn-web 0.10.0
+✅ version_compat — autumn-cli 0.11.0 matches autumn-web 0.11.0
 ✅ autumn_toml — autumn.toml and profile configurations are valid
 ✅ database_topology — database not configured
 ✅ port_bindable — port 3000 is available
@@ -308,7 +308,7 @@ routes are live immediately:
 `/health` responds with:
 
 ```json
-{ "status": "ok", "version": "0.10.0" }
+{ "status": "ok", "version": "0.11.0" }
 ```
 
 Press **Ctrl+C** to stop the server. Shutdown is graceful, draining in-flight
@@ -723,7 +723,9 @@ pub struct Todo {
     pub id: i64,
     pub title: String,
     pub completed: bool,
-    pub created_at: chrono::NaiveDateTime,
+    // Diesel cannot load a `jiff` value directly; Autumn's wrapper converts it.
+    #[diesel(deserialize_as = autumn_web::db::SqlDateTime)]
+    pub created_at: autumn_web::time::civil::DateTime,
 }
 
 #[derive(Insertable, Deserialize)]
@@ -746,7 +748,7 @@ pub struct Todo {
     pub id: i64,
     pub title: String,
     pub completed: bool,
-    pub created_at: chrono::NaiveDateTime,
+    pub created_at: autumn_web::time::civil::DateTime,
 }
 ```
 
@@ -764,12 +766,14 @@ your code referred to Diesel's traits:
 
 ```toml
 [dependencies]
-autumn-web = "0.10"
-chrono = { version = "0.4", features = ["serde"] }
-diesel = { version = "2", features = ["postgres", "chrono"] }
-diesel-async = { version = "0.9", features = ["postgres"] }
+autumn-web = "0.11"
+diesel = { version = "2", features = ["postgres"] }
+diesel-async = { version = "0.10", features = ["postgres"] }
 serde = { version = "1", features = ["derive"] }
 ```
+
+Dates and times come from `autumn_web::time`, which re-exports `jiff`, so
+there is no date crate to add.
 
 (`autumn generate scaffold` adds these for you — another reason to let the
 generator lay down the first resource.)

@@ -365,7 +365,7 @@ fn bundled_home_page_represents_harvest_release_and_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
     let html = render_home_page(registry).into_string();
 
-    assert!(html.contains("Autumn Harvest 0.10.0"));
+    assert!(html.contains("Autumn Harvest 0.11.0"));
     assert!(html.contains("durable workflows"));
     assert!(html.contains(r#"href="/docs/autumn-harvest""#));
     assert!(html.contains(r#"href="https://github.com/autumn-foundation/autumn-harvest""#));
@@ -731,6 +731,27 @@ fn bundled_site_docs_include_the_autumn_0100_guides() {
 }
 
 #[test]
+fn bundled_site_docs_include_the_autumn_0110_guides() {
+    let registry = autumn_io::site_docs().expect("bundled guide docs should load");
+
+    // The guide new in the 0.11.0 sync.
+    let slug = "database-boundaries";
+    let page = registry
+        .page(slug)
+        .unwrap_or_else(|| panic!("{slug} guide should be bundled"));
+    assert!(!page.title.is_empty(), "{slug} should carry a title");
+    assert!(!page.html().is_empty(), "{slug} should render a body");
+    assert!(
+        !page.title.contains('#'),
+        "{slug} should drop upstream issue numbers from its title"
+    );
+    assert!(
+        is_grouped_docs_nav_slug(slug),
+        "{slug} should be slotted into a docs sidebar group"
+    );
+}
+
+#[test]
 fn bundled_site_docs_include_the_harvest_reference_docs() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
 
@@ -818,16 +839,21 @@ fn bundled_site_docs_include_the_harvest_reference_docs() {
 }
 
 #[test]
-fn bundled_site_docs_include_the_harvest_0100_guides() {
+fn bundled_site_docs_include_the_harvest_0110_guides() {
     let registry = autumn_io::site_docs().expect("bundled guide docs should load");
 
-    // Reference docs new in Harvest 0.9.0, and the operations pages that
-    // Harvest 0.10.0 brings to the site.
+    // Reference docs new in Harvest 0.9.0, the operations pages that
+    // Harvest 0.10.0 brought to the site, and the pages that Harvest 0.11.0
+    // brings.
     for slug in [
         "harvest-sqlite-plugin",
         "harvest-cost-deferral",
         "harvest-process-roles",
         "harvest-run-default-overrides",
+        "harvest-activity-default-overrides",
+        "harvest-claim-slots",
+        "harvest-claim-batch",
+        "harvest-dag-and-retry-analyses",
     ] {
         let page = registry
             .page(slug)
@@ -848,17 +874,20 @@ fn bundled_site_docs_include_the_harvest_0100_guides() {
         assert!(!page.html().is_empty(), "{slug} should render a body");
     }
 
-    // The Harvest overview describes the 0.10.0 release and links its
-    // upgrade guide.
+    // The Harvest overview describes the 0.11.0 release and links its
+    // upgrade guides.
     let overview = registry
         .page("autumn-harvest")
         .expect("Harvest overview should be bundled");
-    assert!(overview.description.contains("0.10.0"));
+    assert!(overview.description.contains("0.11.0"));
     let html = overview.html();
-    assert!(html.contains("What&#x27;s New in 0.10.0") || html.contains("What's New in 0.10.0"));
-    assert!(html.contains("docs/upgrading/0.10.0.md"));
-    assert!(html.contains(r#"href="/docs/harvest-process-roles""#));
-    assert!(html.contains(r#"href="/docs/harvest-run-default-overrides""#));
+    assert!(html.contains("What&#x27;s New in 0.11.0") || html.contains("What's New in 0.11.0"));
+    assert!(html.contains("docs/upgrading/0.11.0.md"));
+    assert!(html.contains("docs/upgrading/chrono-to-jiff.md"));
+    assert!(html.contains(r#"href="/docs/harvest-activity-default-overrides""#));
+    assert!(html.contains(r#"href="/docs/harvest-claim-slots""#));
+    assert!(html.contains(r#"href="/docs/harvest-claim-batch""#));
+    assert!(html.contains(r#"href="/docs/harvest-dag-and-retry-analyses""#));
     assert!(html.contains(r#"href="/docs/harvest-sqlite-plugin""#));
     assert!(!html.contains("issue #"));
 }

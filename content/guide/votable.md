@@ -62,7 +62,7 @@ already has. Nothing extra to enable:
 
 ```toml
 [dependencies]
-autumn-web = { version = "0.10", features = ["widgets-social"] }
+autumn-web = { version = "0.11", features = ["widgets-social"] }
 ```
 
 The `widgets-social` feature (a default; it turns on `maud`) is only needed
@@ -601,8 +601,8 @@ Styling hooks (`.autumn-reaction-controls`, `.autumn-reaction`,
   recomputed by `react()`, so a hand-written `INSERT`/`UPDATE`/`DELETE` on the
   edge table leaves the target's `score` stale until the next reaction on that
   target heals it. *Reads* of the edge table — including through a separate
-  `#[model]` over the same table, as reddit-clone's `Vote` does for its
-  leaderboard — are entirely fine.
+  `#[model]` over the same table, as reddit-clone's `Vote` does — are
+  entirely fine.
 - **`react()` bypasses model hooks and timestamps.** It writes the edge and the
   aggregate column with direct statements: no `before_save` / `after_save`
   model hooks fire, no validation runs, and the target's `updated_at` is left
@@ -668,7 +668,8 @@ These are deliberately *not* in the first release:
 - [Repositories](repositories.md) — the generated CRUD surface `react()` and
   `reaction_of()` attach to.
 - [Aggregate queries](aggregates.md) — `GROUP BY` roll-ups over the edge table
-  itself, e.g. reddit-clone's "Top posts by votes" leaderboard.
+  itself. For a top-N list, read the aggregate column instead: reddit-clone's
+  "Top posts by votes" reads `posts.score` through an index.
 - [Soft delete](soft-delete.md) — the repository-layer scoping `react()`
   mirrors.
 - [`docs/adr/0008-associations-and-eager-loading.md`](../adr/0008-associations-and-eager-loading.md)

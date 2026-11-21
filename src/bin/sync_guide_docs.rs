@@ -234,6 +234,8 @@ const GUIDE_FILES: &[(&str, u32)] = &[
     ("drawer.md", 1880),
     ("popover-and-menu.md", 1890),
     ("tooltip.md", 1900),
+    // New in Autumn 0.11.0. Synced from the `v0.11.0` tag.
+    ("database-boundaries.md", 1910),
 ];
 
 const DEFAULT_HARVEST_REPO: &str = "../autumn-harvest";
@@ -386,6 +388,19 @@ const HARVEST_REFERENCE_FILES: &[(&str, &str, u32)] = &[
         "operations/run-default-overrides.md",
         "harvest-run-default-overrides",
         1740,
+    ),
+    // New on the site with Harvest 0.11.0.
+    (
+        "operations/activity-default-overrides.md",
+        "harvest-activity-default-overrides",
+        1750,
+    ),
+    ("operations/claim-slots.md", "harvest-claim-slots", 1760),
+    ("operations/claim-batch.md", "harvest-claim-batch", 1770),
+    (
+        "dag-and-retry-analyses.md",
+        "harvest-dag-and-retry-analyses",
+        1780,
     ),
     // Adoption.
     ("comparison.md", "harvest-comparison", 1800),

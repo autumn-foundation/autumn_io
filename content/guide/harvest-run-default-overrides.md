@@ -158,6 +158,9 @@ The start clamps still apply after the override:
   the same three values and the same ceilings. A deferred completion-trigger
   start resolves them when it fires. The immediate relay of a cross-shard
   start keeps the SLA of evaluation time.
+- A batch start takes the timeout and the SLA, on the immediate path and on
+  the throttled path. A throttled item keeps the values of admission time
+  when the scanner fires it. A webhook-delivery start takes them too.
 - A per-start `sla_secs` or `execution_timeout_secs` in the start request
   still wins over both.
 
@@ -400,3 +403,5 @@ grant.
 
 - [`schedule-overrides.md`](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/operations/schedule-overrides.md): the same idea for
   schedules.
+- [`activity-default-overrides.md`](/docs/harvest-activity-default-overrides): the same
+  idea for activity types.
