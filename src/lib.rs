@@ -227,6 +227,10 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("harvest-cost-deferral"),
         guide_doc!("harvest-process-roles"),
         guide_doc!("harvest-run-default-overrides"),
+        guide_doc!("harvest-activity-default-overrides"),
+        guide_doc!("harvest-claim-slots"),
+        guide_doc!("harvest-claim-batch"),
+        guide_doc!("harvest-dag-and-retry-analyses"),
         guide_doc!("harvest-comparison"),
         guide_doc!("harvest-migrating-from-temporal"),
         // New in Autumn 0.7.0.
@@ -310,6 +314,8 @@ static SITE_DOCS: LazyLock<Result<DocRegistry, DocsError>> = LazyLock::new(|| {
         guide_doc!("drawer"),
         guide_doc!("popover-and-menu"),
         guide_doc!("tooltip"),
+        // New in Autumn 0.11.0.
+        guide_doc!("database-boundaries"),
     ])
 });
 

@@ -33,7 +33,7 @@ internet connection.
 - **Rust 1.97.0+** with `cargo`
 - **Docker** (or Docker Desktop) — `docker --version`
 - **PostgreSQL** accessible at a connection string you control (local or remote)
-- The `autumn` CLI - `cargo install autumn-cli --version 0.10.0`
+- The `autumn` CLI - `cargo install autumn-cli --version 0.11.0`
 
 ---
 
@@ -358,6 +358,9 @@ host = "203.0.113.10"     # SSH-reachable IP or hostname of your VPS (required)
 # keep_releases = 3               # prior releases retained for rollback (default: 3)
 # install_proxy = false           # decline host preparation — you install
 #                                 # kamal-proxy yourself (default: true)
+# [[deploy.groups]]               # a role per group of hosts. Remove `host`
+# role = "worker"                 # and `hosts` when you use groups (see the
+# hosts = ["10.0.0.3"]            # fleet deploys guide, "Per-group roles")
 ```
 
 Every key also has an environment override (`AUTUMN_DEPLOY__HOST`,
@@ -392,6 +395,27 @@ it is the documented env-over-TOML precedence applied to the spelling you did
   and `AUTUMN_DEPLOY__HOSTS=" , "` are the shape a CI or compose template emits
   for an unfilled slot, so they can never silently drop a fleet list configured
   in the file.
+
+> **`autumn deploy` checks these keys before it runs a command.** A remote
+> shell line, `systemctl`, `ssh` and the systemd unit file use them.
+> `autumn deploy` refuses a value that is too long or that has a character
+> that one of them can read as code:
+>
+> | Key | Characters |
+> | --- | --- |
+> | `app_name`, `service_name`, `profile` | 1 to 128 ASCII letters, digits, `_`, `.`, `-`. Start with a letter, a digit or `_`. |
+> | `user` | 1 to 64 ASCII letters, digits, `_`, `.`, `-`, `@`. Start with a letter, a digit or `_`. |
+> | `app_dir` | An absolute path of 1 to 1024 ASCII letters, digits, `/`, `_`, `.`, `-`, `+`, `@`, `:`. |
+> | `host`, `hosts` | An IPv6 address without brackets. It can have a zone, for example `fe80::1%eth0`. Or a name or IPv4 address of 1 to 253 ASCII letters, digits, `_`, `.`, `-`. Start a name with a letter or a digit. |
+>
+> The check also applies to a default. If you do not set `app_name`, it comes
+> from the package name or the directory name. If that name fails the check,
+> set `app_name`. `autumn doctor` reports the same failure as `deploy_config`,
+> or as `deploy_host` for a host.
+>
+> `ssh` and `scp` read an argument that starts with `-` as an option. An option
+> such as `ProxyCommand` runs a local command. For a host that needs other
+> characters, add a `Host` alias in `~/.ssh/config` and use the alias here.
 
 Put these two values in a project `.env` (git-ignored — never committed). The
 deploy reads them and writes **only** them to a `0600` env file
@@ -1842,7 +1866,7 @@ Visit [http://localhost:3000/health](http://localhost:3000/health) — a healthy
 response looks like:
 
 ```json
-{ "status": "ok", "version": "0.10.0" }
+{ "status": "ok", "version": "0.11.0" }
 ```
 
 > **Migration failure stops the rollout.** If the primary URL is wrong or the
@@ -2058,6 +2082,27 @@ fly secrets set AUTUMN_DATABASE__PRIMARY_URL="postgres://user:pass@host:5432/mya
 fly secrets set AUTUMN_SECURITY__SIGNING_SECRET="$(openssl rand -hex 32)"
 fly deploy
 ```
+
+**Split roles.** With `[roles.*]` presets in `autumn.toml`, `--split-workers`
+or `--roles`, the generator writes one process group per role:
+
+```toml
+# fly.toml
+[processes]
+  web = "env AUTUMN_ROLE=web /usr/local/bin/myapp"
+  worker = "env AUTUMN_ROLE=worker /usr/local/bin/myapp"
+
+[http_service]
+  processes = ["web"]
+```
+
+Fly balances `[http_service]` over its groups with no path routing. So only
+one group gets it: `web` or `combined`, else the first role that serves HTTP.
+A comment names each other HTTP role. Give such a role its own `[[services]]`
+block, or its own Fly app. The `/live` check runs on every group. Scale each
+group with `fly scale count web=2 worker=1`. A split role needs a shared jobs
+backend (`[jobs] backend = "postgres"`). An app with only the `combined` role
+gets no `[processes]` block.
 
 **Using a database?** Uncomment the `release_command` line in `fly.toml` before
 the first `fly deploy`:

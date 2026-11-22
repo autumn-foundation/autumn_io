@@ -18,7 +18,7 @@ pub mod markdown;
 const DOCS_SEARCH_RESULTS_TARGET: &str = "#docs-search-results";
 const DOCS_SEARCH_INDICATOR_TARGET: &str = "#docs-search-indicator";
 
-const VERSION_LABEL: &str = "Autumn 0.10.0";
+const VERSION_LABEL: &str = "Autumn 0.11.0";
 const HARVEST_DOC_PATH: &str = "/docs/autumn-harvest";
 const HARVEST_GUIDE_START_PATH: &str = "/docs/harvest-project-skeleton";
 const ASSET_VERSION: &str = env!("AUTUMN_IO_ASSET_VERSION");
@@ -149,6 +149,10 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "harvest-cost-deferral",
             "harvest-process-roles",
             "harvest-run-default-overrides",
+            "harvest-activity-default-overrides",
+            "harvest-claim-slots",
+            "harvest-claim-batch",
+            "harvest-dag-and-retry-analyses",
             "harvest-comparison",
             "harvest-migrating-from-temporal",
         ],
@@ -213,6 +217,7 @@ const DOCS_NAV_GROUPS: &[DocsNavGroup] = &[
             "migrations",
             "table-ownership",
             "table-width",
+            "database-boundaries",
             "soft-delete",
             "state-machines",
             "version-history",

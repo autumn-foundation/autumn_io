@@ -1,12 +1,12 @@
 +++
 title = "Autumn Harvest"
-description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.10.0."
+description = "Durable workflow orchestration for Autumn apps, released as autumn-harvest 0.11.0."
 order = 1015
 +++
 
 # Autumn Harvest
 
-Autumn Harvest 0.10.0 is the durable workflow engine for Autumn apps. Use it
+Autumn Harvest 0.11.0 is the durable workflow engine for Autumn apps. Use it
 when a request should start work that must survive restarts, retries, timers,
 signals, child workflows, and scheduled dependency graphs.
 
@@ -58,51 +58,65 @@ history instead of a hopeful background task.
 - Process roles: a `web` replica serves the API, and `worker` replicas run
   the workflows. Operators override run defaults at runtime.
 
-## What's New in 0.10.0
+## What's New in 0.11.0
 
-Harvest 0.10.0 moves to autumn-web 0.10. Bump every Harvest crate and
+Harvest 0.11.0 moves to autumn-web 0.11. Bump every Harvest crate and
 `autumn-web` in one change:
 
 ```toml
 [dependencies]
-autumn-harvest = { version = "0.10", features = ["db"] }
-autumn-harvest-plugin = "0.10"
-autumn-web = "0.10"
+autumn-harvest = { version = "0.11", features = ["db"] }
+autumn-harvest-plugin = "0.11"
+autumn-web = "0.11"
 ```
 
-A leftover autumn-web 0.9 dependency builds two copies, and `HarvestPlugin` does
-not match the app's `AppBuilder`. The minimum supported Rust version stays at
-1.97.
+A leftover autumn-web 0.10 dependency builds two copies, and `HarvestPlugin`
+does not match the app's `AppBuilder`. If you name them, bump `diesel` to 2.4,
+`diesel-async` to 0.10 and `rusqlite` to 0.42 too. The minimum supported Rust
+version stays at 1.97.
+
+Two changes affect every app:
+
+- Dates and times use `jiff`. `DateTime<Utc>` is now `jiff::Timestamp`, and
+  `chrono::Duration` is now `jiff::SignedDuration`. `autumn_harvest::jiff`
+  re-exports the crate, and `autumn_harvest::chrono` is gone. No stored data
+  changes.
+- The worker, the scheduler, the retention janitor and the batch executor run
+  as Autumn background tasks. Autumn places each one by the process role, and
+  a `[roles.<name>]` preset turns them on or off with the capabilities
+  `harvest.worker`, `harvest.scheduler` and `harvest.maintenance`. Set
+  `server.shutdown_timeout_secs` to at least twice the worker shutdown
+  timeout.
 
 New in this release:
 
-- [Process roles](harvest-process-roles.md). Harvest follows the Autumn
-  process role. An `AUTUMN_ROLE=web` replica serves the management API, but
-  runs no Harvest worker, scheduler or retention janitor. A fleet with only
-  `web` replicas claims no task, so add `worker` replicas before the roll.
-  `[harvest.worker] queues` narrows the queues that one process polls.
-- [Run-default overrides](harvest-run-default-overrides.md). An operator can
-  change the chain cap, the concurrency limit, the quota admission caps and
-  the retry policy of a workflow type at runtime, with no deploy.
-- [HarvestPlugin on SQLite](harvest-sqlite-plugin.md) now serves the read
-  routes and Vantage, API tokens, roles, OIDC and audit, the transactional
-  outbox, schedules, retention, MCP, webhooks and connectors. It runs in
-  split and external mode, and with one Harvest file for each fleet tenant.
-- [Durable agents](harvest-durable-agents.md) gain operator-managed profile
-  overlays with rollback, a per-kind refine policy, the `agent_refine`
-  workflow, best-of-N and rejection sampling, an answer check, and an
-  episode log with a consolidation pass. A `postgres` module mirrors the
-  `sqlite` helpers.
-- `autumn_harvest::history_shape` fingerprints the shape of a history and
-  finds where two histories diverge.
+- [Activity default overrides](harvest-activity-default-overrides.md). An
+  operator changes the retry policy, the timeouts and the fleet-wide cap of an
+  activity type at runtime, with no deploy.
+- [Claim slots](harvest-claim-slots.md) cap the claim statements that run at
+  once on one shard, across the fleet. A [batch claim](harvest-claim-batch.md)
+  lets one claim statement take up to 8 rows.
+- [Pre-deploy analyses](harvest-dag-and-retry-analyses.md) forecast DAG
+  slack, retry envelopes, retry storms and schedule herds from a unit test or
+  a CI check.
+- [The SQLite backend](harvest-sqlite-backend.md) runs external activities,
+  and [HarvestPlugin on SQLite](harvest-sqlite-plugin.md) hosts the durable
+  agent.
+- [Durable agents](harvest-durable-agents.md) gain inference strategies (vote,
+  model cascade, beam search and the dataset sweep), an adoption gate and a
+  lesson library for the refine loop, profile reload, approval notices,
+  Anthropic and OpenAI-compatible models, and episode, memory and transcript
+  stores.
+- [Sandbox activities](harvest-sandbox-activities.md) can run in a private
+  file system.
 
-Some APIs and behaviors changed. `HarvestRuntimeConfig` gains fields, and
-`worker_enabled` and `scheduler_enabled` are now `Option<bool>`.
-`consolidate::schedule` takes one schedule for every agent. A `[roles.<name>]
-mount` list must name the `harvest` route group. Turn on a new override or
-agent feature only after every process runs 0.10.0. Before you deploy, read
+Some behaviors changed. A batch or webhook-delivery start now takes the
+execution timeout of its type. A refine run waits for an adoption. Turn on a
+new feature only after every process runs 0.11.0. Before you deploy, read
 the
-[0.10.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.10.0.md).
+[0.11.0 upgrade guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/0.11.0.md)
+and the
+[`chrono` to `jiff` guide](https://github.com/autumn-foundation/autumn-harvest/blob/trunk-dev/docs/upgrading/chrono-to-jiff.md).
 Each change has its own section and check.
 
 ## Autumn Integration
