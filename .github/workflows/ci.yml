@@ -88,7 +88,13 @@ jobs:
             v="$(grep -A1 "name = \"$c\"" Cargo.lock | sed -n 's/version = "\(.*\)"/\1/p')"
             curl -sSfL "https://static.crates.io/crates/$c/$c-$v.crate" | tar xz -C "$d"
           done
-          scripts/docs-drift-scan.sh "$d"/autumn-web-*/src "$d"/autumn-macros-*/src | tee "$d/drift.txt"
+          # Harvest is not a dependency of the site, so its version comes from
+          # the constant the guides are pinned to (tests/guide_pins.rs).
+          hv="$(sed -n 's/^pub const HARVEST_VERSION: &str = "\(.*\)";/\1/p' src/seo.rs)"
+          for c in autumn-harvest autumn-harvest-agent autumn-harvest-plugin autumn-harvest-sqlite; do
+            curl -sSfL "https://static.crates.io/crates/$c/$c-$hv.crate" | tar xz -C "$d"
+          done
+          scripts/docs-drift-scan.sh "$d"/*/src | tee "$d/drift.txt"
           test ! -s "$d/drift.txt"
       - run: python3 scripts/docs-link-check.py
 
